@@ -83,15 +83,25 @@ If you have [Claude Code](https://docs.claude.com/en/docs/claude-code) (or any L
 I've just deployed pscale-beach to Vercel and want to finish setup. My beach URL is:
 https://YOUR-VERCEL-URL.vercel.app
 
-Please:
+Boundaries — please honour these throughout the session:
+- Don't modify any file inside the cloned pscale-beach repo (seeds/, api/,
+  init/, package.json, etc.) without asking me first. If a step fails,
+  surface the error and stop — upstream bugs need reporting, not silent
+  patches.
+- Don't take destructive actions on my beach (DELETE, whole-block
+  overwrite with confirm:true) without asking me first.
+- Don't write outside ~/Projects/pscale-beach, ~/.claude/, and the
+  .env.local I'll help you create.
+
+Now please:
 1. Clone https://github.com/pscale-commons/pscale-beach into ~/Projects/pscale-beach if it's not already there, and run `npm install`.
-2. Help me create .env.local with BEACH_URL (the URL above), BEACH_HANDLE (a short identifier for me at this beach), and BEACH_PASSPHRASE (a strong secret — offer to generate one).
-3. Run `npm run init` and surface any errors clearly.
-4. Once seeded, output the JSON snippet I need to add bsp-mcp to my Claude Code MCP servers config so I can talk to the substrate (the bsp-mcp endpoint is https://bsp.hermitcrab.me/mcp/v1).
-5. Walk me through a bsp() call against my new beach to confirm it's reachable end-to-end.
+2. Help me create .env.local with BEACH_URL (the URL above), BEACH_HANDLE (a short identifier for me at this beach), and BEACH_PASSPHRASE (a strong secret — offer to generate one). Confirm the values with me before writing the file.
+3. Run `npm run init`. If any block fails to seed, surface the exact error response from the handler verbatim and stop. Don't edit seed/template files to work around a failure. Wait for my decision on how to proceed.
+4. Once seeded, output the JSON snippet I need to add bsp-mcp to my Claude Code MCP servers config so I can talk to the substrate (the bsp-mcp endpoint is https://bsp.hermitcrab.me/mcp/v1). Don't auto-write to ~/.claude.json — show me the snippet and let me apply it.
+5. Walk me through a bsp() call against my new beach to confirm it's reachable end-to-end (use the read-only `bsp` tool with no content; locked-block writes need my explicit go-ahead).
 ```
 
-Replace `YOUR-VERCEL-URL.vercel.app` with your actual Vercel deployment URL (or your custom domain once configured). Claude Code reads this README, prompts you for what's missing, runs the init, and gives you the connect snippet.
+Replace `YOUR-VERCEL-URL.vercel.app` with your actual Vercel deployment URL (or your custom domain once configured). The "boundaries" block at the top is load-bearing — without it, an over-eager agent may try to patch upstream files when init hits a seed bug, leaving your beach diverged from canonical. Surface-and-stop is the right behaviour; report the bug separately.
 
 #### Option B — Manual
 
