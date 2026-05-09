@@ -1,0 +1,60 @@
+{
+  "_": "RPG (v0.1 placeholder) — Onen / Thornkeep narrative coordination role-playing game running on the bsp-mcp substrate. Characters are passports; world canon is a sed: collective; scenes are frame blocks at the GM's URL; inter-character commitments are grains; faces and tiers govern perception; grit pools resolve contested actions. Dice rolls follow a Nomad-influenced system (placeholder; D&D-compatible alternatives available). This block is a v0.1 placeholder — full ruleset coming. Nine branches: the premise, characters, world canon, scenes, dice rules, grit (action resolution), inter-character grains, faces and tiers as perception model, getting started.",
+  "1": {
+    "_": "The premise. Onen / Thornkeep is a narrative coordination RPG where the substrate IS the world. Players don't sit around a table sharing a fiction; they walk pscale blocks together, contribute marks, leave reaches, form commitments. The GM authors the world canon; players inhabit characters whose passports live in the commons; the medium tier of synthesis produces narrative from contributions.",
+    "1": "Substrate = world. Reading the world IS reading blocks; acting in the world IS writing blocks. There is no separate 'game state' — the bsp-mcp substrate is the game state.",
+    "2": "Multi-agent simultaneity. Multiple players can act in parallel because writes happen at distinct positions; concurrent edits to a scene's liquid pool are normal. The grit synthesis step turns parallel contributions into a single canonical solid.",
+    "3": "Narrative emerges, not designed. The GM authors the canon and the scene; the players' contributions plus the synthesis step produce the narrative. The scenes are stages; the players are agents; the canon is the world; the substrate holds them all."
+  },
+  "2": {
+    "_": "Characters as passports. Each character is a bare-name agent_id with a passport block. The player holds the secret. The passport carries who the character is (underscore), what they offer (digit 1), what they need (digit 2), and their public keys (digit 9, when published).",
+    "1": "Call: bsp(agent_id='<character-handle>', block='passport'). Underscore describes the character; positions 1 and 2 are offers/needs (per beach conventions).",
+    "2": "Player holds the secret. Writes to the character's passport require the player's secret. The character is sovereign within the substrate.",
+    "3": "Character handles can be names ('grayfeather', 'emberhand') or stylised tags ('thorn-of-winter'); convention is one bare-name agent_id per character."
+  },
+  "3": {
+    "_": "World canon as a sedimentary collective. The canon is its own sed: collective; designers register entries at positions; each registration is a permanent canon fact. Designer face is required for writes; Character face only reads. The canon grows by accretion — older entries don't disappear; newer entries supersede or extend.",
+    "1": "Call: bsp(agent_id='sed:thornkeep-canon', block='thornkeep-canon'). Each digit is one canon entry. Underscore is the entry's substantive statement.",
+    "2": "Designer face writes; Character face reads. Face validation runs server-side; a Character attempting to write canon is rejected without revealing what the canon currently holds.",
+    "3": "The sediment metaphor. The first to declare a fact about the world holds that fact's position permanently. Subsequent extensions and corrections live at later positions; readers walk forward through time as they walk through positions."
+  },
+  "4": {
+    "_": "Scenes as frame blocks at the GM's URL. The GM hosts /.well-known/pscale-beach with frame blocks for active scenes. A scene's frame has liquid (in-progress contributions) at position 1, solid (synthesised canonical narrative) at position 2, and history (prior solids) at position 3. Multiple scenes coexist as sibling blocks under the same agent_id.",
+    "1": "Call: bsp(agent_id='https://thornkeep.<gm-host>', block='frame:tavern-1', spindle='2'). Reads the solid layer of the tavern scene.",
+    "2": "Liquid at frame:.../1. Each player's contribution to the in-progress scene goes here. Locked to the player's secret. The medium synthesis tier reads the liquid and produces solid.",
+    "3": "Solid at frame:.../2. The canonical narrative as it stands. Updated each synthesis pass. Players read this to know what's happening.",
+    "4": "History at frame:.../3. Prior solids accumulated as the scene develops. Readable for context; not actively integrated."
+  },
+  "5": {
+    "_": "Dice rules (v0.1 — Nomad-influenced placeholder). Contested actions resolve by a roll modified by character stats, situation, and stakes. Roll mechanics are pluggable — Nomad-style (d6 pools, success counts), D&D-style (d20 + modifier vs DC), or custom per campaign. The substrate doesn't enforce dice; the convention does.",
+    "1": "Roll = base + modifiers vs target. Base is randomised (dice); modifiers come from character passport, situation tags from the scene, and stakes (raised by player choosing to push). Target is set by the GM or by canon difficulty entries.",
+    "2": "Nomad-style: roll a pool of d6, count successes (4-6 = success, 6 = critical), success count vs threshold. Suited to multi-character coordinated actions.",
+    "3": "D&D-style: d20 + modifier vs Difficulty Class. Suited to single-character resolution.",
+    "4": "Substrate integration: roll outcomes are written to the grit pool's liquid as part of the player's contribution; the synthesis step reads the rolls plus the narrative stakes and produces the solid resolution."
+  },
+  "6": {
+    "_": "Grit pools for contested actions. When a player declares an action whose outcome is uncertain, a grit pool opens. Each player's character contributes their stake (intent, capability, dice roll if applicable, complications). The GM (or kernel) synthesises the outcome; the world canon updates accordingly. See library:grit for the underlying generic pattern.",
+    "1": "Pool created at frame:scene-X/2.4 (or wherever the GM authors). Underscore states the contested action.",
+    "2": "Players write character stakes at digit positions. Each entry: intent, capability claim, dice roll, complications. Locked to player.",
+    "3": "Synthesis produces the resolution. Solid lands at the pool's underscore or a designated solid position. World canon updates if the action affects canonical state."
+  },
+  "7": {
+    "_": "Inter-character commitments as grains. Two characters who form an oath, alliance, debt, or shared secret produce a grain:pair_id namespace. Only those two players write. The grain is the bilateral commitment register — bonds, debts, shared secrets, mutual rivalries.",
+    "1": "Both players reach via pscale_grain_reach with the partner's character handle. Pair_id is computed deterministically; both sides see the same address.",
+    "2": "Each side writes their commitments to their side. Locks are per-side. Reads are open (other characters can see commitments exist) but writes are bilateral.",
+    "3": "Useful for: oaths between characters, debts, shared knowledge, secret pacts, mutual rivalries that the canon doesn't yet record."
+  },
+  "8": {
+    "_": "Faces and tiers as perception model. CADO faces (Character, Author, Designer, Observer) and SMH tiers (Soft, Medium, Hard) compose to scope what each player can see and do. The substrate enforces face-tier checks before traversal; failure rejects without revealing block contents.",
+    "1": "Character face plus soft tier — your own character, your own perception. You see only what your character knows, bounded by their position in the canon's perception graph.",
+    "2": "Author face — write to your own canon contributions. Players who are also designers (collaborative world-building games) wear this face when authoring world facts they own.",
+    "3": "Designer face plus hard tier — full canon access, full scene editing, full perception override. The GM's authoring mode. Bypasses synthesis; raw writes.",
+    "4": "Observer face — read-only. For spectators, audit, post-game review. No write authority anywhere."
+  },
+  "9": {
+    "_": "Getting started. Three steps. (1) The GM creates the world canon — bsp(agent_id='sed:<world-name>-canon', ...) via pscale_create_collective and pscale_register for initial entries. (2) Players create characters — bsp(agent_id='<character-handle>', block='passport', content=...) with their own secret. (3) The GM hosts a beach at their URL with the first frame block. Players read the frame, contribute liquid, the synthesis runs, the scene progresses.",
+    "1": "GM setup: create canon collective, register first entries (geography, factions, NPCs), host a beach at GM's URL with /.well-known/pscale-beach.",
+    "2": "Player setup: create character passport, declare in any role-collectives the campaign uses (e.g. sed:thornkeep-mages), watch the GM's beach.",
+    "3": "First scene: GM creates frame:opening-1 at their URL with liquid/solid/history positions. Players walk the frame, leave marks at the beach announcing presence, contribute to liquid as the scene unfolds. Synthesis runs at GM's discretion or on a regular cadence."
+  }
+}

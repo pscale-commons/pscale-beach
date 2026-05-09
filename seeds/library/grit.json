@@ -1,0 +1,36 @@
+{
+  "_": "Grit (v0.1 placeholder) — generic process convention for structured collaboration around contested decisions, contested actions, or contested authoring. Vapour-liquid-solid synthesis cycle: vapour is out-of-band realtime exchange (peer-to-peer thinking aloud); liquid is contributions accumulating at block positions (committed but provisional); solid is the synthesised canonical version produced by a kernel synthesis step; archive is accumulated solids over time. Used in RPG (action negotiation) and applicable to any structured collaboration. This block is a v0.1 placeholder — operational shape stated; to deepen with use. Five branches: the cycle, the four states, the synthesis kernel, RPG application, generic collaboration application.",
+  "1": {
+    "_": "The cycle. Contributions move through four states in sequence: vapour (realtime exchange, not yet committed), liquid (committed contributions accumulating in scope), solid (synthesised canonical version), archive (history of past solids). The cycle is not strict — vapour can re-enter from solid (revisiting commits in light of new vapour); the boundaries are operational, not enforced.",
+    "1": "Vapour to liquid is the commitment threshold. Out-of-band thinking becomes block-positioned contribution. The participant decides 'this is worth committing'; the act of writing to a liquid position is the commitment.",
+    "2": "Liquid to solid is the synthesis step. A kernel (LLM in the medium tier, or a designated synthesiser, or a quorum process) reads all liquid contributions and produces a single coherent solid. Synthesis is not voting; it is integration.",
+    "3": "Solid to archive is settling. Once a solid stands long enough or is superseded, it moves to history. The archive accumulates; older solids remain readable but are not active context."
+  },
+  "2": {
+    "_": "The four states named operationally. Each state has a substrate location and an authoring discipline.",
+    "1": "Vapour — out-of-band. Lives outside the pscale block; ephemeral; realtime. May be voice, chat, scratchpad, or any non-committed channel. The discipline is reach-then-listen: throw thoughts into the air, hear what others throw back. Not stored.",
+    "2": "Liquid — block positions, individual contributions. Lives at digit positions within a frame block. Each contributor writes to their own position (or a shared liquid pool); reads are open; writes are locked to the contributor. The discipline is forward-facing intent: state what the contribution is FOR, not just WHAT.",
+    "3": "Solid — synthesised canonical version. Lives at the underscore (or a designated solid position). One coherent version produced by integrating the liquid. The discipline is integration without diminishing: the solid should reflect every contribution that landed coherently, even when summarising.",
+    "4": "Archive — accumulated solids. Lives at a history position (frame:.../3 by convention). Older solids; readable; not actively integrated. The discipline is dating: archive entries carry timestamps so trajectory through time is visible."
+  },
+  "3": {
+    "_": "The synthesis kernel — the operation that turns liquid into solid. A kernel reads the underscore (the purpose; what the solid is FOR), reads all liquid contributions, integrates them into a single coherent statement, and writes the result at the solid position. The kernel is operationally a Mode B traversal of the liquid scope plus a Mode A write at the solid.",
+    "1": "Read the purpose. The frame's underscore (or pool's underscore) names what the synthesis is for. This is the reference signal; the synthesis serves it.",
+    "2": "Read the liquid. All committed contributions in scope. The synthesiser holds them simultaneously (subtree call, AND-style read).",
+    "3": "Produce the solid. Integration step: a coherent statement that honours the contributions and serves the purpose. Not voting; not averaging; integration. The solid replaces or supersedes the prior solid (which moves to archive).",
+    "4": "Lock and timestamp. The solid carries the synthesis-kernel's signature (or the quorum's record). Subsequent rounds may rewrite the solid; the prior solid moves to archive."
+  },
+  "4": {
+    "_": "Application in RPG (Onen / Thornkeep). Grit pools are the substrate for negotiating contested actions — 'I want to climb the cliff while the goblins are below', 'we are deciding whether to break the oath'. Each contested action gets a grit pool; players contribute their character's stake (intent, capability, complications); the kernel synthesises the resolution; the world canon moves forward.",
+    "1": "Pool created at frame:scene-X/2.4 (or wherever). Underscore states the contested action. Players write their character's stake at digit positions.",
+    "2": "Liquid contributions: each player's character makes a case (intent, capability, complications). Locked to the player's secret.",
+    "3": "Synthesis: the GM (or a kernel) reads the underscore (the contested action) plus the liquid contributions, integrates, decides the outcome. Optionally dice-roll modifiers per the RPG ruleset.",
+    "4": "Solid lands at the pool's underscore (or a designated solid position). Resolution becomes canonical; world state updates accordingly."
+  },
+  "5": {
+    "_": "Application beyond RPG — structured collaboration generally. Grit's vapour-liquid-solid pattern serves any decision-making, document-drafting, or coordination work where multiple parties contribute and a single coherent outcome is needed.",
+    "1": "Decision-making. Vapour is the conversation; liquid is each party's stated position; solid is the decided action; archive is the trail of decisions over time. Useful for committee work, governance, project decisions.",
+    "2": "Document drafting. Vapour is the brainstorming; liquid is each contributor's draft section; solid is the integrated document; archive is version history. Useful for collaborative writing, specifications, manifestos.",
+    "3": "Project coordination. Vapour is informal status updates; liquid is formal status reports per team; solid is the integrated project state; archive is project history. Useful for distributed teams, multi-organisation initiatives."
+  }
+}

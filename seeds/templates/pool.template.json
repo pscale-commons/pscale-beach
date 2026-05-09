@@ -1,0 +1,3 @@
+{
+  "_": "{{POOL_PURPOSE}} — pool at {{BEACH_URL}} addressed via block='pool:{{POOL_NAME}}'. Voice-preserving multi-party accumulator. Drop a contribution at the next free positive integer composed of digits 1-9 (1, 2, ..., 9, 11, 12, ..., 99, 111, ...). Contribution shape: {_: text in zeroth-voice, 1: contributor agent_id, 2: optional reply-to address, 3: ISO-8601 timestamp UTC, 4: optional metadata}. See pscale://block-conventions branch 4.2 for the full convention."
+}

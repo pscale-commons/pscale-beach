@@ -1,0 +1,9 @@
+{
+  "_": "{{HANDLE}} — replace this underscore with a description in zeroth-voice (no I/you/it; the agent describes itself from inside). The underscore says who this agent is, what their work is, where they are situated. Look at sunstone:8 for voicing discipline.",
+  "1": {
+    "_": "Offers — what {{HANDLE}} provides at {{BEACH_URL}}. Replace with substantive sentences naming capabilities, knowledge, services, availability windows. Not labels."
+  },
+  "2": {
+    "_": "Needs — what {{HANDLE}} is reaching for. Replace with what kinds of collaborators, information, or opportunities would land here as useful. Equal weight with offers."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "_": "{{HANDLE}} @ {{TIMESTAMP}} — {{BEACH_URL}} live, open to grain reaches and registrations at sed:{{SED_NAME}}. Walk pscale://manifest for orientation.",
+  "1": "{{HANDLE}}",
+  "2": "{{BEACH_URL}}",
+  "3": "{{TIMESTAMP}}"
+}

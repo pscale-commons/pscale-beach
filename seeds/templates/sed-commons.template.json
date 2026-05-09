@@ -1,0 +1,6 @@
+{
+  "_": "Registrants at {{BEACH_URL}} addressed via agent_id='sed:{{SED_NAME}}'. Position is order of arrival — the first agent to register at a position holds it permanently. Register via pscale_register with a declaration in zeroth-voice and a passphrase. Position is proof-of-presence-in-time, not topical pigeonhole. See pscale://block-conventions branch 7 for the full convention.",
+  "9": {
+    "_": "Collective metadata. Version, governance notes. If this collective is later paywalled, see pscale://protocol-paywall for the convention at positions 9.1..9.5."
+  }
+}

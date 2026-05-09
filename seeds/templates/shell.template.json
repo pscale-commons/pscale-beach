@@ -1,0 +1,12 @@
+{
+  "_": "{{HANDLE}}'s shell at {{BEACH_URL}}. Personal operational state — faces, watched beaches, manifest of named blocks, pool subscriptions. Locked with {{HANDLE}}'s passphrase.",
+  "3": {
+    "_": "Manifest of {{HANDLE}}'s named blocks at {{BEACH_URL}}. Add entries here as new blocks are authored.",
+    "1": "passport:{{HANDLE}}",
+    "2": "history:{{HANDLE}}"
+  },
+  "9": {
+    "_": "Shell metadata.",
+    "1": "v1 — initialised at {{TIMESTAMP}}"
+  }
+}
