@@ -55,9 +55,20 @@ const redis = new Redis({
 // It is part of the ordinary-block lock salt — locks set on this beach must
 // hash under this exact origin. Changing it after blocks are locked breaks
 // those locks.
-const ORIGIN = process.env.BEACH_ORIGIN;
+//
+// On Vercel, BEACH_ORIGIN is OPTIONAL — when unset, falls back to the
+// project's production URL (VERCEL_PROJECT_PRODUCTION_URL, e.g.
+// "pscale-beach.vercel.app") so vibe-coders can deploy without picking a
+// domain first. Custom domains become an upgrade: set BEACH_ORIGIN to the
+// final hostname, redeploy, re-seed (locks recompute under the new salt).
+//
+// Fallback chain: BEACH_ORIGIN → VERCEL_PROJECT_PRODUCTION_URL → VERCEL_URL.
+const ORIGIN =
+  process.env.BEACH_ORIGIN ||
+  process.env.VERCEL_PROJECT_PRODUCTION_URL ||
+  process.env.VERCEL_URL;
 if (!ORIGIN) {
-  throw new Error('BEACH_ORIGIN env var required (e.g. "idiothuman.com" — bare domain, no scheme)');
+  throw new Error('BEACH_ORIGIN env var required (bare domain, no scheme — e.g. "idiothuman.com"). On Vercel, this falls back to VERCEL_PROJECT_PRODUCTION_URL automatically; outside Vercel, set it explicitly.');
 }
 
 function blockKey(name) { return `pscale-beach-v2:block:${name}`; }

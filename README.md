@@ -32,26 +32,31 @@ The package is Vercel + Upstash Redis out of the box. Other hosts (Cloudflare Wo
 
 ### Quickstart — one-click via Vercel
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fpscale-commons%2Fpscale-beach&env=BEACH_ORIGIN,KV_REST_API_URL,KV_REST_API_TOKEN&envDescription=Bare%20domain%20(e.g.%20idiothuman.com)%20plus%20Upstash%20Redis%20credentials&envLink=https%3A%2F%2Fgithub.com%2Fpscale-commons%2Fpscale-beach%23env-vars&project-name=pscale-beach&repository-name=pscale-beach)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fpscale-commons%2Fpscale-beach&env=KV_REST_API_URL,KV_REST_API_TOKEN&envDescription=Upstash%20Redis%20REST%20credentials%20(URL%20%2B%20full%20Token%2C%20not%20Read-Only)&envLink=https%3A%2F%2Fgithub.com%2Fpscale-commons%2Fpscale-beach%23env-vars&project-name=pscale-beach&repository-name=pscale-beach)
 
-Click the button. Vercel clones this repo into your account, prompts for three env vars, builds, and deploys.
+Click the button. Vercel clones this repo into your account, prompts for two env vars, builds, and deploys to a Vercel-assigned URL like `pscale-beach-xyz.vercel.app`. **No domain required upfront** — your beach is live and federated at that URL immediately.
 
-Before clicking, provision an Upstash Redis instance at [upstash.com](https://upstash.com) (free tier is fine — pick the region closest to your Vercel functions). Copy `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` from its dashboard — those go into Vercel's prompts as `KV_REST_API_URL` and `KV_REST_API_TOKEN`.
+Before clicking, provision an Upstash Redis instance at [upstash.com](https://upstash.com) (free tier is fine). On the database's page, look at the **REST** panel and copy two values:
 
-After deploy, point your domain at the Vercel project and verify:
+- `UPSTASH_REDIS_REST_URL` (looks like `https://something.upstash.io`) → paste into Vercel's `KV_REST_API_URL`
+- `UPSTASH_REDIS_REST_TOKEN` (long string, click the eye icon to reveal — use the **full Token, NOT Read-Only**) → paste into Vercel's `KV_REST_API_TOKEN`
+
+After deploy, verify the handler is live:
 
 ```bash
-curl https://your-domain.com/.well-known/pscale-beach
-# → {"_":"URL surface at your-domain.com...", "origin":"your-domain.com", "blocks":[]}
+curl https://your-vercel-url.vercel.app/.well-known/pscale-beach
+# → {"_":"URL surface at pscale-beach-xyz.vercel.app...", "origin":"...", "blocks":[]}
 ```
+
+(The root `/` of your deployment will show 404 — that's expected. The handler only answers at `/.well-known/pscale-beach`.)
 
 ### Env vars
 
-| Var | Source | Note |
-|---|---|---|
-| `BEACH_ORIGIN` | you choose | Bare domain, no scheme. Part of the lock salt namespace — **pick once and keep it stable**. Changing it after blocks are locked breaks those locks. |
-| `KV_REST_API_URL` | Upstash dashboard | The REST URL (Vercel and Upstash use slightly different names — paste the Upstash REST URL into the Vercel prompt). |
-| `KV_REST_API_TOKEN` | Upstash dashboard | The REST token. Treat as secret. |
+| Var | Required | Source | Note |
+|---|---|---|---|
+| `KV_REST_API_URL` | yes | Upstash dashboard | The REST URL. Upstash labels it `UPSTASH_REDIS_REST_URL`; same value, different name. |
+| `KV_REST_API_TOKEN` | yes | Upstash dashboard | The REST token (full, not read-only). Treat as secret. |
+| `BEACH_ORIGIN` | optional | you choose | Bare domain (no scheme), e.g. `idiothuman.com`. Defaults to Vercel's project URL on Vercel deploys. Set this when you have a custom domain — it's part of the lock salt namespace, so **changing it after blocks are locked breaks those locks**. Pick once, keep stable. |
 
 ### Manual deploy (alternative)
 
@@ -68,6 +73,28 @@ Set the same three env vars in the Vercel project dashboard (or `vercel env add`
 
 ### Seed the beach
 
+Two paths — pick whichever fits your setup.
+
+#### Option A — Claude Code (one paste)
+
+If you have [Claude Code](https://docs.claude.com/en/docs/claude-code) (or any LLM-equipped terminal agent like Cursor, Aider, Codex), the rest of setup is one paste. Open Claude Code in any directory and paste:
+
+```
+I've just deployed pscale-beach to Vercel and want to finish setup. My beach URL is:
+https://YOUR-VERCEL-URL.vercel.app
+
+Please:
+1. Clone https://github.com/pscale-commons/pscale-beach into ~/Projects/pscale-beach if it's not already there, and run `npm install`.
+2. Help me create .env.local with BEACH_URL (the URL above), BEACH_HANDLE (a short identifier for me at this beach), and BEACH_PASSPHRASE (a strong secret — offer to generate one).
+3. Run `npm run init` and surface any errors clearly.
+4. Once seeded, output the JSON snippet I need to add bsp-mcp to my Claude Code MCP servers config so I can talk to the substrate (the bsp-mcp endpoint is https://bsp.hermitcrab.me/mcp/v1).
+5. Walk me through a bsp() call against my new beach to confirm it's reachable end-to-end.
+```
+
+Replace `YOUR-VERCEL-URL.vercel.app` with your actual Vercel deployment URL (or your custom domain once configured). Claude Code reads this README, prompts you for what's missing, runs the init, and gives you the connect snippet.
+
+#### Option B — Manual
+
 Copy `.env.example` to `.env.local` and fill in:
 
 ```bash
@@ -78,6 +105,7 @@ cp .env.example .env.local
 Run the wizard:
 
 ```bash
+npm install
 npm run init
 ```
 
