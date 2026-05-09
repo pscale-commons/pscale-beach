@@ -154,7 +154,9 @@
   "_": "Action queue. When you need to use a tool, write an entry here. Each entry: key is a digit, value contains the tool name, arguments, status (pending/done/failed), and result. The kernel reads pending actions, executes them, writes results back. You read results next cycle. Compaction: completed actions with results already processed can be summarised and cleared. Keep the queue short — it is working memory, not history.",
   "1": {
    "1": "tool_name",
-   "2": "{\"arg\": \"value\"}",
+   "2": {
+    "_": "Arguments. Pass as a pscale sub-block — each digit is one positional or named arg per the tool's schema in section 8. Never stringified JSON; the spine accepts only digit keys 1-9 and the underscore."
+   },
    "3": "pending",
    "4": ""
   }
