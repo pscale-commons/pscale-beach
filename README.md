@@ -30,38 +30,43 @@ pscale-beach/
 
 The package is Vercel + Upstash Redis out of the box. Other hosts (Cloudflare Workers, Render, plain Node) work with minor adapter changes — the handler is one file with one storage dependency.
 
-### 1. Get the code
+### Quickstart — one-click via Vercel
 
-```bash
-git clone https://github.com/pscale-commons/pscale-beach.git
-cd pscale-beach
-npm install
-```
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fpscale-commons%2Fpscale-beach&env=BEACH_ORIGIN,KV_REST_API_URL,KV_REST_API_TOKEN&envDescription=Bare%20domain%20(e.g.%20idiothuman.com)%20plus%20Upstash%20Redis%20credentials&envLink=https%3A%2F%2Fgithub.com%2Fpscale-commons%2Fpscale-beach%23env-vars&project-name=pscale-beach&repository-name=pscale-beach)
 
-### 2. Provision storage
+Click the button. Vercel clones this repo into your account, prompts for three env vars, builds, and deploys.
 
-Create a free Upstash Redis database at [upstash.com](https://upstash.com). Copy `KV_REST_API_URL` and `KV_REST_API_TOKEN` from its dashboard.
+Before clicking, provision an Upstash Redis instance at [upstash.com](https://upstash.com) (free tier is fine — pick the region closest to your Vercel functions). Copy `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` from its dashboard — those go into Vercel's prompts as `KV_REST_API_URL` and `KV_REST_API_TOKEN`.
 
-### 3. Deploy the handler
-
-```bash
-npx vercel --prod
-```
-
-Set environment variables in the Vercel project dashboard (or via `vercel env add`):
-
-- `BEACH_ORIGIN` — your bare domain, e.g. `idiothuman.com` (no scheme, no trailing slash). This is part of the lock salt namespace; **pick once and keep it stable** — changing it after blocks are locked breaks those locks.
-- `KV_REST_API_URL` — from Upstash.
-- `KV_REST_API_TOKEN` — from Upstash.
-
-Point your domain at the Vercel deployment. Confirm the handler is live:
+After deploy, point your domain at the Vercel project and verify:
 
 ```bash
 curl https://your-domain.com/.well-known/pscale-beach
 # → {"_":"URL surface at your-domain.com...", "origin":"your-domain.com", "blocks":[]}
 ```
 
-### 4. Seed the beach
+### Env vars
+
+| Var | Source | Note |
+|---|---|---|
+| `BEACH_ORIGIN` | you choose | Bare domain, no scheme. Part of the lock salt namespace — **pick once and keep it stable**. Changing it after blocks are locked breaks those locks. |
+| `KV_REST_API_URL` | Upstash dashboard | The REST URL (Vercel and Upstash use slightly different names — paste the Upstash REST URL into the Vercel prompt). |
+| `KV_REST_API_TOKEN` | Upstash dashboard | The REST token. Treat as secret. |
+
+### Manual deploy (alternative)
+
+If you'd rather clone locally and deploy via CLI:
+
+```bash
+git clone https://github.com/pscale-commons/pscale-beach.git
+cd pscale-beach
+npm install
+npx vercel --prod
+```
+
+Set the same three env vars in the Vercel project dashboard (or `vercel env add`).
+
+### Seed the beach
 
 Copy `.env.example` to `.env.local` and fill in:
 
