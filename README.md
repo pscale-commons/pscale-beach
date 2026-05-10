@@ -202,7 +202,7 @@ The substrate-wide orientation blocks (sunstone, whetstone, manifest, block-conv
 
 ## Related repos
 
-- [bsp-mcp-server](https://github.com/pscale-commons/bsp-mcp-server) — the runtime: `bsp()` walker, sentinel blocks (substrate-truth Tier 1), MCP server. Read the substrate-wide conventions there.
+- [bsp-mcp-server](https://github.com/pscale-commons/bsp-mcp-server) — the runtime: `bsp()` walker, the references (sentinel-bundled substrate-truth blocks), MCP server. Read the substrate-wide conventions there.
 - [happyseaurchin](https://github.com/pscale-commons/happyseaurchin) — the reference deployment. David's personal beach. Live example.
 
 ## License

@@ -29,7 +29,7 @@ If a real bug surfaces in any of these (as the spore.json shape-gate violation d
 
 Above the wire-frozen kernel, everything in this repo is forkable per operator:
 
-- `seeds/library/` — Tier 2 reference content (reflexive, spore, vision, grit, rpg, state, systemic-kernel, federation-protocol). Each operator can curate variants.
+- `seeds/library/` — the library (reflexive, spore, vision, grit, rpg, state, systemic-kernel, federation-protocol, state-block-reflexive-spark). Each operator can curate variants.
 - `seeds/templates/` — operator-presence and beach-surface scaffolds. Each starter package can iterate the placeholder text.
 - `init/seed-beach.js` — the wizard. Iterations expected as friction surfaces.
 - `vercel.json`, `package.json`, deploy templates — operational evolution.
@@ -57,7 +57,7 @@ Above the wire-frozen kernel, everything in this repo is forkable per operator:
 pscale-beach/
 ├── api/pscale-beach.js          — the handler (wire-frozen)
 ├── seeds/
-│   ├── library/                 — Tier 2 reference blocks (8 files)
+│   ├── library/                 — library blocks (9 files; operator-curated, forkable)
 │   └── templates/               — operator-presence + beach-surface scaffolds
 ├── init/seed-beach.js           — env-driven init wizard
 ├── vercel.json                  — Vercel rewrite for /.well-known/...
@@ -76,7 +76,7 @@ Upstash Redis is the default backend. Other KV backends (Cloudflare KV, plain Re
 
 Created 9 May 2026 during David's idiothuman.com beach setup session. The handler was extracted from happyseaurchin's `api/pscale-beach.js` reference (with the origin made env-var configurable). The library was copied from `bsp-mcp/docs/library/`; that location is now stale and slated for deletion in a bsp-mcp cleanup pass.
 
-The split between bsp-mcp (runtime) and pscale-beach (habitat) is architectural: substrate-truth doesn't vary, usage-pattern content does. Bundling Tier 2 library inside bsp-mcp prevented per-community curation. Federating it to beach packages enables real diversity.
+The split between bsp-mcp (runtime) and pscale-beach (habitat) is architectural: substrate-truth (the bsp-mcp references) doesn't vary; usage-pattern content (the library) does. Bundling the library inside bsp-mcp prevented per-community curation. Federating it to beach packages enables real diversity.
 
 ## Companion docs
 
