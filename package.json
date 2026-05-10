@@ -5,7 +5,8 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "init": "node init/seed-beach.js"
+    "init": "node init/seed-beach.js",
+    "smoke:lighthouse": "node scripts/smoke-lighthouse.js"
   },
   "dependencies": {
     "@upstash/redis": "^1.34.0"

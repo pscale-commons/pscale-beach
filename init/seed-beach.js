@@ -25,7 +25,10 @@
 //   BEACH_POOL_PURPOSE — default "Pool for visitors to introduce themselves"
 //   BEACH_SED_NAME     — default "<handle>-commons"
 //   LIBRARY_SUBSET     — comma-separated list of library block names to seed.
-//                        Default: all 8. Use "none" to skip.
+//                        Default: all. Use "none" to skip.
+//   BEACH_NEIGHBOURS   — comma-separated federated URLs to list at the
+//                        lighthouse's position 6. Each entry is either
+//                        "<URL>" or "<URL>|<description>". Empty by default.
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -95,6 +98,33 @@ function listLibrary() {
     .map(f => f.slice(0, -5));
 }
 
+// ── Lighthouse compilation ──
+//
+// Walk the underscore ladder to its substantive text (recurses _._) per
+// sunstone:1.4. The full underscore lands in the lighthouse — visitors
+// reading the lighthouse get the target's authored statement without an
+// extra walk. Library underscores are 500-1500 chars; the full lighthouse
+// stays under ~10KB which is comfortably small.
+
+function underscoreText(node) {
+  if (!node || typeof node !== 'object') return '';
+  const u = node._;
+  if (typeof u === 'string') return u;
+  if (u && typeof u === 'object') return underscoreText(u);
+  return '';
+}
+
+function parseNeighbours(spec) {
+  if (!spec) return [];
+  return spec.split(',').map(s => s.trim()).filter(Boolean).map(entry => {
+    const pipe = entry.indexOf('|');
+    if (pipe < 0) return `${entry} — Federated beach.`;
+    const url = entry.slice(0, pipe).trim();
+    const desc = entry.slice(pipe + 1).trim();
+    return `${url} — ${desc}`;
+  });
+}
+
 // ── HTTP wrapper ──
 
 async function postBeach(beachUrl, blockName, body) {
@@ -134,6 +164,8 @@ async function main() {
   } else {
     librarySubset = subsetSpec.split(',').map(s => s.trim()).filter(Boolean);
   }
+
+  const neighbours = parseNeighbours(process.env.BEACH_NEIGHBOURS);
 
   const timestamp = new Date().toISOString();
 
@@ -215,10 +247,44 @@ async function main() {
   });
   console.log(`  ✓ sed:${sedName}`);
 
+  // Lighthouse — curated navigation. Composed AFTER all other blocks are
+  // seeded so the library previews reflect what was actually written.
+  const lighthouse = loadTemplate('lighthouse.template.json', vars);
+
+  // Position 5 — library entries. Each is "<name> — <full underscore>".
+  // Full underscore (not first sentence) so visitors get the substance
+  // the library author put in the underscore without re-walking. Library
+  // sub-positions take the supernest pattern (1..9, then 11, 12, ...).
+  for (let i = 0; i < librarySubset.length && i < 9; i++) {
+    const name = librarySubset[i];
+    const content = loadLibrary(name);
+    lighthouse['5'][String(i + 1)] = `${name} — ${underscoreText(content)}`;
+  }
+  for (let i = 9; i < librarySubset.length; i++) {
+    const name = librarySubset[i];
+    const content = loadLibrary(name);
+    // 10th entry lands at slot "11" (slot "10" contains a '0' digit,
+    // reserved as the underscore-summary per block-conventions:9).
+    const slot = String(i + 2);
+    lighthouse['5'][slot] = `${name} — ${underscoreText(content)}`;
+  }
+
+  // Position 6 — neighbouring beaches. Static-only at init; operator adds
+  // more via direct bsp() writes against position 6.<next-free>.
+  for (let i = 0; i < neighbours.length && i < 9; i++) {
+    lighthouse['6'][String(i + 1)] = neighbours[i];
+  }
+
+  await postBeach(beachUrl, 'lighthouse', {
+    spindle: '', content: lighthouse, confirm: true, new_lock: passphrase
+  });
+  console.log(`  ✓ lighthouse (library entries: ${librarySubset.length}, neighbours: ${neighbours.length})`);
+
   console.log(`\n┌─ done ─────────────────────────────────────────────`);
   console.log(`│ Beach is seeded and live at ${beachUrl}`);
   console.log(`│ Connect via mcp-remote (or any bsp-mcp client) and walk:`);
-  console.log(`│   bsp(agent_id='${beachUrl}')                    — see what's here`);
+  console.log(`│   bsp(agent_id='${beachUrl}', block='lighthouse') — curated welcome`);
+  console.log(`│   bsp(agent_id='${beachUrl}')                    — bare index`);
   console.log(`│   bsp(agent_id='${beachUrl}', block='passport:${handle}')   — your card`);
   console.log(`│   bsp(agent_id='${beachUrl}', block='marks')     — drop-by signal`);
   console.log(`│   bsp(agent_id='pscale', block='manifest')        — substrate orientation`);
