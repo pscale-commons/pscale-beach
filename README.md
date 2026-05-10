@@ -10,9 +10,9 @@ A beach is a URL surface that hosts named pscale blocks (marks, pools, `sed:` co
 pscale-beach/
 ├── api/pscale-beach.js          — the /.well-known/pscale-beach endpoint
 ├── seeds/
-│   ├── library/                 — reference blocks (8): reflexive, spore,
+│   ├── library/                 — reference blocks (9): reflexive, spore,
 │   │                               vision, grit, rpg, state, systemic-kernel,
-│   │                               federation-protocol
+│   │                               federation-protocol, state-block-reflexive-spark
 │   └── templates/               — operator-presence + beach-surface scaffolds
 │       ├── passport.template.json
 │       ├── shell.template.json
