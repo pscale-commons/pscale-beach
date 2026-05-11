@@ -39,7 +39,8 @@ import { createHash } from 'node:crypto';
 //   subtree, a string as a string-leaf. Shape derivation (point/ring/
 //   subtree/disc/star) per pscale_attention is the CLIENT's job; this
 //   handler does NOT honour pscale_attention. Empty spindle is a
-//   whole-block replace and requires {confirm: true}.
+//   whole-block replace. Replacing an EXISTING block requires
+//   {confirm: true}; initialising a new block (no prior state) does not.
 //
 //   Supernest-on-growth: when the descent path crosses an intermediate
 //   node holding a string, the string migrates to the new sub-block's
@@ -522,11 +523,6 @@ async function handleGrainReach(pairId, body) {
 async function handleStandardWrite(blockName, body) {
   const { spindle = '', content, secret, new_lock, confirm } = body || {};
 
-  // Whole-block replace is destructive — require explicit confirm:true.
-  // Prevents accidental wipes from "no-op probes" like {spindle:"", content:{}}.
-  if (content !== undefined && !spindle && confirm !== true) {
-    return { status: 400, body: { error: 'whole-block replace requires {confirm: true}', code: 'confirm_required' } };
-  }
   // Shape gate: reject _word keys and JSON-stringified sub-objects on writes.
   if (content !== undefined) {
     const shapeErr = validateShape(content);
@@ -545,6 +541,13 @@ async function handleStandardWrite(blockName, body) {
     block = (spindle === '' && content && typeof content === 'object' && !Array.isArray(content))
       ? null  // we'll replace the block entirely below
       : {};
+  }
+  // Whole-block REPLACE of an existing block is destructive — require explicit
+  // confirm:true. Initialising a new block has no prior state to clobber, so
+  // confirm is unnecessary (and avoids friction on the legitimate first write
+  // for a sibling block that doesn't exist yet).
+  if (content !== undefined && !spindle && existing != null && confirm !== true) {
+    return { status: 400, body: { error: 'whole-block replace requires {confirm: true}', code: 'confirm_required' } };
   }
   const hashes = await loadHashes(blockName);
   let lockKey;
