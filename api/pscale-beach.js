@@ -71,9 +71,19 @@ if (!ORIGIN) {
   throw new Error('BEACH_ORIGIN env var required (bare domain, no scheme — e.g. "idiothuman.com"). On Vercel, this falls back to VERCEL_PROJECT_PRODUCTION_URL automatically; outside Vercel, set it explicitly.');
 }
 
-function blockKey(name) { return `pscale-beach-v2:block:${name}`; }
-function locksKey(name) { return `pscale-beach-v2:locks:${name}`; }
-const KEY_PREFIX = 'pscale-beach-v2:block:';
+// Key namespace — scoped by ORIGIN so multiple beaches can share one Upstash
+// without collision. Pre-namespacing deploys used `pscale-beach-v2:block:<name>`
+// (no origin). Reads transparently fall back to that legacy layout for backward
+// compatibility; writes go to the namespaced layout only. Operators sharing one
+// Upstash between multiple beaches should run scripts/migrate-keys.js once
+// against any pre-namespacing deploy to relocate its legacy keys.
+const KEY_NS = `pscale-beach-v2:${ORIGIN}`;
+const LEGACY_NS = 'pscale-beach-v2';
+function blockKey(name) { return `${KEY_NS}:block:${name}`; }
+function locksKey(name) { return `${KEY_NS}:locks:${name}`; }
+function legacyBlockKey(name) { return `${LEGACY_NS}:block:${name}`; }
+function legacyLocksKey(name) { return `${LEGACY_NS}:locks:${name}`; }
+const KEY_PREFIX = `${KEY_NS}:block:`;
 
 // ── Lock hashing — three salt namespaces matching bsp-mcp src/locks.ts ──
 
@@ -133,7 +143,8 @@ function hashByBlockName(blockName, position, secret) {
 // ── Storage helpers ──
 
 async function loadBlock(name) {
-  const stored = await redis.get(blockKey(name));
+  let stored = await redis.get(blockKey(name));
+  if (stored == null) stored = await redis.get(legacyBlockKey(name));
   return stored ?? null;
 }
 
@@ -142,7 +153,8 @@ async function saveBlock(name, block) {
 }
 
 async function loadHashes(name) {
-  const stored = await redis.get(locksKey(name));
+  let stored = await redis.get(locksKey(name));
+  if (stored == null) stored = await redis.get(legacyLocksKey(name));
   return stored ?? {};
 }
 
@@ -153,8 +165,21 @@ async function saveHashes(name, hashes) {
 async function listBlockNames() {
   // Upstash Redis SCAN-friendly listing. KEYS is fine at this scale; if the
   // surface grows large, switch to SCAN with cursor.
-  const keys = await redis.keys(`${KEY_PREFIX}*`);
-  return keys.map(k => k.slice(KEY_PREFIX.length)).sort();
+  //
+  // Fallback: if no origin-namespaced keys exist, also list legacy unscoped
+  // keys so a pre-namespacing deploy's surface index keeps working until the
+  // operator runs scripts/migrate-keys.js. (Edge case: a multi-beach Upstash
+  // where one beach is still legacy would surface that beach's keys here for
+  // any namespaced beach with an empty new namespace — run the migration to
+  // resolve.)
+  const newKeys = await redis.keys(`${KEY_PREFIX}*`);
+  const names = newKeys.map(k => k.slice(KEY_PREFIX.length));
+  if (names.length === 0) {
+    const legacyPrefix = `${LEGACY_NS}:block:`;
+    const legacyKeys = await redis.keys(`${legacyPrefix}*`);
+    for (const k of legacyKeys) names.push(k.slice(legacyPrefix.length));
+  }
+  return Array.from(new Set(names)).sort();
 }
 
 // ── Shape gate ──
@@ -554,6 +579,8 @@ export default async function handler(req, res) {
     }
     await redis.del(blockKey(blockName));
     await redis.del(locksKey(blockName));
+    await redis.del(legacyBlockKey(blockName));
+    await redis.del(legacyLocksKey(blockName));
     return res.status(200).json({ ok: true, wiped: blockName });
   }
 

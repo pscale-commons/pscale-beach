@@ -33,23 +33,46 @@ The package is Vercel + Upstash Redis out of the box. Other hosts (Cloudflare Wo
 
 ### Quickstart — one-click via Vercel
 
+This is a three-step setup. **Do step 1 before clicking the Deploy button** — the deploy form will block on missing env vars otherwise.
+
+#### Step 1 — Provision Upstash Redis
+
+The handler needs a Redis-compatible store. Sign up at [upstash.com](https://upstash.com) (free tier is fine — 10K commands/day, 256MB) and create a database. On the database's page, look at the **REST** panel and keep two values handy:
+
+- `UPSTASH_REDIS_REST_URL` (looks like `https://something.upstash.io`)
+- `UPSTASH_REDIS_REST_TOKEN` (long string — click the eye icon to reveal; use the **full Token, NOT Read-Only**)
+
+> **Already have an Upstash instance hosting another beach?** Since v0.2, beach keys are namespaced by `BEACH_ORIGIN`, so one Upstash can host multiple beaches without collision. You can reuse the same `UPSTASH_REDIS_REST_*` credentials, as long as each beach's `BEACH_ORIGIN` (step 3) is distinct. Avoids the free-tier-account-per-beach problem.
+
+#### Step 2 — Click Deploy
+
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fpscale-commons%2Fpscale-beach&env=KV_REST_API_URL,KV_REST_API_TOKEN&envDescription=Upstash%20Redis%20REST%20credentials%20(URL%20%2B%20full%20Token%2C%20not%20Read-Only)&envLink=https%3A%2F%2Fgithub.com%2Fpscale-commons%2Fpscale-beach%23env-vars&project-name=pscale-beach&repository-name=pscale-beach)
 
-Click the button. Vercel clones this repo into your account, prompts for two env vars, builds, and deploys to a Vercel-assigned URL like `pscale-beach-xyz.vercel.app`. **No domain required upfront** — your beach is live and federated at that URL immediately.
+Vercel clones this repo into your account and prompts for the two env vars from step 1:
 
-Before clicking, provision an Upstash Redis instance at [upstash.com](https://upstash.com) (free tier is fine). On the database's page, look at the **REST** panel and copy two values:
+- Paste `UPSTASH_REDIS_REST_URL` into `KV_REST_API_URL`.
+- Paste `UPSTASH_REDIS_REST_TOKEN` into `KV_REST_API_TOKEN`.
 
-- `UPSTASH_REDIS_REST_URL` (looks like `https://something.upstash.io`) → paste into Vercel's `KV_REST_API_URL`
-- `UPSTASH_REDIS_REST_TOKEN` (long string, click the eye icon to reveal — use the **full Token, NOT Read-Only**) → paste into Vercel's `KV_REST_API_TOKEN`
+Vercel deploys to a project URL like `pscale-beach-xyz.vercel.app`. **No domain required upfront** — your beach is live and federated at that URL immediately.
 
-After deploy, verify the handler is live:
+#### Step 3 — (Optional) Custom domain + `BEACH_ORIGIN`
+
+If you want your beach at a custom URL like `beach.yoursite.com`:
+
+1. In Vercel project settings → Domains, add your custom domain and wire DNS as Vercel instructs.
+2. In Vercel project settings → Environment Variables, set `BEACH_ORIGIN` to the bare domain (no scheme), e.g. `beach.yoursite.com`. This becomes part of the lock salt namespace AND scopes your Redis keys, so **set it before seeding or the locks/keys will be tied to the wrong origin**.
+3. Redeploy.
+
+`BEACH_ORIGIN` defaults to `VERCEL_PROJECT_PRODUCTION_URL` when unset — fine for the `pscale-beach-xyz.vercel.app` form, but you'll want to set it explicitly before adding a custom domain.
+
+#### Verify
 
 ```bash
 curl https://your-vercel-url.vercel.app/.well-known/pscale-beach
 # → {"_":"URL surface at pscale-beach-xyz.vercel.app...", "origin":"...", "blocks":[]}
 ```
 
-(The root `/` of your deployment will show 404 — that's expected. The handler only answers at `/.well-known/pscale-beach`.)
+(The root `/` of your deployment will show 404 — expected. The handler only answers at `/.well-known/pscale-beach`.)
 
 ### Env vars
 
@@ -57,7 +80,7 @@ curl https://your-vercel-url.vercel.app/.well-known/pscale-beach
 |---|---|---|---|
 | `KV_REST_API_URL` | yes | Upstash dashboard | The REST URL. Upstash labels it `UPSTASH_REDIS_REST_URL`; same value, different name. |
 | `KV_REST_API_TOKEN` | yes | Upstash dashboard | The REST token (full, not read-only). Treat as secret. |
-| `BEACH_ORIGIN` | optional | you choose | Bare domain (no scheme), e.g. `idiothuman.com`. Defaults to Vercel's project URL on Vercel deploys. Set this when you have a custom domain — it's part of the lock salt namespace, so **changing it after blocks are locked breaks those locks**. Pick once, keep stable. |
+| `BEACH_ORIGIN` | optional | you choose | Bare domain (no scheme), e.g. `idiothuman.com`. Defaults to Vercel's project URL on Vercel deploys. Set this when you have a custom domain. Part of the lock salt namespace AND scopes Redis keys (so one Upstash can host multiple beaches with distinct origins). **Changing it after blocks are locked or written breaks lock verification and orphans the existing keys**. Pick once, keep stable. |
 
 ### Manual deploy (alternative)
 
@@ -71,6 +94,26 @@ npx vercel --prod
 ```
 
 Set the same three env vars in the Vercel project dashboard (or `vercel env add`).
+
+### Migrating from a pre-namespacing deploy (v0.1 → v0.2)
+
+If your beach was deployed before v0.2, its Redis keys live at the unscoped path `pscale-beach-v2:block:<name>`. The v0.2 handler reads both layouts (new namespaced + legacy unscoped fallback) so existing locked blocks keep working without action. But the surface index lists only namespaced keys — and you can't share the Upstash with another beach until you migrate.
+
+```bash
+# 1. (Optional) preview what would migrate
+DRY_RUN=1 KV_REST_API_URL=... KV_REST_API_TOKEN=... BEACH_ORIGIN=your-domain.com npm run migrate:keys
+
+# 2. Copy legacy keys → namespaced (legacy keys retained for safety)
+KV_REST_API_URL=... KV_REST_API_TOKEN=... BEACH_ORIGIN=your-domain.com npm run migrate:keys
+
+# 3. Verify the surface index returns the expected blocks
+curl https://your-domain.com/.well-known/pscale-beach
+
+# 4. Once verified, delete the legacy keys
+DELETE_LEGACY=1 KV_REST_API_URL=... KV_REST_API_TOKEN=... BEACH_ORIGIN=your-domain.com npm run migrate:keys
+```
+
+`BEACH_ORIGIN` must match the value set on the deployed handler so lock hashes verify against the right salt.
 
 ### Seed the beach
 
