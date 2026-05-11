@@ -105,17 +105,126 @@ function hashGrain(secret, pairId, side) {
   return createHash('sha256').update(salt).digest('hex');
 }
 
+// ── Pscale address parsing (canonical, sunstone:1.5) ──
+//
+// The decimal point anchors pscale 0 to the floor. parseSpindle applies
+// floor-aware padding so an address written at a smaller floor still locates
+// the same semantic position after the block has grown an underscore layer
+// above. Multi-dot addresses are rejected at parse time. Mirrors the parser
+// in bsp-mcp's src/bsp.ts (and the Python canonical bsp2-star.py) — both
+// ends of the wire enforce the same form.
+
+class InvalidAddressError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'InvalidAddressError';
+    this.code = 'invalid_address';
+  }
+}
+
+function floorDepth(block) {
+  let node = block;
+  let depth = 0;
+  while (node && typeof node === 'object' && '_' in node) {
+    depth++;
+    node = node._;
+    if (typeof node === 'string') return depth;
+  }
+  return depth;
+}
+
+function parseAddress(s) {
+  if (typeof s === 'number') {
+    if (Number.isInteger(s)) {
+      return { leftDigits: [...String(s)], rightDigits: [], hadDot: false };
+    }
+    const formatted = s.toFixed(10);
+    const parts = formatted.split('.');
+    const left = parts[0];
+    const right = parts.length > 1 ? parts[1].replace(/0+$/, '') : '';
+    return { leftDigits: [...left], rightDigits: [...right], hadDot: true };
+  }
+  const text = String(s);
+  const dotCount = (text.match(/\./g) || []).length;
+  if (dotCount > 1) {
+    throw new InvalidAddressError(
+      `"${text}" has ${dotCount} decimal points; pscale addresses carry at most one (sunstone:1.5)`
+    );
+  }
+  let left, right;
+  if (dotCount === 1) {
+    [left, right] = text.split('.');
+  } else {
+    left = text;
+    right = '';
+  }
+  for (const ch of left + right) {
+    if (ch < '0' || ch > '9') {
+      throw new InvalidAddressError(
+        `"${text}" contains non-digit character "${ch}"`
+      );
+    }
+  }
+  return { leftDigits: [...left], rightDigits: [...right], hadDot: dotCount === 1 };
+}
+
+function parseSpindle(spindle, floor) {
+  if (spindle == null || spindle === '') {
+    return { digits: [], hasStar: false };
+  }
+  let s = String(spindle);
+  const hasStar = s.endsWith('*');
+  if (hasStar) s = s.slice(0, -1);
+  if (s === '') return { digits: [], hasStar };
+
+  const { leftDigits: leftRaw, rightDigits, hadDot } = parseAddress(s);
+  let leftDigits = leftRaw;
+
+  if (floor >= 1 && hadDot && leftDigits.length > floor) {
+    throw new InvalidAddressError(
+      `"${s}" has ${leftDigits.length} digits left of decimal but block ` +
+      `floor is ${floor}; the dot anchors pscale 0 at the floor, so ` +
+      `left-of-decimal digits cannot exceed floor depth`
+    );
+  }
+
+  if (floor > 1 && leftDigits.length < floor) {
+    leftDigits = Array(floor - leftDigits.length).fill('0').concat(leftDigits);
+  }
+
+  let digits = leftDigits.concat(rightDigits);
+
+  while (digits.length > 1 && digits[digits.length - 1] === '0') {
+    digits.pop();
+  }
+
+  return { digits, hasStar };
+}
+
+function formatAddress(digits, floor) {
+  let d = digits.slice();
+  while (d.length > 1 && d[d.length - 1] === '0') d.pop();
+  if (d.length === 0) return '';
+  if (d.length <= floor) {
+    while (d.length > 1 && d[0] === '0') d = d.slice(1);
+    return d.join('');
+  }
+  let left = d.slice(0, floor);
+  const right = d.slice(floor);
+  while (left.length > 1 && left[0] === '0') left = left.slice(1);
+  return left.join('') + '.' + right.join('');
+}
+
 // Lock-key derivation. Empty spindle (or a spindle addressing the underscore
 // via '0' / '_') always maps to the '_' lock — that's whole-block replace and
 // underscore-of-root writes. Otherwise the lock is per-position: for sed:/grain:
 // the first dotted segment names the registrant/side position (multi-digit
 // like '11', '12', '111'); for ordinary blocks the first digit of the
-// dot-stripped path names the branch ('1.2.3' and '123' both lock at '1',
-// matching writeAt's dot-insensitive walk). The hash salt namespace (chosen
-// by hashByBlockName) is what distinguishes ordinary / sed: / grain: at hash
-// time. Result: locking '_' on the beach gates only whole-block / underscore
-// writes; sub-positions follow per-branch lock state.
-function lockKeyForWrite(blockName, spindle) {
+// FLOOR-AWARE-PARSED path names the branch. After parseSpindle's floor pad,
+// "34.5" at floor 2 keeps lock key '3'; the same address at floor 3 (block
+// has grown an underscore layer) locks at '_' because the walk now starts
+// with '_' '3' '4' '5'. Locks follow the walk.
+function lockKeyForWrite(blockName, spindle, block) {
   if (!spindle) return '_';
   const cleaned = String(spindle).replace(/\*$/, '');
   if (blockName.startsWith('sed:') || blockName.startsWith('grain:')) {
@@ -123,8 +232,9 @@ function lockKeyForWrite(blockName, spindle) {
     if (!firstSegment || firstSegment === '0' || firstSegment === '_') return '_';
     return firstSegment;
   }
-  const digits = cleaned.replace(/\./g, '');
-  if (!digits) return '_';
+  const fl = floorDepth(block ?? {});
+  const { digits } = parseSpindle(cleaned, fl);
+  if (!digits.length) return '_';
   const firstDigit = digits[0];
   if (firstDigit === '0' || firstDigit === '_') return '_';
   return firstDigit;
@@ -227,11 +337,16 @@ function validateShape(content, path = '') {
 }
 
 // ── BSP walk helpers (whole-block replace and point-write at digit address) ──
+//
+// Floor-aware: parseSpindle handles the floor-anchor + multi-dot rejection
+// per sunstone:1.5. Throws InvalidAddressError on malformed input — caller
+// catches and returns 400.
 
 function writeAt(block, address, value) {
   if (!address) return value;
-  const digits = String(address).replace(/\./g, '').replace(/\*$/, '');
-  if (!digits) return value;
+  const fl = floorDepth(block);
+  const { digits } = parseSpindle(address, fl);
+  if (!digits.length) return value;
   let node = block;
   for (let i = 0; i < digits.length - 1; i++) {
     const key = digits[i] === '0' ? '_' : digits[i];
@@ -254,7 +369,9 @@ function writeAt(block, address, value) {
 
 function readAt(block, address) {
   if (!address) return block;
-  const digits = String(address).replace(/\./g, '');
+  const fl = floorDepth(block);
+  const { digits } = parseSpindle(address, fl);
+  if (!digits.length) return block;
   let node = block;
   for (const d of digits) {
     if (!node || typeof node !== 'object') return null;
@@ -430,7 +547,15 @@ async function handleStandardWrite(blockName, body) {
       : {};
   }
   const hashes = await loadHashes(blockName);
-  const lockKey = lockKeyForWrite(blockName, spindle);
+  let lockKey;
+  try {
+    lockKey = lockKeyForWrite(blockName, spindle, block);
+  } catch (e) {
+    if (e instanceof InvalidAddressError) {
+      return { status: 400, body: { error: e.message, code: 'invalid_address' } };
+    }
+    throw e;
+  }
   const stored = hashes[lockKey];
 
   // Lock check for content writes.
@@ -456,7 +581,14 @@ async function handleStandardWrite(blockName, body) {
       block = content;
     } else {
       if (block == null) block = {};
-      writeAt(block, String(spindle), content);
+      try {
+        writeAt(block, String(spindle), content);
+      } catch (e) {
+        if (e instanceof InvalidAddressError) {
+          return { status: 400, body: { error: e.message, code: 'invalid_address' } };
+        }
+        throw e;
+      }
     }
     await saveBlock(blockName, block);
   } else if (block == null) {
@@ -501,7 +633,15 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: `block "${blockName}" not found`, code: 'not_found' });
     }
     const spindle = spindleParam(req.query);
-    const payload = spindle ? readAt(block, spindle) : block;
+    let payload;
+    try {
+      payload = spindle ? readAt(block, spindle) : block;
+    } catch (e) {
+      if (e instanceof InvalidAddressError) {
+        return res.status(400).json({ error: e.message, code: 'invalid_address' });
+      }
+      throw e;
+    }
     return res.status(200).json(payload);
   }
 
