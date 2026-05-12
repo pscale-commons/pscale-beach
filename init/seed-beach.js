@@ -96,7 +96,8 @@ function loadLibrary(name) {
 function listLibrary() {
   return readdirSync(resolve(SEEDS_DIR, 'library'))
     .filter(f => f.endsWith('.json'))
-    .map(f => f.slice(0, -5));
+    .map(f => f.slice(0, -5))
+    .sort();
 }
 
 // ── Lighthouse compilation ──
@@ -113,6 +114,48 @@ function underscoreText(node) {
   if (typeof u === 'string') return u;
   if (u && typeof u === 'object') return underscoreText(u);
   return '';
+}
+
+// Convert a 0-indexed ordinal into the supernest digit path per
+// block-conventions:9. n=0..8 → ['1']..['9']; n=9 → ['1','1'];
+// n=17 → ['1','9']; n=18 → ['2','1']; n=80 → ['9','9']; n=81 → ['1','1','1'].
+// Encoding: base 9 with digits 1..9 (no 0; the 0-bearing slots are
+// reserved underscore-summary positions and stay empty).
+function supernestDigits(n) {
+  let m = n + 1;
+  const digits = [];
+  while (m > 0) {
+    const d = ((m - 1) % 9) + 1;
+    digits.unshift(String(d));
+    m = Math.floor((m - 1) / 9);
+  }
+  return digits;
+}
+
+// Place a value at supernest slot index n inside parent. Subnests existing
+// string children into {_: <original>} on the way down so the previous
+// content remains reachable as the new branch's zero-text.
+function placeAtSupernestSlot(parent, n, value) {
+  const digits = supernestDigits(n);
+  let node = parent;
+  for (let j = 0; j < digits.length - 1; j++) {
+    const d = digits[j];
+    if (typeof node[d] === 'string') {
+      node[d] = { _: node[d] };
+    } else if (!node[d] || typeof node[d] !== 'object') {
+      node[d] = {};
+    }
+    node = node[d];
+  }
+  const last = digits[digits.length - 1];
+  // If the slot we're writing to is already an object (a deeper supernest
+  // entry already landed under it), preserve its children and set just the
+  // underscore. Otherwise write the string directly.
+  if (node[last] && typeof node[last] === 'object') {
+    node[last]._ = value;
+  } else {
+    node[last] = value;
+  }
 }
 
 function parseNeighbours(spec) {
@@ -254,20 +297,21 @@ async function main() {
 
   // Position 5 — library entries. Each is "<name> — <full underscore>".
   // Full underscore (not first sentence) so visitors get the substance
-  // the library author put in the underscore without re-walking. Library
-  // sub-positions take the supernest pattern (1..9, then 11, 12, ...).
-  for (let i = 0; i < librarySubset.length && i < 9; i++) {
+  // the library author put in the underscore without re-walking.
+  //
+  // Library sub-positions take the supernest pattern per block-conventions:
+  // slots 1..9 then 11, 12, ..., 19, 21, ..., 99, 111, ... (skipping any
+  // slot containing a 0 — those are underscore-summary slots). The walker
+  // interprets a slot like "11" hierarchically — it walks [1][1] — so it
+  // MUST be stored as nested single-digit keys, not the literal flat key
+  // "11" (the shape gate rejects multi-digit keys). The seed builds the
+  // nesting in-place: if the 10th entry lands at slot 11, slot 1 (already
+  // a string) is subnested to {_: <original string>, '1': <10th entry>}.
+  for (let i = 0; i < librarySubset.length; i++) {
     const name = librarySubset[i];
     const content = loadLibrary(name);
-    lighthouse['5'][String(i + 1)] = `${name} — ${underscoreText(content)}`;
-  }
-  for (let i = 9; i < librarySubset.length; i++) {
-    const name = librarySubset[i];
-    const content = loadLibrary(name);
-    // 10th entry lands at slot "11" (slot "10" contains a '0' digit,
-    // reserved as the underscore-summary per block-conventions:9).
-    const slot = String(i + 2);
-    lighthouse['5'][slot] = `${name} — ${underscoreText(content)}`;
+    const line = `${name} — ${underscoreText(content)}`;
+    placeAtSupernestSlot(lighthouse['5'], i, line);
   }
 
   // Position 6 — neighbouring beaches. Static-only at init; operator adds
