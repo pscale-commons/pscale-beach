@@ -6,7 +6,8 @@
 // seed blocks to the deployed /.well-known/pscale-beach endpoint:
 //
 //   • library/    — reference blocks (reflexive, spore, vision, grit, rpg,
-//                   state, systemic-kernel, federation-protocol). Locked at
+//                   state, systemic-kernel, federation-protocol,
+//                   state-block-reflexive-spark, pscale-geometry). Locked at
 //                   "_" with operator's passphrase so the operator can curate.
 //   • passport:<handle>  — operator's passport (template, locked).
 //   • shell:<handle>     — operator's shell (template, locked).

@@ -10,9 +10,10 @@ A beach is a URL surface that hosts named pscale blocks (marks, pools, `sed:` co
 pscale-beach/
 ├── api/pscale-beach.js          — the /.well-known/pscale-beach endpoint
 ├── seeds/
-│   ├── library/                 — reference blocks (9): reflexive, spore,
+│   ├── library/                 — reference blocks (10): reflexive, spore,
 │   │                               vision, grit, rpg, state, systemic-kernel,
-│   │                               federation-protocol, state-block-reflexive-spark
+│   │                               federation-protocol, state-block-reflexive-spark,
+│   │                               pscale-geometry
 │   └── templates/               — operator-presence + beach-surface scaffolds
 │       ├── passport.template.json
 │       ├── shell.template.json
@@ -177,7 +178,7 @@ Re-running is idempotent for unlocked surfaces and rejects without the secret on
 
 | Block | Purpose | Lock |
 |---|---|---|
-| `reflexive`, `spore`, `vision`, `grit`, `rpg`, `state`, `systemic-kernel`, `federation-protocol`, `state-block-reflexive-spark` | Reference library — substrate-usage patterns at L3+ | locked at `_` |
+| `reflexive`, `spore`, `vision`, `grit`, `rpg`, `state`, `systemic-kernel`, `federation-protocol`, `state-block-reflexive-spark`, `pscale-geometry` | Reference library — substrate-usage patterns at L3+ | locked at `_` |
 | `passport:<handle>` | Operator's identity card; offers and needs | locked at `_` |
 | `shell:<handle>` | Operator's operational state; manifest of named blocks | locked at `_` |
 | `history:<handle>` | Operator's journal scaffold | locked at `_` |
