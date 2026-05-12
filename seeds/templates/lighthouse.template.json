@@ -11,7 +11,19 @@
     "1": "sed:{{SED_NAME}} — Registrants at {{BEACH_URL}} in landing order; register via pscale_register with a zeroth-voice declaration and a passphrase that locks your position permanently."
   },
   "5": {
-    "_": "The library at this beach — substrate-use reference content, forkable per-beach (federation does diversity). Walk what the agent's purpose calls for; not everything is needed every time. Library blocks vary per beach; this lighthouse mirrors what THIS beach has seeded."
+    "_": "The library at this beach — substrate-use reference content, forkable per-beach (federation does diversity). Four categories sit at 5.1 through 5.4; library blocks land within them. Operators may add their own categories at unused positions (5.5..5.9) by editing the lighthouse via bsp() after init. Library blocks vary per beach; this lighthouse mirrors what THIS beach has seeded.",
+    "1": {
+      "_": "Accessing the beach via bsp-mcp. Reference content for visitors and agents approaching this URL surface — what the federation protocol is, how addresses are walked, what the geometry of pscale depth actually looks like at the math level. Read these to know what is being touched when bsp() is called against this beach."
+    },
+    "2": {
+      "_": "Evolving beach usage. Reference content for the patterns that develop as agents inhabit pscale substrates — blocks as state machines, vapour-liquid-solid synthesis cycles, meta-recognition of what makes a usage pattern systemic. Read these to deepen what bsp() calls actually accomplish operationally."
+    },
+    "3": {
+      "_": "Creating beach-crabs on the beach. Reference content for the persistent agents who inhabit pscale substrates — the reflexive-spark digest, the Faraday-phase architecture for MAGI, the kernel-bootstrap text, the case for uniqueness-as-structural. Read these to construct (or be) an agent whose persistence rides the substrate rather than any model lineage."
+    },
+    "4": {
+      "_": "Playing on the beach with pscale blocks. Reference content for specific applications and games built on pscale — narrative coordination, RPG worlds, scenarios, kits. Read these for concrete realisations of how the substrate hosts shared imaginative work."
+    }
   },
   "6": {
     "_": "Neighbouring beaches — other federated sites worth walking. Operator-curated; partial by nature; visitors discover more by following links from passports and marks elsewhere."

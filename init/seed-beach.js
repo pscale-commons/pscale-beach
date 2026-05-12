@@ -6,7 +6,8 @@
 // seed blocks to the deployed /.well-known/pscale-beach endpoint:
 //
 //   • library/    — reference blocks (reflexive, spore, vision, grit, rpg,
-//                   state, systemic-kernel, federation-protocol). Locked at
+//                   state, systemic-kernel, federation-protocol,
+//                   state-block-reflexive-spark, pscale-geometry). Locked at
 //                   "_" with operator's passphrase so the operator can curate.
 //   • passport:<handle>  — operator's passport (template, locked).
 //   • shell:<handle>     — operator's shell (template, locked).
@@ -95,7 +96,8 @@ function loadLibrary(name) {
 function listLibrary() {
   return readdirSync(resolve(SEEDS_DIR, 'library'))
     .filter(f => f.endsWith('.json'))
-    .map(f => f.slice(0, -5));
+    .map(f => f.slice(0, -5))
+    .sort();
 }
 
 // ── Lighthouse compilation ──
@@ -113,6 +115,33 @@ function underscoreText(node) {
   if (u && typeof u === 'object') return underscoreText(u);
   return '';
 }
+
+// Library categorisation. Each library block lives in one of four
+// categories at positions 5.1..5.4 of the lighthouse. Categories give
+// the nesting a real semantic — "entry X inside category Y" — instead
+// of using supernest encoding (which works for accumulators like marks
+// and pools, but is misshapen for a curated peer-list).
+//
+// Operators may add their own categories at unused positions (5.5..5.9)
+// by editing the lighthouse via bsp() after init. New library blocks
+// added to seeds/library/ need an entry here; unmapped blocks fall
+// through to category 4 (play) with a warning so they stay visible.
+const LIBRARY_CATEGORIES = {
+  // 5.1 — accessing the beach via bsp-mcp
+  'federation-protocol': '1',
+  'pscale-geometry': '1',
+  // 5.2 — evolving beach usage
+  'state': '2',
+  'grit': '2',
+  'systemic-kernel': '2',
+  // 5.3 — creating beach-crabs on the beach
+  'reflexive': '3',
+  'state-block-reflexive-spark': '3',
+  'spore': '3',
+  'vision': '3',
+  // 5.4 — playing on the beach with pscale blocks
+  'rpg': '4',
+};
 
 function parseNeighbours(spec) {
   if (!spec) return [];
@@ -251,22 +280,32 @@ async function main() {
   // seeded so the library previews reflect what was actually written.
   const lighthouse = loadTemplate('lighthouse.template.json', vars);
 
-  // Position 5 — library entries. Each is "<name> — <full underscore>".
-  // Full underscore (not first sentence) so visitors get the substance
-  // the library author put in the underscore without re-walking. Library
-  // sub-positions take the supernest pattern (1..9, then 11, 12, ...).
-  for (let i = 0; i < librarySubset.length && i < 9; i++) {
-    const name = librarySubset[i];
+  // Position 5 — library entries placed within their categories.
+  // Each entry is "<name> — <full underscore>". Full underscore (not
+  // first sentence) so visitors get the substance the library author
+  // put in the underscore without re-walking. Categories 5.1..5.4 carry
+  // their own descriptive underscores from the template; entries land
+  // at 5.<cat>.<slot> where slot is the next-free digit 1..9 within
+  // that category. With four categories of up to nine entries each
+  // there is room for thirty-six library blocks before any restructure
+  // is needed.
+  const slotCounters = { '1': 0, '2': 0, '3': 0, '4': 0 };
+  for (const name of librarySubset) {
     const content = loadLibrary(name);
-    lighthouse['5'][String(i + 1)] = `${name} — ${underscoreText(content)}`;
-  }
-  for (let i = 9; i < librarySubset.length; i++) {
-    const name = librarySubset[i];
-    const content = loadLibrary(name);
-    // 10th entry lands at slot "11" (slot "10" contains a '0' digit,
-    // reserved as the underscore-summary per block-conventions:9).
-    const slot = String(i + 2);
-    lighthouse['5'][slot] = `${name} — ${underscoreText(content)}`;
+    const cat = LIBRARY_CATEGORIES[name];
+    if (!cat) {
+      console.log(`  ⚠ ${name}: no category mapping — defaulting to 5.4 (play). Add to LIBRARY_CATEGORIES in seed-beach.js to place properly.`);
+    }
+    const placedCat = cat || '4';
+    slotCounters[placedCat] += 1;
+    if (slotCounters[placedCat] > 9) {
+      console.log(`  ⚠ ${name}: category ${placedCat} has more than nine entries — restructure the lighthouse (split category, or add a new one at 5.5..5.9).`);
+      continue;
+    }
+    if (!lighthouse['5'][placedCat] || typeof lighthouse['5'][placedCat] !== 'object') {
+      lighthouse['5'][placedCat] = { _: '' };
+    }
+    lighthouse['5'][placedCat][String(slotCounters[placedCat])] = `${name} — ${underscoreText(content)}`;
   }
 
   // Position 6 — neighbouring beaches. Static-only at init; operator adds
