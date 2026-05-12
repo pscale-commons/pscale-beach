@@ -116,47 +116,32 @@ function underscoreText(node) {
   return '';
 }
 
-// Convert a 0-indexed ordinal into the supernest digit path per
-// block-conventions:9. n=0..8 → ['1']..['9']; n=9 → ['1','1'];
-// n=17 → ['1','9']; n=18 → ['2','1']; n=80 → ['9','9']; n=81 → ['1','1','1'].
-// Encoding: base 9 with digits 1..9 (no 0; the 0-bearing slots are
-// reserved underscore-summary positions and stay empty).
-function supernestDigits(n) {
-  let m = n + 1;
-  const digits = [];
-  while (m > 0) {
-    const d = ((m - 1) % 9) + 1;
-    digits.unshift(String(d));
-    m = Math.floor((m - 1) / 9);
-  }
-  return digits;
-}
-
-// Place a value at supernest slot index n inside parent. Subnests existing
-// string children into {_: <original>} on the way down so the previous
-// content remains reachable as the new branch's zero-text.
-function placeAtSupernestSlot(parent, n, value) {
-  const digits = supernestDigits(n);
-  let node = parent;
-  for (let j = 0; j < digits.length - 1; j++) {
-    const d = digits[j];
-    if (typeof node[d] === 'string') {
-      node[d] = { _: node[d] };
-    } else if (!node[d] || typeof node[d] !== 'object') {
-      node[d] = {};
-    }
-    node = node[d];
-  }
-  const last = digits[digits.length - 1];
-  // If the slot we're writing to is already an object (a deeper supernest
-  // entry already landed under it), preserve its children and set just the
-  // underscore. Otherwise write the string directly.
-  if (node[last] && typeof node[last] === 'object') {
-    node[last]._ = value;
-  } else {
-    node[last] = value;
-  }
-}
+// Library categorisation. Each library block lives in one of four
+// categories at positions 5.1..5.4 of the lighthouse. Categories give
+// the nesting a real semantic — "entry X inside category Y" — instead
+// of using supernest encoding (which works for accumulators like marks
+// and pools, but is misshapen for a curated peer-list).
+//
+// Operators may add their own categories at unused positions (5.5..5.9)
+// by editing the lighthouse via bsp() after init. New library blocks
+// added to seeds/library/ need an entry here; unmapped blocks fall
+// through to category 4 (play) with a warning so they stay visible.
+const LIBRARY_CATEGORIES = {
+  // 5.1 — accessing the beach via bsp-mcp
+  'federation-protocol': '1',
+  'pscale-geometry': '1',
+  // 5.2 — evolving beach usage
+  'state': '2',
+  'grit': '2',
+  'systemic-kernel': '2',
+  // 5.3 — creating beach-crabs on the beach
+  'reflexive': '3',
+  'state-block-reflexive-spark': '3',
+  'spore': '3',
+  'vision': '3',
+  // 5.4 — playing on the beach with pscale blocks
+  'rpg': '4',
+};
 
 function parseNeighbours(spec) {
   if (!spec) return [];
@@ -295,23 +280,32 @@ async function main() {
   // seeded so the library previews reflect what was actually written.
   const lighthouse = loadTemplate('lighthouse.template.json', vars);
 
-  // Position 5 — library entries. Each is "<name> — <full underscore>".
-  // Full underscore (not first sentence) so visitors get the substance
-  // the library author put in the underscore without re-walking.
-  //
-  // Library sub-positions take the supernest pattern per block-conventions:
-  // slots 1..9 then 11, 12, ..., 19, 21, ..., 99, 111, ... (skipping any
-  // slot containing a 0 — those are underscore-summary slots). The walker
-  // interprets a slot like "11" hierarchically — it walks [1][1] — so it
-  // MUST be stored as nested single-digit keys, not the literal flat key
-  // "11" (the shape gate rejects multi-digit keys). The seed builds the
-  // nesting in-place: if the 10th entry lands at slot 11, slot 1 (already
-  // a string) is subnested to {_: <original string>, '1': <10th entry>}.
-  for (let i = 0; i < librarySubset.length; i++) {
-    const name = librarySubset[i];
+  // Position 5 — library entries placed within their categories.
+  // Each entry is "<name> — <full underscore>". Full underscore (not
+  // first sentence) so visitors get the substance the library author
+  // put in the underscore without re-walking. Categories 5.1..5.4 carry
+  // their own descriptive underscores from the template; entries land
+  // at 5.<cat>.<slot> where slot is the next-free digit 1..9 within
+  // that category. With four categories of up to nine entries each
+  // there is room for thirty-six library blocks before any restructure
+  // is needed.
+  const slotCounters = { '1': 0, '2': 0, '3': 0, '4': 0 };
+  for (const name of librarySubset) {
     const content = loadLibrary(name);
-    const line = `${name} — ${underscoreText(content)}`;
-    placeAtSupernestSlot(lighthouse['5'], i, line);
+    const cat = LIBRARY_CATEGORIES[name];
+    if (!cat) {
+      console.log(`  ⚠ ${name}: no category mapping — defaulting to 5.4 (play). Add to LIBRARY_CATEGORIES in seed-beach.js to place properly.`);
+    }
+    const placedCat = cat || '4';
+    slotCounters[placedCat] += 1;
+    if (slotCounters[placedCat] > 9) {
+      console.log(`  ⚠ ${name}: category ${placedCat} has more than nine entries — restructure the lighthouse (split category, or add a new one at 5.5..5.9).`);
+      continue;
+    }
+    if (!lighthouse['5'][placedCat] || typeof lighthouse['5'][placedCat] !== 'object') {
+      lighthouse['5'][placedCat] = { _: '' };
+    }
+    lighthouse['5'][placedCat][String(slotCounters[placedCat])] = `${name} — ${underscoreText(content)}`;
   }
 
   // Position 6 — neighbouring beaches. Static-only at init; operator adds
