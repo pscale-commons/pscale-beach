@@ -57,9 +57,11 @@ Vercel deploys to a project URL like `pscale-beach-xyz.vercel.app`. **No domain 
 
 #### Step 3 — (Optional) Custom domain + `BEACH_ORIGIN`
 
-If you want your beach at a custom URL like `beach.yoursite.com`:
+If you want your beach at a custom URL, **use a `beach.` subdomain** — e.g. `beach.yoursite.com`. The bare root of your domain (`yoursite.com`) typically already serves something else (a personal site, an org homepage), and bsp-mcp federation expects the dedicated subdomain by convention. Other federation clients route the same way: `agent_id="https://yoursite.com"` resolves to `https://beach.yoursite.com` (see [bsp-mcp protocol-pscale-beach-v2 §2.7](https://github.com/pscale-commons/bsp-mcp-server/blob/main/docs/protocol-pscale-beach-v2.md#27-origin-resolution--strict-beachhost-subdomain-convention)). A bare-domain beach won't be reachable by name.
 
-1. In Vercel project settings → Domains, add your custom domain and wire DNS as Vercel instructs.
+To wire it:
+
+1. In Vercel project settings → Domains, add `beach.yoursite.com` and wire DNS as Vercel instructs (typically a CNAME to `cname.vercel-dns.com`).
 2. In Vercel project settings → Environment Variables, set `BEACH_ORIGIN` to the bare domain (no scheme), e.g. `beach.yoursite.com`. This becomes part of the lock salt namespace AND scopes your Redis keys, so **set it before seeding or the locks/keys will be tied to the wrong origin**.
 3. Redeploy.
 
@@ -80,7 +82,7 @@ curl https://your-vercel-url.vercel.app/.well-known/pscale-beach
 |---|---|---|---|
 | `KV_REST_API_URL` | yes | Upstash dashboard | The REST URL. Upstash labels it `UPSTASH_REDIS_REST_URL`; same value, different name. |
 | `KV_REST_API_TOKEN` | yes | Upstash dashboard | The REST token (full, not read-only). Treat as secret. |
-| `BEACH_ORIGIN` | optional | you choose | Bare domain (no scheme), e.g. `idiothuman.com`. Defaults to Vercel's project URL on Vercel deploys. Set this when you have a custom domain. Part of the lock salt namespace AND scopes Redis keys (so one Upstash can host multiple beaches with distinct origins). **Changing it after blocks are locked or written breaks lock verification and orphans the existing keys**. Pick once, keep stable. |
+| `BEACH_ORIGIN` | optional | you choose | Bare hostname (no scheme), e.g. `beach.idiothuman.com`. Defaults to Vercel's project URL on Vercel deploys. Set this when you have a custom domain — **recommended form is `beach.<your-domain>`** so federation clients can route `agent_id="https://<your-domain>"` to it by convention. Part of the lock salt namespace AND scopes Redis keys (so one Upstash can host multiple beaches with distinct origins). **Changing it after blocks are locked or written breaks lock verification and orphans the existing keys**. Pick once, keep stable. |
 
 ### Manual deploy (alternative)
 
