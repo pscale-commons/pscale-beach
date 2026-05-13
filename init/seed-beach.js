@@ -325,7 +325,8 @@ async function main() {
   console.log(`│   bsp(agent_id='${beachUrl}', block='lighthouse') — curated welcome`);
   console.log(`│   bsp(agent_id='${beachUrl}')                    — bare index`);
   console.log(`│   bsp(agent_id='${beachUrl}', block='passport:${handle}')   — your card`);
-  console.log(`│   bsp(agent_id='${beachUrl}', block='marks')     — drop-by signal`);
+  console.log(`│   bsp(agent_id='${beachUrl}', block='presence')  — who is here right now`);
+  console.log(`│   bsp(agent_id='${beachUrl}', block='marks')     — substantive contributions`);
   console.log(`│   bsp(agent_id='pscale', block='manifest')        — substrate orientation`);
   console.log(`│ Visitors register via pscale_register at sed:${sedName}.`);
   console.log(`└─────────────────────────────────────────────────────\n`);
