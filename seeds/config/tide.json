@@ -1,0 +1,6 @@
+{
+  "_": "Mark-wipe schedule. The host's wipe-by-tide script reads this and clears marks from the marks block whose age exceeds the per-category limit. The xstream client only reads; the host wipes. Three categories of marks have independent ages: anonymous (no handle), handle (bears a handle in field 1), signed (carries an ed25519 signature). To set a value, write a number at position N.1 (e.g. 1.1 = 3600 means wipe anonymous marks after 1h). Absent/null/non-number = never wipe that category.",
+  "1": {"_": "anonymous_secs — seconds after which marks left without a handle are wiped. Set value at 1.1 (numeric). 0/absent = never."},
+  "2": {"_": "handle_secs — seconds after which marks bearing a handle are wiped. Set value at 2.1 (numeric). 0/absent = never."},
+  "3": {"_": "signed_secs — seconds after which cryptographically-signed marks (field 5 ed25519) are wiped. Set value at 3.1 (numeric). 0/absent = never."}
+}

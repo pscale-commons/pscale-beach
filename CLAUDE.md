@@ -30,6 +30,7 @@ If a real bug surfaces in any of these (as the spore.json shape-gate violation d
 Above the wire-frozen kernel, everything in this repo is forkable per operator:
 
 - `seeds/library/` — the library (reflexive, spore, vision, grit, rpg, state, systemic-kernel, federation-protocol, state-block-reflexive-spark). Each operator can curate variants.
+- `seeds/config/` — operational config every beach needs by spec (`tide` for the host's mark-wipe schedule, `settings` for per-beach xstream client knobs). Shape is defined by xstream's kernel readers (see `xstream-bsp/src/kernel/settings-reader.ts` for the settings schema and `beach-kernel.ts`'s `readTideConfig` for the tide schema). Operators tune leaf positions later; empty positions fall through to kernel defaults.
 - `seeds/templates/` — operator-presence and beach-surface scaffolds. Each starter package can iterate the placeholder text.
 - `init/seed-beach.js` — the wizard. Iterations expected as friction surfaces.
 - `vercel.json`, `package.json`, deploy templates — operational evolution.
@@ -57,7 +58,8 @@ Above the wire-frozen kernel, everything in this repo is forkable per operator:
 pscale-beach/
 ├── api/pscale-beach.js          — the handler (wire-frozen)
 ├── seeds/
-│   ├── library/                 — library blocks (9 files; operator-curated, forkable)
+│   ├── library/                 — library blocks (10 files; operator-curated, forkable)
+│   ├── config/                  — tide + settings (every beach needs these by spec)
 │   └── templates/               — operator-presence + beach-surface scaffolds
 ├── init/seed-beach.js           — env-driven init wizard
 ├── vercel.json                  — Vercel rewrite for /.well-known/...

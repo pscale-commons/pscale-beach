@@ -1,0 +1,23 @@
+{
+  "_": "Per-beach xstream client settings. Overrides built-in kernel defaults at the per-beach layer; per-user shell:5 settings override further. Walk by dot-spindle within this block (e.g. resolveSetting('1.2') reads vapour_debounce_ms). Empty = client uses built-in defaults. To override a knob, write a number (or matching primitive) at the leaf address described below.",
+  "1": {
+    "_": "Vapour subsystem — realtime co-presence transport.",
+    "1": {"_": "vapour_staleness_ms — when peer vapour text is treated as gone. Built-in default 30000. Set a number here to override."},
+    "2": {"_": "vapour_debounce_ms — keystroke broadcast throttle. Built-in default 80. Set a number here to override."}
+  },
+  "2": {
+    "_": "Liquid subsystem — staged contributions.",
+    "1": {"_": "liquid_staleness_ms — when staged liquid ages out (advisory currently). Built-in default 60000."}
+  },
+  "3": {
+    "_": "Presence subsystem — substrate-presence heartbeat.",
+    "1": {"_": "presence_staleness_ms — when peer presence is treated as gone. Built-in default 30000."}
+  },
+  "4": {
+    "_": "Inbox subsystem — watched-beach mark scan.",
+    "1": {"_": "inbox_watch_every_cycles — scan watched beaches every Nth cycle. Built-in default 5."}
+  },
+  "5": {
+    "_": "Recipe overrides at (tier, face). Walk via 5.<tier>.<face>: tier digits 1=soft, 2=medium, 3=hard; face digits 1=character, 2=author, 3=designer, 4=observer. Each leaf is the recipe JSON; absent = client uses built-in default recipe for that (tier, face) combination."
+  }
+}
