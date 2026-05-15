@@ -14,6 +14,9 @@ pscale-beach/
 │   │                               vision, grit, rpg, state, systemic-kernel,
 │   │                               federation-protocol, state-block-reflexive-spark,
 │   │                               pscale-geometry
+│   ├── config/                  — operational config every beach needs by spec:
+│   │   ├── tide.json            — mark-wipe schedule (host-side)
+│   │   └── settings.json        — per-beach xstream client knobs
 │   └── templates/               — operator-presence + beach-surface scaffolds
 │       ├── passport.template.json
 │       ├── shell.template.json
@@ -179,6 +182,8 @@ Re-running is idempotent for unlocked surfaces and rejects without the secret on
 | Block | Purpose | Lock |
 |---|---|---|
 | `reflexive`, `spore`, `vision`, `grit`, `rpg`, `state`, `systemic-kernel`, `federation-protocol`, `state-block-reflexive-spark`, `pscale-geometry` | Reference library — substrate-usage patterns at L3+ | locked at `_` |
+| `tide` | Mark-wipe schedule — host-side; client only reads. Three categories (anonymous, handle, signed) with independent ages at positions 1.1 / 2.1 / 3.1. Empty = never wipe. | locked at `_` |
+| `settings` | Per-beach xstream client config — overrides built-in kernel defaults for vapour/liquid/presence/inbox cadences and per-(tier, face) recipe choices. Empty positions fall through to client defaults. | locked at `_` |
 | `passport:<handle>` | Operator's identity card; offers and needs | locked at `_` |
 | `shell:<handle>` | Operator's operational state; manifest of named blocks | locked at `_` |
 | `history:<handle>` | Operator's journal scaffold | locked at `_` |

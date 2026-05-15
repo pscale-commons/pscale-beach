@@ -9,6 +9,11 @@
 //                   state, systemic-kernel, federation-protocol,
 //                   state-block-reflexive-spark, pscale-geometry). Locked at
 //                   "_" with operator's passphrase so the operator can curate.
+//   • config/     — operational config blocks every beach needs by spec:
+//                   tide (mark-wipe schedule, host-side) and settings
+//                   (per-beach xstream client knobs). Locked at "_" with
+//                   operator passphrase. Empty values fall through to the
+//                   client's built-in defaults; operators tune later.
 //   • passport:<handle>  — operator's passport (template, locked).
 //   • shell:<handle>     — operator's shell (template, locked).
 //   • history:<handle>   — empty history scaffold (locked).
@@ -98,6 +103,12 @@ function listLibrary() {
     .filter(f => f.endsWith('.json'))
     .map(f => f.slice(0, -5))
     .sort();
+}
+
+function loadConfig(name) {
+  const path = resolve(SEEDS_DIR, 'config', `${name}.json`);
+  const raw = readFileSync(path, 'utf8');
+  return JSON.parse(raw);
 }
 
 // ── Lighthouse compilation ──
@@ -230,6 +241,21 @@ async function main() {
       spindle: '', content, confirm: true, new_lock: passphrase
     });
     console.log(`  ✓ library: ${name}`);
+  }
+
+  // Operational config — tide (mark-wipe schedule) and settings (xstream
+  // client config). Every beach has these by spec; seeding them at init
+  // means new clients stop 404ing on cycle reads from the moment the
+  // beach is live. Locked at "_" with operator passphrase — same lock as
+  // the library — so only the operator can change wipe schedules and
+  // client-config defaults. Operators tune the leaf positions later via
+  // bsp() writes (xstream's designer-face shell editor is one path).
+  for (const name of ['tide', 'settings']) {
+    const content = loadConfig(name);
+    await postBeach(beachUrl, name, {
+      spindle: '', content, confirm: true, new_lock: passphrase
+    });
+    console.log(`  ✓ config: ${name}`);
   }
 
   // Operator presence — passport, shell, history. All locked at "_".
