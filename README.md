@@ -26,6 +26,10 @@ pscale-beach/
 │       └── lighthouse.template.json
 ├── init/seed-beach.js           — one-time wizard: substitutes placeholders,
 │                                   POSTs blocks to your deployed beach
+├── scripts/
+│   ├── wipe-by-tide.js          — cron: reads (beach, 'tide'), wipes stale marks
+│   ├── smoke-lighthouse.js      — local compile + shape validation
+│   └── migrate-keys.js          — one-time storage-namespace migration
 ├── vercel.json                  — Vercel rewrite for /.well-known/...
 ├── package.json                 — Node ESM, single dep (@upstash/redis)
 └── .env.example                 — env-var template
@@ -222,6 +226,47 @@ After init, the lighthouse is the curated welcome at `bsp(agent_id='<beach-URL>'
 The orientation hint lives in [progression](https://github.com/pscale-commons/bsp-mcp-server/blob/main/src/progression.json) step 3 (Mark) — surfaced through `pscale_invite()`, not nudged on every `bsp()` call. The convention lives at `block-conventions:4.4`.
 
 Edit the lighthouse anytime via `bsp()` write under your passphrase. Locked at `_` so only the operator can update; reads are open.
+
+## Running wipe-by-tide
+
+The `tide` block declares per-category wipe ages for marks (anonymous / handle / signed). The client only reads it; **the host runs the wipe**. A small Node script does this — `scripts/wipe-by-tide.js`, also wired as `npm run wipe-by-tide`.
+
+What it does each run:
+
+1. Reads `(beach, 'tide')` to get the schedule (seconds per category).
+2. Reads `(beach, 'marks')` and walks the supernest.
+3. For each substantive mark, categorises it (anonymous / handle / signed) and compares its age against the configured limit.
+4. Clears stale slots one at a time via POST with empty content. Slot-level locks (rare on marks) are honoured — locked marks are left untouched.
+5. Logs a summary of wiped / skipped / locked / errors.
+
+Requirements:
+
+- `BEACH_URL` in `.env.local` (operator already configures this for init).
+- `WIPE_DRY_RUN=1` to log what would be wiped without writing — useful for first verification.
+- No passphrase needed: the marks block is open by default; the script wipes slots, not the whole block.
+
+Authoring the schedule. The seeded `tide` block has no numeric values; every category falls through to "never wipe". The operator sets a category by writing a number at `tide:N.1`:
+
+```bash
+# Example: wipe anonymous marks after 1 hour, handle marks after 30 days,
+# never wipe signed marks. Adjust to your beach.
+bsp(agent_id='https://beach.idiothuman.com', block='tide', spindle='1.1', content=3600, secret='<your-passphrase>')
+bsp(agent_id='https://beach.idiothuman.com', block='tide', spindle='2.1', content=2592000, secret='<your-passphrase>')
+# tide:3.1 left absent → signed marks persist indefinitely
+```
+
+(Any bsp-mcp client works — Claude Code, claude-app, xstream's designer face, or direct HTTP.)
+
+Scheduling the cron. The script runs once and exits — schedule it however the host platform allows:
+
+- **System cron** on the operator's machine: `0 * * * * cd /path/to/pscale-beach && npm run wipe-by-tide >> /var/log/wipe-by-tide.log 2>&1`
+- **GitHub Actions** on a schedule with `BEACH_URL` in repo secrets.
+- **Vercel Cron Jobs** (Pro plan): a one-line API route that imports the script and calls main.
+- **Cloudflare scheduled triggers**: same shape, different host.
+
+Granularity should match the most aggressive wipe age. If `anonymous_secs=300` (5 min), run every minute; if `anonymous_secs=86400` (1 day), run hourly is fine.
+
+The lighthouse template's position 2 carries a `tide` reference at `2.1` so visitors see the wipe story at a glance — they read sibling `tide` for the actual current values. Re-run init or update the lighthouse manually via `bsp()` if you change the schedule and want the lighthouse description refreshed.
 
 ## Customising the templates
 
