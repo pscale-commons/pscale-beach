@@ -61,6 +61,7 @@ pscale-beach/
 │   ├── library/                 — library blocks (10 files; operator-curated, forkable)
 │   ├── config/                  — tide + settings (every beach needs these by spec)
 │   └── templates/               — operator-presence + beach-surface scaffolds
+├── scripts/                     — host-side maintenance (wipe-by-tide, smoke, migrate)
 ├── init/seed-beach.js           — env-driven init wizard
 ├── vercel.json                  — Vercel rewrite for /.well-known/...
 ├── package.json                 — Node ESM, single dep (@upstash/redis)

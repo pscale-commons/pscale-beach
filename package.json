@@ -6,6 +6,7 @@
   "private": true,
   "scripts": {
     "init": "node init/seed-beach.js",
+    "wipe-by-tide": "node scripts/wipe-by-tide.js",
     "smoke:lighthouse": "node scripts/smoke-lighthouse.js",
     "migrate:keys": "node scripts/migrate-keys.js"
   },
