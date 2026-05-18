@@ -149,7 +149,7 @@ function parseAddress(s) {
   const dotCount = (text.match(/\./g) || []).length;
   if (dotCount > 1) {
     throw new InvalidAddressError(
-      `"${text}" has ${dotCount} decimal points; pscale addresses carry at most one (sunstone:1.5)`
+      `"${text}" has multiple decimal points (${dotCount}); pscale addresses carry at most one (sunstone:1.5)`
     );
   }
   let left, right;
@@ -183,9 +183,9 @@ function parseSpindle(spindle, floor) {
 
   if (floor >= 1 && hadDot && leftDigits.length > floor) {
     throw new InvalidAddressError(
-      `"${s}" has ${leftDigits.length} digits left of decimal but block ` +
-      `floor is ${floor}; the dot anchors pscale 0 at the floor, so ` +
-      `left-of-decimal digits cannot exceed floor depth`
+      `"${s}" has ${leftDigits.length} digits left of decimal; exceeds floor ` +
+      `${floor} (the dot anchors pscale 0 at the floor, so left-of-decimal ` +
+      `digits cannot exceed floor depth)`
     );
   }
 
@@ -380,6 +380,239 @@ function readAt(block, address) {
     node = node[key];
   }
   return node ?? null;
+}
+
+// ── Canonical bsp() (2026-05-17 model) ──
+//
+// Port of bsp2-star.py / src/bsp-fn.ts. Wire-level resolution: when a GET
+// carries ?pscale=, the beach computes the shape-resolved payload itself
+// instead of returning raw JSON for the client to walk. Six shapes:
+// block, path-walk, disc, point, path-walk+descent, star.
+//
+// pscale = floor - depth, with depth 0 (root) off-pscale.
+// Disc emission rule: emit at target depth iff final step is digit 1-9,
+// OR the entire walk is on the root underscore chain landing on a string
+// at target depth (the floor terminus). Intermediate root-chain
+// underscore-objects are not separate positions.
+
+function pscaleAtCanonical(depth, floor) {
+  if (depth === 0) return null;
+  return floor - depth;
+}
+
+function depthAtCanonical(pscale, floor) {
+  return floor - pscale;
+}
+
+function walkDigits(block, digits) {
+  let node = block;
+  for (const d of digits) {
+    const key = d === '0' ? '_' : d;
+    if (!node || typeof node !== 'object' || !(key in node)) return null;
+    node = node[key];
+  }
+  return node;
+}
+
+function collectUnderscoreCanonical(node) {
+  while (node && typeof node === 'object' && '_' in node) {
+    node = node._;
+  }
+  return typeof node === 'string' ? node : null;
+}
+
+function semanticOf(node) {
+  if (typeof node === 'string') return node;
+  if (node && typeof node === 'object') return collectUnderscoreCanonical(node);
+  return null;
+}
+
+function splitStarOnSpindle(spindle) {
+  if (spindle == null) return { pre: null, post: null, hasStar: false };
+  const s = String(spindle);
+  if (!s.includes('*')) return { pre: s, post: null, hasStar: false };
+  const parts = s.split('*');
+  if (parts.length !== 2) {
+    throw new InvalidAddressError(`"${s}": star operator appears more than once`);
+  }
+  return {
+    pre: parts[0].length > 0 ? parts[0] : null,
+    post: parts[1].length > 0 ? parts[1] : null,
+    hasStar: true,
+  };
+}
+
+function buildPathWalkCanonical(block, digits, floor) {
+  const entries = [];
+  for (let i = 1; i <= digits.length; i++) {
+    const prefix = digits.slice(0, i);
+    const node = walkDigits(block, prefix);
+    entries.push({
+      address: formatAddress(prefix, floor),
+      depth: i,
+      pscale: pscaleAtCanonical(i, floor),
+      content: semanticOf(node),
+    });
+  }
+  return entries;
+}
+
+function collectDiscCanonical(block, targetDepth, floor) {
+  if (targetDepth < 1) return [];
+  const results = [];
+  function recurse(node, depth, walked) {
+    if (depth === targetDepth) {
+      const onChainIntermediate =
+        walked.length > 0 &&
+        walked.every((w) => w === '0') &&
+        node !== null &&
+        typeof node === 'object';
+      if (!onChainIntermediate) {
+        results.push({
+          address: formatAddress(walked, floor),
+          content: semanticOf(node),
+        });
+      }
+      return;
+    }
+    if (!node || typeof node !== 'object') return;
+    if ('_' in node) {
+      const u = node._;
+      if (u && typeof u === 'object') {
+        recurse(u, depth + 1, walked.concat(['0']));
+      } else if (typeof u === 'string') {
+        const onFloorChain = walked.every((w) => w === '0');
+        if (onFloorChain && depth + 1 === targetDepth) {
+          results.push({
+            address: formatAddress(walked.concat(['0']), floor),
+            content: u,
+          });
+        }
+      }
+    }
+    for (const d of '123456789') {
+      if (d in node) {
+        recurse(node[d], depth + 1, walked.concat([d]));
+      }
+    }
+  }
+  recurse(block, 0, []);
+  return results;
+}
+
+function collectDescentCanonical(terminus, walked, floor, layers) {
+  const results = [];
+  if (layers <= 0 || !terminus || typeof terminus !== 'object') return results;
+  let frontier = [[terminus, walked]];
+  for (let layer = 1; layer <= layers; layer++) {
+    const next = [];
+    for (const [node, path] of frontier) {
+      if (!node || typeof node !== 'object') continue;
+      for (const d of '123456789') {
+        if (d in node) {
+          const child = node[d];
+          const childDepth = path.length + 1;
+          results.push({
+            address: formatAddress(path.concat([d]), floor),
+            depth: childDepth,
+            pscale: pscaleAtCanonical(childDepth, floor),
+            content: semanticOf(child),
+          });
+          if (child && typeof child === 'object') {
+            next.push([child, path.concat([d])]);
+          }
+        }
+      }
+    }
+    frontier = next;
+  }
+  return results;
+}
+
+function bspCanonical(block, spindle, pscale) {
+  const floor = floorDepth(block);
+  const { pre, post, hasStar } = splitStarOnSpindle(spindle);
+  if (hasStar) {
+    const preDigits = pre ? parseSpindle(pre, floor).digits : [];
+    const terminus = walkDigits(block, preDigits);
+    let sem = null;
+    let inner = null;
+    if (terminus && typeof terminus === 'object') {
+      sem = collectUnderscoreCanonical(terminus);
+      const hidden = terminus._;
+      if (hidden && typeof hidden === 'object') {
+        inner = bspCanonical(hidden, post, pscale);
+      }
+    } else if (typeof terminus === 'string') {
+      sem = terminus;
+    }
+    return { floor, shape: 'star', spindle: spindle ?? null, semantic: sem, inner };
+  }
+
+  const { digits } = parseSpindle(spindle, floor);
+
+  if (digits.length === 0 && (pscale === null || pscale === undefined)) {
+    return { floor, shape: 'block', block };
+  }
+
+  if (digits.length === 0) {
+    const target = depthAtCanonical(pscale, floor);
+    return {
+      floor,
+      shape: 'disc',
+      pscale,
+      target_depth: target,
+      entries: collectDiscCanonical(block, target, floor),
+    };
+  }
+
+  const pEnd = floor - digits.length;
+
+  if (pscale === null || pscale === undefined) {
+    return {
+      floor,
+      shape: 'path-walk',
+      spindle: spindle ?? null,
+      entries: buildPathWalkCanonical(block, digits, floor),
+    };
+  }
+
+  if (pscale >= pEnd) {
+    const target = depthAtCanonical(pscale, floor);
+    if (target < 1 || target > digits.length) {
+      return {
+        floor,
+        shape: 'point',
+        spindle: spindle ?? null,
+        pscale,
+        content: null,
+        note: `pscale ${pscale} is off the spindle (depth ${target})`,
+      };
+    }
+    const prefix = digits.slice(0, target);
+    const node = walkDigits(block, prefix);
+    return {
+      floor,
+      shape: 'point',
+      spindle: spindle ?? null,
+      pscale,
+      depth: target,
+      address: formatAddress(prefix, floor),
+      content: semanticOf(node),
+    };
+  }
+
+  const target = depthAtCanonical(pscale, floor);
+  const layers = target - digits.length;
+  const terminus = walkDigits(block, digits);
+  return {
+    floor,
+    shape: 'path-walk+descent',
+    spindle: spindle ?? null,
+    pscale,
+    path_walk: buildPathWalkCanonical(block, digits, floor),
+    descent: collectDescentCanonical(terminus, digits, floor, layers),
+  };
 }
 
 function spindleParam(q) {
@@ -636,9 +869,23 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: `block "${blockName}" not found`, code: 'not_found' });
     }
     const spindle = spindleParam(req.query);
+    // Wire-level canonical resolution: when ?pscale= is present, the beach
+    // returns a shape-resolved canonical bsp() result instead of raw JSON
+    // for the client to walk. Backward-compatible: GET without ?pscale=
+    // keeps the legacy behaviour (whole block or raw subtree).
+    const pscaleRaw = req.query?.pscale;
+    const hasPscale = pscaleRaw !== undefined && pscaleRaw !== '';
     let payload;
     try {
-      payload = spindle ? readAt(block, spindle) : block;
+      if (hasPscale) {
+        const pscaleNum = parseInt(Array.isArray(pscaleRaw) ? pscaleRaw[0] : pscaleRaw, 10);
+        if (Number.isNaN(pscaleNum)) {
+          return res.status(400).json({ error: `?pscale=${pscaleRaw} is not an integer`, code: 'invalid_pscale' });
+        }
+        payload = bspCanonical(block, spindle || null, pscaleNum);
+      } else {
+        payload = spindle ? readAt(block, spindle) : block;
+      }
     } catch (e) {
       if (e instanceof InvalidAddressError) {
         return res.status(400).json({ error: e.message, code: 'invalid_address' });
