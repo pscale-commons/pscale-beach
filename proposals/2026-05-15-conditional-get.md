@@ -1,8 +1,21 @@
 # Conditional GET — ETag / If-None-Match on read
 
-**Date**: 2026-05-15
-**Status**: proposal, not implemented
+**Date**: 2026-05-15 (relationship to PR #11 noted 2026-05-17)
+**Status**: proposal, not implemented; lower priority since PR #11 landed wire-level slicing
 **Companion to**: xstream-bsp's cycle reads ([beach-kernel.ts](https://github.com/happyseaurchin/xstream-bsp/blob/main/src/kernel/beach-kernel.ts) — the 1.5s poll that motivates this).
+
+## Relationship to PR #11 (added 2026-05-17)
+
+PR #11 added the canonical bsp() function to the beach handler with `?pscale=` for depth-limited reads — `loadBspShape` on the bsp-mcp side, shape-resolved canonical JSON on the beach side. **That solves a different problem than this proposal:**
+
+| problem | solver |
+|---|---|
+| "give me only the slice I need, not the whole block" | PR #11's `?pscale=` slicing |
+| "did anything change since my last read?" | this proposal's `ETag` + `304` |
+
+They compose. A client reading a slice via `?pscale=` would still benefit from a 304 when the slice's content is unchanged from its last read. ETags are computed on whatever the response body actually is — slice or whole block — so the same conditional-GET mechanism applies regardless.
+
+Net: this proposal remains useful, especially for polling blocks that rarely change (`tide`, `settings`, an idle `marks`). The absolute bandwidth gain is smaller than originally framed because narrow-slice reads via `?pscale=` already cut full-block transfers out of the cycle for queries that can be expressed as slices. The remaining bandwidth waste is "I asked for X, I get X back identical to last time" — which 304 addresses. Keeping at lower priority; the handler + client changes are still small if/when implemented.
 
 ## TL;DR
 
