@@ -78,8 +78,16 @@ if (!ORIGIN) {
 // compatibility; writes go to the namespaced layout only. Operators sharing one
 // Upstash between multiple beaches should run scripts/migrate-keys.js once
 // against any pre-namespacing deploy to relocate its legacy keys.
+//
+// LEGACY_FALLBACK_READS gates the per-request fallback GETs in loadBlock /
+// loadHashes. Default OFF — fresh deploys from this package have no legacy
+// data, so the fallback is pure waste (1 phantom Redis GET per write to any
+// unlocked block, typically presence written on every heartbeat). Operators
+// upgrading a pre-namespacing deploy turn it on with
+// LEGACY_NAMESPACE_FALLBACK_READS=true until they run scripts/migrate-keys.js.
 const KEY_NS = `pscale-beach-v2:${ORIGIN}`;
 const LEGACY_NS = 'pscale-beach-v2';
+const LEGACY_FALLBACK_READS = process.env.LEGACY_NAMESPACE_FALLBACK_READS === 'true';
 function blockKey(name) { return `${KEY_NS}:block:${name}`; }
 function locksKey(name) { return `${KEY_NS}:locks:${name}`; }
 function legacyBlockKey(name) { return `${LEGACY_NS}:block:${name}`; }
@@ -255,7 +263,7 @@ function hashByBlockName(blockName, position, secret) {
 
 async function loadBlock(name) {
   let stored = await redis.get(blockKey(name));
-  if (stored == null) stored = await redis.get(legacyBlockKey(name));
+  if (stored == null && LEGACY_FALLBACK_READS) stored = await redis.get(legacyBlockKey(name));
   return stored ?? null;
 }
 
@@ -265,7 +273,7 @@ async function saveBlock(name, block) {
 
 async function loadHashes(name) {
   let stored = await redis.get(locksKey(name));
-  if (stored == null) stored = await redis.get(legacyLocksKey(name));
+  if (stored == null && LEGACY_FALLBACK_READS) stored = await redis.get(legacyLocksKey(name));
   return stored ?? {};
 }
 
@@ -291,6 +299,53 @@ async function listBlockNames() {
     for (const k of legacyKeys) names.push(k.slice(legacyPrefix.length));
   }
   return Array.from(new Set(names)).sort();
+}
+
+// ── Presence sweep ──
+//
+// Presence entries that no client is renewing pile up in the block and are
+// rewritten verbatim on every heartbeat, ballooning the SET payload. The
+// xstream client already filters stale entries client-side (default 30s
+// PRESENCE_STALENESS); the server-side sweep evicts them at write time so
+// the stored block matches what's actually displayable.
+//
+// Threshold is generous (60s = 2x the typical client filter) to never
+// accidentally evict a slow-but-live peer. Entries with a malformed `3:`
+// timestamp are preserved — better to keep a possibly-valid entry than drop
+// one we can't parse. Block-conventions:4.6 — a presence entry has fields
+// 1/2/3 and no field 4.
+
+const PRESENCE_SWEEP_MS = 60_000;
+
+function isPresenceEntry(node) {
+  if (!node || typeof node !== 'object' || Array.isArray(node)) return false;
+  return typeof node['1'] === 'string'
+    && typeof node['2'] === 'string'
+    && typeof node['3'] === 'string'
+    && node['4'] === undefined;
+}
+
+function sweepStalePresence(block) {
+  if (!block || typeof block !== 'object' || Array.isArray(block)) return block;
+  const cutoff = Date.now() - PRESENCE_SWEEP_MS;
+  const out = {};
+  for (const [key, val] of Object.entries(block)) {
+    if (key === '_') { out[key] = val; continue; }
+    if (!/^[1-9]$/.test(key)) { out[key] = val; continue; }
+    if (isPresenceEntry(val)) {
+      const ts = Date.parse(val['3']);
+      if (Number.isFinite(ts) && ts < cutoff) continue;
+      out[key] = val;
+    } else if (val && typeof val === 'object' && !Array.isArray(val)) {
+      // Nested supernest slot (11, 12, ...) — recurse. Drop the parent if
+      // the recursion left no digit-keyed children.
+      const swept = sweepStalePresence(val);
+      if (Object.keys(swept).some(k => /^[1-9]$/.test(k))) out[key] = swept;
+    } else {
+      out[key] = val;
+    }
+  }
+  return out;
 }
 
 // ── Shape gate ──
@@ -593,6 +648,7 @@ async function handleStandardWrite(blockName, body) {
         throw e;
       }
     }
+    if (blockName === 'presence') block = sweepStalePresence(block);
     await saveBlock(blockName, block);
   } else if (block == null) {
     // No content and no existing block — nothing to do unless we're locking.
