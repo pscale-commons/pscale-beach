@@ -931,12 +931,21 @@ export default async function handler(req, res) {
     // keeps the legacy behaviour (whole block or raw subtree).
     const pscaleRaw = req.query?.pscale;
     const hasPscale = pscaleRaw !== undefined && pscaleRaw !== '';
+    // A star spindle ("…*") MUST resolve as a star shape. readAt() strips the
+    // trailing '*' and returns the raw pre-star node, silently dropping the
+    // hidden directory — so route any star read through bspCanonical whether or
+    // not ?pscale= was supplied. Non-star, no-pscale reads keep the legacy
+    // raw-node / whole-block behaviour. (Contract-drift fix 2026-05-30.)
+    const spindleHasStar = typeof spindle === 'string' && spindle.includes('*');
     let payload;
     try {
-      if (hasPscale) {
-        const pscaleNum = parseInt(Array.isArray(pscaleRaw) ? pscaleRaw[0] : pscaleRaw, 10);
-        if (Number.isNaN(pscaleNum)) {
-          return res.status(400).json({ error: `?pscale=${pscaleRaw} is not an integer`, code: 'invalid_pscale' });
+      if (hasPscale || spindleHasStar) {
+        let pscaleNum = null;
+        if (hasPscale) {
+          pscaleNum = parseInt(Array.isArray(pscaleRaw) ? pscaleRaw[0] : pscaleRaw, 10);
+          if (Number.isNaN(pscaleNum)) {
+            return res.status(400).json({ error: `?pscale=${pscaleRaw} is not an integer`, code: 'invalid_pscale' });
+          }
         }
         payload = bspCanonical(block, spindle || null, pscaleNum);
       } else {
