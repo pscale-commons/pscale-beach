@@ -1,6 +1,6 @@
 import { Redis } from '@upstash/redis';
 import { createHash } from 'node:crypto';
-import { hasFloor, defaultIdentity } from './floor.js';
+import { hasFloor, defaultIdentity, repairFloor } from './floor.js';
 
 // ── Pscale Beach v2 — URL surface, sibling blocks ──
 // Spec: https://github.com/pscale-commons/bsp-mcp-server/blob/main/docs/protocol-pscale-beach-v2.md
@@ -269,6 +269,17 @@ async function loadBlock(name) {
 }
 
 async function saveBlock(name, block) {
+  // Floor invariant backstop (sunstone:1.51): a block is never persisted floor-0.
+  // Every creation path seeds `_` (handleStandardWrite, sed, grain) and whole-block
+  // writes are gated, so this only trips on a future regression — self-heal + log
+  // rather than throw, so the invariant always holds without ever failing a write.
+  if (!hasFloor(block)) {
+    const healed = repairFloor(name, ORIGIN, block);
+    if (healed.changed) {
+      console.error(`[floor-invariant] seeded a missing floor for "${name}" at saveBlock — a creation path forgot to; investigate`);
+      block = healed.block;
+    }
+  }
   await redis.set(blockKey(name), block);
 }
 
