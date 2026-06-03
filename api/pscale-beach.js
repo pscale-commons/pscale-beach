@@ -1,5 +1,6 @@
 import { Redis } from '@upstash/redis';
 import { createHash } from 'node:crypto';
+import { hasFloor, defaultIdentity, repairFloor } from './floor.js';
 
 // ── Pscale Beach v2 — URL surface, sibling blocks ──
 // Spec: https://github.com/pscale-commons/bsp-mcp-server/blob/main/docs/protocol-pscale-beach-v2.md
@@ -268,6 +269,17 @@ async function loadBlock(name) {
 }
 
 async function saveBlock(name, block) {
+  // Floor invariant backstop (sunstone:1.51): a block is never persisted floor-0.
+  // Every creation path seeds `_` (handleStandardWrite, sed, grain) and whole-block
+  // writes are gated, so this only trips on a future regression — self-heal + log
+  // rather than throw, so the invariant always holds without ever failing a write.
+  if (!hasFloor(block)) {
+    const healed = repairFloor(name, ORIGIN, block);
+    if (healed.changed) {
+      console.error(`[floor-invariant] seeded a missing floor for "${name}" at saveBlock — a creation path forgot to; investigate`);
+      block = healed.block;
+    }
+  }
   await redis.set(blockKey(name), block);
 }
 
@@ -828,7 +840,7 @@ async function handleStandardWrite(blockName, body) {
     // or a sub-position write that scaffolds the block.
     block = (spindle === '' && content && typeof content === 'object' && !Array.isArray(content))
       ? null  // we'll replace the block entirely below
-      : {};
+      : { _: defaultIdentity(blockName, ORIGIN) };  // sub-position create — seed a floor (sunstone:1.51); never born floor-0
   }
   // Whole-block REPLACE of an existing block is destructive — require explicit
   // confirm:true. Initialising a new block has no prior state to clobber, so
@@ -868,10 +880,14 @@ async function handleStandardWrite(blockName, body) {
 
   if (content !== undefined) {
     if (!spindle) {
-      // Whole-block replace.
+      // Whole-block replace — must carry a floor; a block is never stored
+      // without an identity underscore (sunstone:1.51).
+      if (!hasFloor(content)) {
+        return { status: 400, body: { error: 'whole-block content has no floor — the root must carry a `_` whose chain reaches an identity string (sunstone:1.51)', code: 'no_floor' } };
+      }
       block = content;
     } else {
-      if (block == null) block = {};
+      if (block == null) block = { _: defaultIdentity(blockName, ORIGIN) };
       try {
         writeAt(block, String(spindle), content);
       } catch (e) {
