@@ -5,8 +5,7 @@
 // the root carries a `_` whose chain reaches an identity string. A block born
 // from a first digit-slot write (marks, presence, liquid, …) must be seeded an
 // identity, or it is floor-0: no pscale 0, invisible to floor alignment,
-// un-supernestable. See proposals/2026-06-03-block-floor-invariant-and-malformed-repair.md
-// in bsp-mcp-server.
+// un-supernestable. See proposals/2026-06-03-block-floor-invariant-and-malformed-repair.md.
 
 // Depth of the underscore chain down to a string. 0 means no floor.
 export function floorDepth(block) {
