@@ -7,7 +7,9 @@
   "scripts": {
     "init": "node init/seed-beach.js",
     "smoke:lighthouse": "node scripts/smoke-lighthouse.js",
-    "migrate:keys": "node scripts/migrate-keys.js"
+    "smoke:floor": "node scripts/smoke-floor.js",
+    "migrate:keys": "node scripts/migrate-keys.js",
+    "repair:floor": "node scripts/repair-floor.js"
   },
   "dependencies": {
     "@upstash/redis": "^1.34.0"
