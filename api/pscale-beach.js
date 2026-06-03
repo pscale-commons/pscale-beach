@@ -1,6 +1,6 @@
 import { Redis } from '@upstash/redis';
 import { createHash } from 'node:crypto';
-import { hasFloor, defaultIdentity, repairFloor } from './floor.js';
+import { hasFloor, defaultIdentity, repairFloor, appendWithSupernest } from './floor.js';
 
 // ── Pscale Beach v2 — URL surface, sibling blocks ──
 // Spec: https://github.com/pscale-commons/bsp-mcp-server/blob/main/docs/protocol-pscale-beach-v2.md
@@ -821,7 +821,36 @@ async function handleGrainReach(pairId, body) {
 // ── Standard bsp-mcp write shape (any block) ──
 
 async function handleStandardWrite(blockName, body) {
-  const { spindle = '', content, secret, new_lock, confirm } = body || {};
+  const { spindle = '', content, secret, new_lock, confirm, append } = body || {};
+
+  // APPEND mode — atomic next-slot allocation with supernest-on-rollover
+  // (sunstone:1.63). THE accumulator write: marks, history, pools. The handler
+  // picks the next free zero-free slot and wraps the whole block {_: old} when
+  // the floor fills, so every client gets correct floor-growth without computing
+  // slots itself, and concurrent appends never race on allocation.
+  if (append === true) {
+    if (content === undefined) {
+      return { status: 400, body: { error: 'append requires content', code: 'invalid_shape' } };
+    }
+    const shapeErr = validateShape(content);
+    if (shapeErr) {
+      return { status: 400, body: { error: shapeErr, code: 'invalid_shape' } };
+    }
+    // Whole-accumulator authority: the `_` lock governs append (an accumulator
+    // is locked or open as a unit; per-slot locks don't fit an append stream).
+    const hashes = await loadHashes(blockName);
+    if (hashes['_']) {
+      if (!secret || hashByBlockName(blockName, '_', secret) !== hashes['_']) {
+        return { status: 403, body: { error: `append to "${blockName}" requires the accumulator secret`, code: 'lock_required' } };
+      }
+    }
+    const existing = await loadBlock(blockName);
+    const r = appendWithSupernest(blockName, ORIGIN, existing, content);
+    let block = r.block;
+    if (blockName === 'presence') block = sweepStalePresence(block);
+    await saveBlock(blockName, block);
+    return { status: 200, body: { ok: true, slot: r.slot, supernested: r.supernested, floor: r.floor } };
+  }
 
   // Shape gate: reject _word keys and JSON-stringified sub-objects on writes.
   if (content !== undefined) {

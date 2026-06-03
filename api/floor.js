@@ -54,3 +54,73 @@ export function repairFloor(name, origin, block) {
   if (hasFloor(block)) return { changed: false, block };
   return { changed: true, block: { _: defaultIdentity(name, origin), ...block } };
 }
+
+// ── Append-with-supernest — the operational accumulator write ──
+//
+// Append `content` at the next free zero-free digit-path slot at the current
+// floor; when the floor is full, SUPERNEST (wrap {_: old}, raise the floor by 1)
+// and land at the first slot of the new floor. This is floor-growth supernest
+// (sunstone:1.63) made operational: every entry sits at pscale 0, dated
+// addresses absorb across each wrap (1 → 01 → 001 …), and the slot number tracks
+// the sequence. Marks, history, pools all grow this way. Server-side and atomic,
+// so concurrent appends never race on slot allocation.
+
+// Walk a zero-free digit-path (digits 1-9, no floor padding). undefined if absent.
+export function rawWalk(block, path) {
+  let node = block;
+  for (const ch of String(path)) {
+    if (node == null || typeof node !== 'object' || !(ch in node)) return undefined;
+    node = node[ch];
+  }
+  return node;
+}
+
+// The i-th (0-based) zero-free path of `length` digits, lex order. length 2 →
+// 11,12,…,19,21,…,99 (base-9 over digits 1-9, no zeros — x0 slots are reserved
+// for the bracket's underscore summary).
+export function zeroFreePath(i, length) {
+  let s = '';
+  for (let k = 0; k < length; k++) { s = String((i % 9) + 1) + s; i = Math.floor(i / 9); }
+  return s;
+}
+
+// First free zero-free `floor`-digit slot, or null if the floor is full.
+export function nextZeroFreeSlot(block, floor) {
+  const total = 9 ** floor;
+  for (let i = 0; i < total; i++) {
+    const p = zeroFreePath(i, floor);
+    if (rawWalk(block, p) === undefined) return p;
+  }
+  return null;
+}
+
+// Set a value at a zero-free path, creating intermediates; a string in the way
+// migrates to that node's underscore (subnest-on-growth, mirrors writeAt).
+function rawSet(block, path, value) {
+  const d = String(path).split('');
+  let node = block;
+  for (let k = 0; k < d.length - 1; k++) {
+    const key = d[k];
+    if (typeof node[key] === 'string') node[key] = { _: node[key] };
+    else if (node[key] == null || typeof node[key] !== 'object' || Array.isArray(node[key])) node[key] = {};
+    node = node[key];
+  }
+  node[d[d.length - 1]] = value;
+}
+
+// Append with supernest-on-rollover. Returns { block, slot, supernested, floor }.
+export function appendWithSupernest(name, origin, block, content) {
+  if (block == null) block = { _: defaultIdentity(name, origin) };
+  else if (!hasFloor(block)) block = repairFloor(name, origin, block).block;
+  let floor = floorDepth(block);
+  let supernested = false;
+  let slot = nextZeroFreeSlot(block, floor);
+  if (slot === null) {            // floor full → supernest (wrap, raise floor)
+    block = { _: block };
+    floor += 1;
+    supernested = true;
+    slot = nextZeroFreeSlot(block, floor);
+  }
+  rawSet(block, slot, content);
+  return { block, slot, supernested, floor };
+}
