@@ -1,0 +1,16 @@
+{
+  "name": "witnessed:fenn",
+  "lock": {
+    "position": "_",
+    "secret_env": "THORN_FENN"
+  },
+  "content": {
+    "1": {
+      "1": "fenn",
+      "2": "*:{{BEACH}}:spatial:thornwood:111",
+      "3": "2026-06-05T18:00:00Z",
+      "_": "Fenn comes off the deer-road into the lamplight with the wood still on him — pitch and cold and the green smell of Thornwood. He does not like a roof, but word travels faster where people gather, and the news he carries needs to go south. Bram, behind the bar, knows him for a forester at a glance and pours without comment. Fenn takes the corner that sees both doors and lets the warm room do its slow work on his hands."
+    },
+    "_": "Fenn's account at the Beaten Drum, beat by beat — the private narrative, names as known."
+  }
+}

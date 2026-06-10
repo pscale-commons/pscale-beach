@@ -1,0 +1,16 @@
+{
+  "name": "witnessed:anya",
+  "lock": {
+    "position": "_",
+    "secret_env": "THORN_ANYA"
+  },
+  "content": {
+    "1": {
+      "1": "anya",
+      "2": "*:{{BEACH}}:spatial:thornwood:111",
+      "3": "2026-06-05T18:00:00Z",
+      "_": "Anya takes the bench nearest the fire and lets the steam rise off her cloak, her pack between her boots where she can feel it. The keeper — Bram — draws her a cup without being asked twice. She has come a long way on the deer-paths with a question riding her, and the Beaten Drum is the first warm room to ask it in. She watches the door and the company over the rim of the cup."
+    },
+    "_": "Anya's account at the Beaten Drum, beat by beat — the private narrative, names as known."
+  }
+}

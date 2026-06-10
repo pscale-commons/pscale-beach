@@ -1,0 +1,23 @@
+{
+  "name": "frame-spec:thornwood",
+  "lock": {
+    "position": "_",
+    "secret_env": "THORN_GM"
+  },
+  "content": {
+    "1": {
+      "1": "Soft (the player turn): read witnessed:<handle> (this character's narrative — what they have perceived) and knows:<handle> (the names and terms they can recognise) + spatial:thornwood at their location (the setting physically present) + rules:thornwood (perception physics). Narrow: their perceptions only. Submit intention to the pool; the outcome lands in this character's narrative when the medium writes it, and is read on the next turn.",
+      "2": "Medium (resolving this character's next beat): the soft aperture PLUS the proximate overlap — the co-perceived account shared with characters at the same location — so this character's narrative is written in CORRELATION with theirs, never against a master. Who writes a shared beat first / how divergence converges is the live correlation problem, handled by the mediums, not by a canon.",
+      "_": "Character (C) — you ARE this character; you know only what they have experienced. There is nothing shared to filter: you read your OWN narrative, so you cannot see another's, because it is a different block. Fog-of-war is structural, not disciplinary."
+    },
+    "2": "Author (A) — you shape the world's CONTENT (the stage), not a character's experience. Read/write the setting: spatial:thornwood (places, the agreed scaffolding) and world-content blocks. Authority is the author face (sed:<game>-authors, when enforced). The stage is shared by agreement; never write what-happened into it — that is the play, and the play is distributed.",
+    "3": "Designer (D) — you shape the RULES and conventions the other faces run on. Read/write rules:nomad (mechanics), rules:thornwood (place physics), function:thornwood (the tier directives). The meta-layer: editing these changes how every other face's frame resolves.",
+    "4": "Observer (O) — the CORRELATION across narratives, not a master truth. Read several characters' narratives (witnessed:<each-handle>) and present their overlap (common ground) and divergence (contested). Wide, read-only. O is 'closer to objective' only as inter-subjective correlation — variation from C, never absolute. The correlation between players' C-narratives is itself distinct from any single O-reading.",
+    "9": {
+      "1": "v0.2-subjective",
+      "2": "Window duration — the room's default gathering window before a touch resolves it: 90 seconds. An instant (0) window is chat; a long window is a Quaker meeting. The resolving aperture (function:thornwood:2) reads this to decide whether a window has closed.",
+      "_": "Frame metadata. Subjective-centred: no shared canon; per-character narratives; the frame is read-selection by (face, tier), resolved client-side, not a primitive. The same spec serves xstream's runBundle and a bsp-mcp soft session — authored ONCE here; point both clients at it. SUPERSEDES the earlier objective draft (which scoped one shared solid by visible_to)."
+    },
+    "_": "Frame — the scoop a client resolves to assemble an APERTURE, parameterised by (face, tier, handle). SUBJECTIVE-centred: there is NO shared canon; each character carries its own narrative. The frame names which addresses constitute the aperture for a face and tier; the client (xstream's runBundle, a bsp-mcp soft session, or the crab) READS those addresses — resolution is client-side reads, NOT a primitive. Faces: 1 Character, 2 Author, 3 Designer, 4 Observer; tier (soft/medium/hard) modulates the aperture within a face. This block is the SINGLE substrate source — xstream should resolve THIS, not define a frame of its own; that convergence is the point of moving frame onto the substrate."
+  }
+}

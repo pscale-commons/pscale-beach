@@ -1,0 +1,21 @@
+{
+  "name": "knows:cyrus",
+  "lock": {
+    "position": "_",
+    "secret_env": "THORN_CYRUS"
+  },
+  "content": {
+    "1": {
+      "1": "Bram — keeps the Beaten Drum at the lower edge of Oakhollow; learned on arrival, as travellers do.",
+      "_": "People Cyrus can name."
+    },
+    "2": {
+      "1": "The Beaten Drum, this tavern.",
+      "2": "Oakhollow, the town at the edge of Thornwood.",
+      "3": "Thornwood, the forest.",
+      "4": "The Greymarch toll, two days south — a caravan guard's knowledge of the trade roads.",
+      "_": "Places and terms Cyrus knows."
+    },
+    "_": "What Cyrus has come to know — the names and terms recognisable. The soft reads this to decide who can be named; absence means perceived by appearance, and a learned name is appended here."
+  }
+}

@@ -48,10 +48,16 @@ import { hasFloor, defaultIdentity, repairFloor, appendWithSupernest } from './f
 //   underscore (block[k] = "old" becomes block[k] = {_: "old", ...})
 //   so the parent's semantic survives the appearance of children.
 
-const redis = new Redis({
+let redis = new Redis({
   url: process.env.KV_REST_API_URL,
   token: process.env.KV_REST_API_TOKEN
 });
+
+// Test seam: the local file-backed beach rig (scripts/local-beach.mjs) injects a
+// folder-backed shim here so the real handler runs offline against a directory.
+// Never called in production — the Upstash client constructed above is the only
+// redis the deploy ever uses.
+export function __setRedis(r) { redis = r; }
 
 // BEACH_ORIGIN is the host's bare domain (no scheme), e.g. "idiothuman.com".
 // It is part of the ordinary-block lock salt — locks set on this beach must

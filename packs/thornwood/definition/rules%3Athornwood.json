@@ -1,0 +1,22 @@
+{
+  "name": "rules:thornwood",
+  "lock": {
+    "position": "_",
+    "secret_env": "THORN_GM"
+  },
+  "content": {
+    "1": {
+      "1": "Blades may be worn but not drawn. Travellers who mean to stay set their weapons on the settle or the bar by custom — it signals not looking for trouble.",
+      "2": "Strangers are watched, not confronted, unless they make trouble first. The quarter lives off the Thornwood road; hostility to travellers costs everyone.",
+      "_": "The Beaten Drum — Bram's house, Bram's rules. Drawing a blade indoors is a grave breach; Bram can and does put people out, and the Drum is the only warmth in the quarter. Bram makes first contact with strangers, not the patrons."
+    },
+    "2": "The market quarter and the Thornwood road — open ground governed by custom and the forest's nearness. After dark the square is unlit and the treeline close; what comes out of Thornwood at night is its own rule. Goods left on the shuttered stalls are not taken — the quarter is small enough that theft has a price worse than the gain.",
+    "3": "Thornwood, and the deer-paths within it — the wood is not neutral ground. By day, on a marked path, it is an ordinary forest. By night, or off the marked paths, it turns against those who do not belong to it: a traveller without the deer-craft takes +2 to the difficulty of any act of movement, stealth, tracking, or perception in the trees, and the corrupted ground (the sick paths north and west) raises it further still. Those born to the wood — foresters, those who read the deer-craft — are exempt; the wood is their ground, and lends to them what it denies others. NOMAD's numbers (rules:nomad) apply on top of this baseline. A party that wins back to a marked path or to daylight sheds the penalty.",
+    "_": {
+      "1": "Perception — sight needs line of sight and light; the settle-back screens the corner table from the lane door, the hearth's glare blinds those facing it to the dark beyond. Sound carries but muffled: talk at the corner is private unless raised; the loft stair creaks to the bar. Draught and smell cross the room: the opening door reaches the hearth, and a new smell — wet wool, blood, perfume — is caught by anyone near.",
+      "2": "Conflict — the medium judges from character capability (Character Force, read from the passport, not invented), position (the one nearest the door reaches it first), and physical reality. Direct contact or immediate threat — a drawn blade, a grabbed arm, a blocked doorway — forces a resolution now; indirect acts — a word, a glance, an entrance — accumulate as events. Dice (rules:nomad) resolve the genuinely uncertain; they never make the impossible happen.",
+      "3": "Pacing — characters acting at different speeds coexist; the quick produce more events, the slow take them in on their next commit. The timing of a commit is a move in itself.",
+      "_": "Rules constraining action in and around Thornwood. Perception is physical: sight needs line of sight and light, sound carries through timber and stone but muffled, smell and draught cross open space, touch is immediate. Conflict resolves by honest narrative judgment — competence, position, and physical reality decide outcomes; NOMAD's numbers (rules:nomad) sharpen contested moments but never override what would plainly happen. One contribution covers one natural beat — seconds in a scuffle, a minute in talk, longer on the road. No turns, no initiative: when you commit is itself a choice — early to shape events, late to know them."
+    }
+  }
+}
