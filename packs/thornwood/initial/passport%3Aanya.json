@@ -1,0 +1,13 @@
+{
+  "name": "passport:anya",
+  "lock": {
+    "position": "_",
+    "secret_env": "THORN_ANYA"
+  },
+  "content": {
+    "1": "Capability (Character Force) — sharp senses and a read on people; knows herb-lore, small remedies, and the rumours of every road; nimble fingers and a nimbler tongue. No fighter — she runs, talks, or hides before she fights. Carries a pedlar's pack, a hooked knife for roots, and a few real charms among the fakes.",
+    "2": "Wants — to sell enough to winter indoors, and to find who has been leaving the bone-charms on the deer-paths out of Thornwood. Underneath: to be believed about what she saw in the wood.",
+    "3": "Begins in the main room of the Beaten Drum, hood back, steam rising off her cloak by the fire. Location: *:{{BEACH}}:spatial:thornwood:111",
+    "_": "Anya — a hedge-witch's apprentice and road-pedlar, come out of Thornwood by the deer-paths with a pack of cures and curios. Small, quick-eyed, talks first and fast. Notices what others miss."
+  }
+}

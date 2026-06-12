@@ -48,10 +48,16 @@ import { hasFloor, defaultIdentity, repairFloor, appendWithSupernest } from './f
 //   underscore (block[k] = "old" becomes block[k] = {_: "old", ...})
 //   so the parent's semantic survives the appearance of children.
 
-const redis = new Redis({
+let redis = new Redis({
   url: process.env.KV_REST_API_URL,
   token: process.env.KV_REST_API_TOKEN
 });
+
+// Test seam: the local file-backed beach rig (scripts/local-beach.mjs) injects a
+// folder-backed shim here so the real handler runs offline against a directory.
+// Never called in production — the Upstash client constructed above is the only
+// redis the deploy ever uses.
+export function __setRedis(r) { redis = r; }
 
 // BEACH_ORIGIN is the host's bare domain (no scheme), e.g. "idiothuman.com".
 // It is part of the ordinary-block lock salt — locks set on this beach must
@@ -65,15 +71,31 @@ const redis = new Redis({
 // final hostname, redeploy, re-seed (locks recompute under the new salt).
 //
 // Fallback chain: BEACH_ORIGIN → VERCEL_PROJECT_PRODUCTION_URL → VERCEL_URL.
-const ORIGIN =
+const BASE_ORIGIN =
   process.env.BEACH_ORIGIN ||
   process.env.VERCEL_PROJECT_PRODUCTION_URL ||
   process.env.VERCEL_URL;
-if (!ORIGIN) {
+if (!BASE_ORIGIN) {
   throw new Error('BEACH_ORIGIN env var required (bare domain, no scheme — e.g. "idiothuman.com"). On Vercel, this falls back to VERCEL_PROJECT_PRODUCTION_URL automatically; outside Vercel, set it explicitly.');
 }
 
-// Key namespace — scoped by ORIGIN so multiple beaches can share one Upstash
+// Sub-beaches — per-request origin, derived from the Host header. The storage
+// namespace AND the lock salt are scoped by origin, so ONE deploy + ONE Upstash
+// hosts many fully-isolated beaches addressed by subdomain:
+//   <sub>.<BASE_ORIGIN>  → namespace "<sub>.<BASE_ORIGIN>" (its own blocks + locks)
+//   <BASE_ORIGIN> (apex) → namespace "<BASE_ORIGIN>" — UNCHANGED from before, so
+//                          every existing block + lock keeps verifying byte-for-byte.
+// Anything unrecognised (Vercel preview hostnames, a bare IP) folds to the base,
+// so no stray empty beach is ever created. This is the cost-efficient shape:
+// many beaches on one database, not one database per beach.
+function originFromHost(hostHeader) {
+  const host = String(hostHeader || '').split(':')[0].trim().toLowerCase();
+  if (!host || host === BASE_ORIGIN) return BASE_ORIGIN;
+  if (host.endsWith('.' + BASE_ORIGIN)) return host;
+  return BASE_ORIGIN;
+}
+
+// Key namespace — scoped by the per-request origin so multiple beaches can share one Upstash
 // without collision. Pre-namespacing deploys used `pscale-beach-v2:block:<name>`
 // (no origin). Reads transparently fall back to that legacy layout for backward
 // compatibility; writes go to the namespaced layout only. Operators sharing one
@@ -86,20 +108,19 @@ if (!ORIGIN) {
 // unlocked block, typically presence written on every heartbeat). Operators
 // upgrading a pre-namespacing deploy turn it on with
 // LEGACY_NAMESPACE_FALLBACK_READS=true until they run scripts/migrate-keys.js.
-const KEY_NS = `pscale-beach-v2:${ORIGIN}`;
 const LEGACY_NS = 'pscale-beach-v2';
 const LEGACY_FALLBACK_READS = process.env.LEGACY_NAMESPACE_FALLBACK_READS === 'true';
-function blockKey(name) { return `${KEY_NS}:block:${name}`; }
-function locksKey(name) { return `${KEY_NS}:locks:${name}`; }
+const keyNs = (origin) => `pscale-beach-v2:${origin}`;
+function blockKey(origin, name) { return `${keyNs(origin)}:block:${name}`; }
+function locksKey(origin, name) { return `${keyNs(origin)}:locks:${name}`; }
 function legacyBlockKey(name) { return `${LEGACY_NS}:block:${name}`; }
 function legacyLocksKey(name) { return `${LEGACY_NS}:locks:${name}`; }
-const KEY_PREFIX = `${KEY_NS}:block:`;
 
 // ── Lock hashing — three salt namespaces matching bsp-mcp src/locks.ts ──
 
-function hashOrdinary(secret, blockName, position) {
+function hashOrdinary(origin, secret, blockName, position) {
   // sha256(passphrase + 'block:' + agent_id + ':' + name + ':' + position)
-  const salt = `${secret}block:https://${ORIGIN}:${blockName}:${position}`;
+  const salt = `${secret}block:https://${origin}:${blockName}:${position}`;
   return createHash('sha256').update(salt).digest('hex');
 }
 
@@ -250,50 +271,50 @@ function lockKeyForWrite(blockName, spindle, block) {
   return firstDigit;
 }
 
-function hashByBlockName(blockName, position, secret) {
+function hashByBlockName(origin, blockName, position, secret) {
   if (blockName.startsWith('sed:')) {
     return hashSed(secret, blockName.slice(4), position);
   }
   if (blockName.startsWith('grain:')) {
     return hashGrain(secret, blockName.slice(6), position);
   }
-  return hashOrdinary(secret, blockName, position);
+  return hashOrdinary(origin, secret, blockName, position);
 }
 
 // ── Storage helpers ──
 
-async function loadBlock(name) {
-  let stored = await redis.get(blockKey(name));
+async function loadBlock(origin, name) {
+  let stored = await redis.get(blockKey(origin, name));
   if (stored == null && LEGACY_FALLBACK_READS) stored = await redis.get(legacyBlockKey(name));
   return stored ?? null;
 }
 
-async function saveBlock(name, block) {
+async function saveBlock(origin, name, block) {
   // Floor invariant backstop (sunstone:1.51): a block is never persisted floor-0.
   // Every creation path seeds `_` (handleStandardWrite, sed, grain) and whole-block
   // writes are gated, so this only trips on a future regression — self-heal + log
   // rather than throw, so the invariant always holds without ever failing a write.
   if (!hasFloor(block)) {
-    const healed = repairFloor(name, ORIGIN, block);
+    const healed = repairFloor(name, origin, block);
     if (healed.changed) {
       console.error(`[floor-invariant] seeded a missing floor for "${name}" at saveBlock — a creation path forgot to; investigate`);
       block = healed.block;
     }
   }
-  await redis.set(blockKey(name), block);
+  await redis.set(blockKey(origin, name), block);
 }
 
-async function loadHashes(name) {
-  let stored = await redis.get(locksKey(name));
+async function loadHashes(origin, name) {
+  let stored = await redis.get(locksKey(origin, name));
   if (stored == null && LEGACY_FALLBACK_READS) stored = await redis.get(legacyLocksKey(name));
   return stored ?? {};
 }
 
-async function saveHashes(name, hashes) {
-  await redis.set(locksKey(name), hashes);
+async function saveHashes(origin, name, hashes) {
+  await redis.set(locksKey(origin, name), hashes);
 }
 
-async function listBlockNames() {
+async function listBlockNames(origin) {
   // Upstash Redis SCAN-friendly listing. KEYS is fine at this scale; if the
   // surface grows large, switch to SCAN with cursor.
   //
@@ -303,8 +324,9 @@ async function listBlockNames() {
   // where one beach is still legacy would surface that beach's keys here for
   // any namespaced beach with an empty new namespace — run the migration to
   // resolve.)
-  const newKeys = await redis.keys(`${KEY_PREFIX}*`);
-  const names = newKeys.map(k => k.slice(KEY_PREFIX.length));
+  const prefix = `${keyNs(origin)}:block:`;
+  const newKeys = await redis.keys(`${prefix}*`);
+  const names = newKeys.map(k => k.slice(prefix.length));
   if (names.length === 0) {
     const legacyPrefix = `${LEGACY_NS}:block:`;
     const legacyKeys = await redis.keys(`${legacyPrefix}*`);
@@ -715,7 +737,7 @@ function nextValidPosition(positionHashes) {
   throw new Error('No valid position found below 1,000,000.');
 }
 
-async function handleSedRegister(collective, body) {
+async function handleSedRegister(origin, collective, body) {
   const { declaration, passphrase, shell_ref } = body || {};
   if (!declaration || !passphrase) {
     return { status: 400, body: { error: 'sed register requires {declaration, passphrase}', code: 'invalid_shape' } };
@@ -726,11 +748,11 @@ async function handleSedRegister(collective, body) {
     return { status: 400, body: { error: shapeErr, code: 'invalid_shape' } };
   }
   const blockName = `sed:${collective}`;
-  let block = await loadBlock(blockName);
+  let block = await loadBlock(origin, blockName);
   if (!block) {
-    block = { _: `sed: collective ${collective} hosted at ${ORIGIN}` };
+    block = { _: `sed: collective ${collective} hosted at ${origin}` };
   }
-  const hashes = await loadHashes(blockName);
+  const hashes = await loadHashes(origin, blockName);
   let position;
   try {
     position = nextValidPosition(hashes);
@@ -739,8 +761,8 @@ async function handleSedRegister(collective, body) {
   }
   writeAt(block, position, positionContent);
   hashes[position] = hashSed(passphrase, collective, position);
-  await saveBlock(blockName, block);
-  await saveHashes(blockName, hashes);
+  await saveBlock(origin, blockName, block);
+  await saveHashes(origin, blockName, hashes);
   return {
     status: 200,
     body: {
@@ -755,7 +777,7 @@ async function handleSedRegister(collective, body) {
 //
 // pair_id is computed client-side and named in the URL (?block=grain:<pair_id>).
 // The site enforces the two-phase state machine with per-side locks.
-async function handleGrainReach(pairId, body) {
+async function handleGrainReach(origin, pairId, body) {
   const { side, agent_id, partner_agent_id, description, my_side_content, my_passphrase } = body || {};
   if (side !== '1' && side !== '2') {
     return { status: 400, body: { error: 'grain reach requires side="1" or side="2"', code: 'invalid_shape' } };
@@ -769,8 +791,8 @@ async function handleGrainReach(pairId, body) {
   }
   const partnerSide = side === '1' ? '2' : '1';
   const blockName = `grain:${pairId}`;
-  const existing = await loadBlock(blockName);
-  const hashes = await loadHashes(blockName);
+  const existing = await loadBlock(origin, blockName);
+  const hashes = await loadHashes(origin, blockName);
 
   if (!existing) {
     // Establish: write reaching side + reach hint at position 8.
@@ -790,8 +812,8 @@ async function handleGrainReach(pairId, body) {
       '9': { [side]: agent_id }
     };
     hashes[side] = hashGrain(my_passphrase, pairId, side);
-    await saveBlock(blockName, block);
-    await saveHashes(blockName, hashes);
+    await saveBlock(origin, blockName, block);
+    await saveHashes(origin, blockName, hashes);
     return { status: 200, body: { ok: true, state: 'established', awaiting: partnerSide, pair_id: pairId } };
   }
 
@@ -803,7 +825,7 @@ async function handleGrainReach(pairId, body) {
       return { status: 403, body: { error: `side ${side} is locked`, code: 'lock_required' } };
     }
     existing[side] = { _: my_side_content };
-    await saveBlock(blockName, existing);
+    await saveBlock(origin, blockName, existing);
     return { status: 200, body: { ok: true, state: 'updated', pair_id: pairId } };
   }
 
@@ -813,14 +835,14 @@ async function handleGrainReach(pairId, body) {
   existing['9'] = { ...existingAgents, [side]: agent_id };
   delete existing['8'];
   hashes[side] = hashGrain(my_passphrase, pairId, side);
-  await saveBlock(blockName, existing);
-  await saveHashes(blockName, hashes);
+  await saveBlock(origin, blockName, existing);
+  await saveHashes(origin, blockName, hashes);
   return { status: 200, body: { ok: true, state: 'completed', pair_id: pairId } };
 }
 
 // ── Standard bsp-mcp write shape (any block) ──
 
-async function handleStandardWrite(blockName, body) {
+async function handleStandardWrite(origin, blockName, body) {
   const { spindle = '', content, secret, new_lock, confirm, append } = body || {};
 
   // APPEND mode — atomic next-slot allocation with supernest-on-rollover
@@ -838,17 +860,17 @@ async function handleStandardWrite(blockName, body) {
     }
     // Whole-accumulator authority: the `_` lock governs append (an accumulator
     // is locked or open as a unit; per-slot locks don't fit an append stream).
-    const hashes = await loadHashes(blockName);
+    const hashes = await loadHashes(origin, blockName);
     if (hashes['_']) {
-      if (!secret || hashByBlockName(blockName, '_', secret) !== hashes['_']) {
+      if (!secret || hashByBlockName(origin, blockName, '_', secret) !== hashes['_']) {
         return { status: 403, body: { error: `append to "${blockName}" requires the accumulator secret`, code: 'lock_required' } };
       }
     }
-    const existing = await loadBlock(blockName);
-    const r = appendWithSupernest(blockName, ORIGIN, existing, content);
+    const existing = await loadBlock(origin, blockName);
+    const r = appendWithSupernest(blockName, origin, existing, content);
     let block = r.block;
     if (blockName === 'presence') block = sweepStalePresence(block);
-    await saveBlock(blockName, block);
+    await saveBlock(origin, blockName, block);
     return { status: 200, body: { ok: true, slot: r.slot, supernested: r.supernested, floor: r.floor } };
   }
 
@@ -862,14 +884,14 @@ async function handleStandardWrite(blockName, body) {
   // Sibling blocks that don't exist yet are created on first write — the
   // handler is permissive about block creation. Blocks start from {} unless
   // content is a whole-block payload.
-  const existing = await loadBlock(blockName);
+  const existing = await loadBlock(origin, blockName);
   let block = existing;
   if (block == null) {
     // Allow creation: the body is either a whole-block payload (spindle empty)
     // or a sub-position write that scaffolds the block.
     block = (spindle === '' && content && typeof content === 'object' && !Array.isArray(content))
       ? null  // we'll replace the block entirely below
-      : { _: defaultIdentity(blockName, ORIGIN) };  // sub-position create — seed a floor (sunstone:1.51); never born floor-0
+      : { _: defaultIdentity(blockName, origin) };  // sub-position create — seed a floor (sunstone:1.51); never born floor-0
   }
   // Whole-block REPLACE of an existing block is destructive — require explicit
   // confirm:true. Initialising a new block has no prior state to clobber, so
@@ -878,7 +900,7 @@ async function handleStandardWrite(blockName, body) {
   if (content !== undefined && !spindle && existing != null && confirm !== true) {
     return { status: 400, body: { error: 'whole-block replace requires {confirm: true}', code: 'confirm_required' } };
   }
-  const hashes = await loadHashes(blockName);
+  const hashes = await loadHashes(origin, blockName);
   let lockKey;
   try {
     lockKey = lockKeyForWrite(blockName, spindle, block);
@@ -895,14 +917,14 @@ async function handleStandardWrite(blockName, body) {
     if (!secret) {
       return { status: 403, body: { error: `position "${lockKey}" of "${blockName}" is locked, secret required`, code: 'lock_required' } };
     }
-    if (hashByBlockName(blockName, lockKey, secret) !== stored) {
+    if (hashByBlockName(origin, blockName, lockKey, secret) !== stored) {
       return { status: 403, body: { error: 'secret does not match', code: 'lock_required' } };
     }
   }
 
   // Lock-rotation authority.
   if (new_lock !== undefined && stored) {
-    if (!secret || hashByBlockName(blockName, lockKey, secret) !== stored) {
+    if (!secret || hashByBlockName(origin, blockName, lockKey, secret) !== stored) {
       return { status: 403, body: { error: 'lock rotation requires current secret', code: 'lock_required' } };
     }
   }
@@ -916,7 +938,7 @@ async function handleStandardWrite(blockName, body) {
       }
       block = content;
     } else {
-      if (block == null) block = { _: defaultIdentity(blockName, ORIGIN) };
+      if (block == null) block = { _: defaultIdentity(blockName, origin) };
       try {
         writeAt(block, String(spindle), content);
       } catch (e) {
@@ -927,15 +949,15 @@ async function handleStandardWrite(blockName, body) {
       }
     }
     if (blockName === 'presence') block = sweepStalePresence(block);
-    await saveBlock(blockName, block);
+    await saveBlock(origin, blockName, block);
   } else if (block == null) {
     // No content and no existing block — nothing to do unless we're locking.
     block = {};
   }
 
   if (new_lock !== undefined) {
-    hashes[lockKey] = hashByBlockName(blockName, lockKey, new_lock);
-    await saveHashes(blockName, hashes);
+    hashes[lockKey] = hashByBlockName(origin, blockName, lockKey, new_lock);
+    await saveHashes(origin, blockName, hashes);
   }
 
   return { status: 200, body: { ok: true } };
@@ -953,19 +975,20 @@ export default async function handler(req, res) {
   }
 
   const blockName = ((req.method === 'POST' || req.method === 'DELETE') && blockParamFromBody(req.body)) || blockParam(req.query);
+  const origin = originFromHost(req.headers && req.headers.host);
 
   if (req.method === 'GET') {
     if (!blockName) {
       // Derived index: list named blocks at this surface. The surface is the
       // beach; the blocks listed are what's actually here.
-      const blocks = await listBlockNames();
+      const blocks = await listBlockNames(origin);
       return res.status(200).json({
-        _: `URL surface at ${ORIGIN}. Named sibling blocks listed below; address each via ?block=<name>. Substrate-wide conventions at bsp(agent_id='pscale', block='block-conventions').`,
-        origin: ORIGIN,
+        _: `URL surface at ${origin}. Named sibling blocks listed below; address each via ?block=<name>. Substrate-wide conventions at bsp(agent_id='pscale', block='block-conventions').`,
+        origin,
         blocks
       });
     }
-    const block = await loadBlock(blockName);
+    const block = await loadBlock(origin, blockName);
     if (block == null) {
       return res.status(404).json({ error: `block "${blockName}" not found`, code: 'not_found' });
     }
@@ -1014,14 +1037,14 @@ export default async function handler(req, res) {
     // Substrate-action dispatch (sed:/grain: state machines).
     let result;
     if (blockName.startsWith('sed:') && body.action === 'register') {
-      result = await handleSedRegister(blockName.slice(4), body);
+      result = await handleSedRegister(origin, blockName.slice(4), body);
     } else if (blockName.startsWith('grain:') && body.action === 'reach') {
-      result = await handleGrainReach(blockName.slice(6), body);
+      result = await handleGrainReach(origin, blockName.slice(6), body);
     } else {
       // Standard bsp-mcp shape: {spindle, content, secret?, new_lock?, gray?}
       // Works for any block name including substrate-prefixed ones (per-
       // position lock derivation handled by lockKeyForWrite/hashByBlockName).
-      result = await handleStandardWrite(blockName, body);
+      result = await handleStandardWrite(origin, blockName, body);
     }
     return res.status(result.status).json(result.body);
   }
@@ -1053,14 +1076,14 @@ export default async function handler(req, res) {
         code: 'confirm_required'
       });
     }
-    const existing = await redis.get(blockKey(blockName));
+    const existing = await redis.get(blockKey(origin, blockName));
     if (existing == null) {
       return res.status(404).json({
         error: `block "${blockName}" not found`,
         code: 'not_found'
       });
     }
-    const hashes = await loadHashes(blockName);
+    const hashes = await loadHashes(origin, blockName);
     const stored = hashes._;
     if (stored) {
       const secret = body.secret;
@@ -1070,15 +1093,15 @@ export default async function handler(req, res) {
           code: 'lock_required'
         });
       }
-      if (hashByBlockName(blockName, '_', secret) !== stored) {
+      if (hashByBlockName(origin, blockName, '_', secret) !== stored) {
         return res.status(403).json({
           error: 'secret does not match',
           code: 'lock_required'
         });
       }
     }
-    await redis.del(blockKey(blockName));
-    await redis.del(locksKey(blockName));
+    await redis.del(blockKey(origin, blockName));
+    await redis.del(locksKey(origin, blockName));
     await redis.del(legacyBlockKey(blockName));
     await redis.del(legacyLocksKey(blockName));
     return res.status(200).json({ ok: true, wiped: blockName });

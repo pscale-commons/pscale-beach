@@ -1,0 +1,21 @@
+{
+  "name": "knows:anya",
+  "lock": {
+    "position": "_",
+    "secret_env": "THORN_ANYA"
+  },
+  "content": {
+    "1": {
+      "1": "Bram — keeps the Beaten Drum at the lower edge of Oakhollow; learned on arrival, as travellers do.",
+      "_": "People Anya can name."
+    },
+    "2": {
+      "1": "The Beaten Drum, this tavern.",
+      "2": "Oakhollow at the edge of Thornwood.",
+      "3": "Thornwood, and its deer-paths.",
+      "4": "The Greymarch toll and its bronze guild-mark — a pedlar's knowledge of the roads.",
+      "_": "Places and terms Anya knows."
+    },
+    "_": "What Anya has come to know — the names and terms recognisable. The soft reads this to decide who can be named; absence means perceived by appearance, and a learned name is appended here."
+  }
+}

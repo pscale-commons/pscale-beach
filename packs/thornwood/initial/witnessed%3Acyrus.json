@@ -1,0 +1,16 @@
+{
+  "name": "witnessed:cyrus",
+  "lock": {
+    "position": "_",
+    "secret_env": "THORN_CYRUS"
+  },
+  "content": {
+    "1": {
+      "1": "cyrus",
+      "2": "*:{{BEACH}}:spatial:thornwood:111",
+      "3": "2026-06-05T18:00:00Z",
+      "_": "Cyrus comes in out of the rain with the road still on him, shakes the wet from his cloak, and takes the room the way he takes every room — exits first, then the company. The broad keeper behind the bar gives him a nod and a name: Bram. He sets his back to a wall, his sword on the settle by custom, and waits to see what kind of house this is."
+    },
+    "_": "Cyrus's account at the Beaten Drum, beat by beat — the private narrative, names as known."
+  }
+}

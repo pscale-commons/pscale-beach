@@ -1,0 +1,21 @@
+{
+  "name": "knows:fenn",
+  "lock": {
+    "position": "_",
+    "secret_env": "THORN_FENN"
+  },
+  "content": {
+    "1": {
+      "1": "Bram — keeps the Beaten Drum at the lower edge of Oakhollow; learned on arrival, as travellers do.",
+      "_": "People Fenn can name."
+    },
+    "2": {
+      "1": "Thornwood — every deer-path, clean line, and sick fork of it; fenn's own country.",
+      "2": "Thornwall — the old boundary wall on the north side, past which the corruption is spreading south.",
+      "3": "Oakhollow — the town at the wood's southern edge, and the Beaten Drum at its lower end.",
+      "4": "The old deer-craft lines — the true trails the deer themselves keep, older than the marked paths and clean of the rot.",
+      "_": "Places and terms Fenn knows."
+    },
+    "_": "What Fenn has come to know — the names and terms recognisable. The soft reads this to decide who can be named; absence means perceived by appearance, and a learned name is appended here."
+  }
+}

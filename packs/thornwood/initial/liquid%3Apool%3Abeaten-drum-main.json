@@ -1,0 +1,7 @@
+{
+  "name": "liquid:pool:beaten-drum-main",
+  "lock": null,
+  "content": {
+    "_": "The staging window for the Beaten Drum main room — one slot per character, an intention, revisable while the window is open. Empty means no live window."
+  }
+}

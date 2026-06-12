@@ -1,0 +1,65 @@
+{
+  "name": "spatial:thornwood",
+  "lock": {
+    "position": "_",
+    "secret_env": "THORN_GM"
+  },
+  "content": {
+    "1": {
+      "1": {
+        "1": {
+          "1": "The hearth — a stone fireplace wide enough to roast in, black with age. The mantel holds a cracked bell and a coil of rope. Its light flickers across the room and throws the corner table into shadow; whoever faces it is dazzled to the dark beyond.",
+          "2": "The bar — dark oak, scarred and ale-polished, eight stools. Behind it: shelved bottles, a rack of cups, a trap to the cellar. Bram stands a half-step up, with a clear view of the whole room and the door.",
+          "3": "The corner table — behind the settle-back, candle-lit, seats four. The settle blocks the sight of the door; whoever sits here sees the hearth and half the room but not who enters until they round the screen.",
+          "4": "The lane door — heavy oak, iron-studded, opens inward on the muddy square. When it opens the cold and the forest-smell come in, the draught reaches the hearth, and heads at the bar turn.",
+          "5": "The common floor — packed earth and board, five tables scattered without order, two or three taken on an ordinary night. The open stretch between bar and hearth is the way through; anyone crossing it is seen from both.",
+          "_": {
+            "1": {
+              "1": "The Beaten Drum's main room. The quarter's only common house. Open to anyone with coin.",
+              "2": "Bram keeps the bar — broad, grey, unhurried, twenty years behind this counter. He makes first contact with strangers, not the patrons. Drawing a blade indoors loses your welcome, and the Drum is the only warmth in the quarter.",
+              "3": {
+                "1": "The figure's stillness is the stillness of listening, not absence.",
+                "_": "The settle-back screens the corner table from the door; Bram seats travellers there who want to go unseen. A hooded figure has held that seat since dusk, nursing one cup."
+              },
+              "_": "What is known in the main room."
+            },
+            "3": "rules:thornwood",
+            "_": "The main room — low oak beams, a wide stone hearth on the long wall, a bar of dark scarred timber down the right side. Five mismatched tables on a floor of packed earth and worn board. The lane door is heavy and studded, in full view of the bar but screened from the corner table by a high settle-back. Tallow lamps hang from the beams; the fire is always lit. It smells of woodsmoke, spilled ale, and wet wool. At the corner table, behind the settle-back, a hooded figure sits unmoving, the hood forward over a cup gone cold. At one of the nearer tables a broad-shouldered man and a travel-worn woman sit with their heads close, talking low."
+          }
+        },
+        "2": {
+          "1": "The range — banked coals, a pot of stew kept warm, a rack of knives within easy reach.",
+          "2": "The back door — opens on the midden and the lane behind; bolted at night.",
+          "_": "The kitchen — behind a curtain at the back of the bar. A range, a long table, hanging bunches of herb and onion. Not public; a stranger pushing through the curtain is noticed at once."
+        },
+        "3": "The loft room — up a ladder-stair from behind the bar, a single low room let to travellers. A pallet, a stool, a shuttered window over the square. The stair creaks; anyone climbing it is heard at the bar.",
+        "_": "The Beaten Drum — the quarter's tavern, a low timber-and-daub building with a sagging slate roof and a faded sign of a split war-drum. Two rooms below, a loft above. Warm, smoke-dark, the first shelter a traveller reaches coming out of Thornwood."
+      },
+      "2": "The smithy — across the square, cold at this hour, the forge banked. Hanlon the smith drinks at the Drum most nights. (Stub — extend by subnest when play moves here.)",
+      "3": "The market stalls — a chandler's and a fishmonger's under a leaking awning, shuttered after dark. (Stub — extend by subnest when play moves here.)",
+      "_": "The market quarter — Oakhollow's lower end, where the Thornwood road meets the town. Mud and cobble, woodsmoke, the smell of the forest close by. A few buildings cluster around a muddy square: the Beaten Drum, a smithy, a covered stall or two. Travellers off the Thornwood road arrive here first."
+    },
+    "2": {
+      "1": {
+        "1": {
+          "1": "The watching has a direction: it comes down from upslope, north, where the trunks stand thickest and blackest. Whatever holds this path in its attention sits that way.",
+          "2": "The bone-charm at the marker behind them was hung within the hour and turned to face inward — not warding this path but turning travellers onto it. Someone meant them to walk here.",
+          "3": "A hand's breadth west of the trail, under the rot, the old deer-craft still runs true: a clean line the corruption has not touched, faint and cold, there for one who can read the ground.",
+          "_": "A deer-trail thinning to nothing underfoot, a few hundred paces in from the charcoal marker. The trees crowd close and the canopy shuts out the sky; the dark is near total. The quiet here has weight — not the absence of sound but the presence of attention. The ground is faintly wrong underfoot, a cold that is not only the night."
+        },
+        "2": {
+          "1": "Off to the east, a few paces through the trees, the watched path runs — and on it tonight, three who are not foresters: the snap of a careful boot, the small sounds of people who do not quite belong to the wood.",
+          "2": "The watching that holds the eastern path does not reach here; this line runs below its attention. To stay on it is to stay unseen.",
+          "_": "A faint trail a little west of the deer-path, so slight it is more the memory of a path than a path — the old deer-craft line, clean ground the corruption has not reached. Cold and quiet, but an honest quiet. The trees stand a little apart here; a careful traveller moves fast and unheard."
+        },
+        "_": "The deer-paths — a web of narrow trails worn through the undergrowth, branching and rejoining, legible to those who know them and a maze to those who do not. The charcoal marker at the wood's edge is where they begin; bone-charms hang at the forks. Some paths run clean; some cross ground the corruption has touched, where the quiet goes wrong and the trees crowd black."
+      },
+      "_": "Thornwood — the old forest north and west of Oakhollow, its edge a half-day from the Beaten Drum. By day a working wood of deer-paths and charcoal clearings; by night its own country, where what moves is not always game. A sickness has worked south and west from past Thornwall on the north side; the deer-paths nearest it are hung with bone-charms to ward the ground. Travellers keep to the marked paths and are off them by dark."
+    },
+    "_": {
+      "_": {
+        "_": "Spatial map of Oakhollow at the edge of Thornwood. Floor 3: top-level positions are pscale 2 (district), their children pscale 1 (buildings), their children pscale 0 (rooms, human scale), and below the floor the fixtures (-1), seats (-2), and held things (-3). A three-digit address lands in a room. Author by subnest (finer detail within a place) and supernest (a coarser layer — the wider region — wrapped above); existing addresses absorb under leading-zero padding."
+      }
+    }
+  }
+}
