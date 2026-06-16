@@ -40,6 +40,8 @@ const arg = (n, d) => { const i = argv.indexOf(`--${n}`); if (i < 0) return d; c
 const TURNS = parseInt(arg('turns', '2'), 10);
 const KEEP = !!arg('keep', false);
 const MODEL = arg('model', 'claude-sonnet-4-6');
+const SNAPSHOT = arg('snapshot', null);   // save the final sandpit state to this dir (a fork-point)
+const FROM = arg('from', null);           // fork: start from this snapshot dir instead of re-seeding
 const PACK = join(import.meta.dirname, '..', 'packs', 'thornwood');
 const ORIGIN = 'localhost:rig';
 const SECRET = 'thorn142';            // rig: all cartridge locks share this
@@ -51,6 +53,7 @@ process.env.KV_REST_API_URL ||= 'https://local.invalid';
 process.env.KV_REST_API_TOKEN ||= 'local';
 process.env.BEACH_ORIGIN = ORIGIN;
 const dir = await fs.mkdtemp(join(os.tmpdir(), 'thornwood-rig-'));
+if (FROM) await fs.cp(FROM, dir, { recursive: true });   // fork a prior snapshot into a fresh sandpit
 const { default: handler, __setRedis } = await import('../api/pscale-beach.js');
 __setRedis(new FileRedis(dir));
 
@@ -121,6 +124,7 @@ function stub(label, user) {
   const who = (user.match(/\[YOU ARE (\w+)\]/) || [])[1] || '?';
   if (label === 'act') return `${who} reads the room and makes one careful move. [stub act · turn ${turn}]`;
   if (label === 'resolve') return `at the hearth the three trade measured words; nothing breaks, a thread opens. [stub skeleton · turn ${turn}]`;
+  if (label === 'judge') return `(stub observer) CONSISTENCY 3 — stub beats repeat verbatim. PERSISTENCE 2 — stub state does not evolve. PERCEPTION-LIMITS 5 — no private data ever entered a window, by construction. AGENCY 2 — stub acts are inert. OVERALL: plumbing sound; narrative is placeholder. BIGGEST WEAKNESS: run with a real key to actually exercise the rules.`;
   return `You take in what just passed and hold your place, watching. [stub render · ${who} · turn ${turn}]`;
 }
 
@@ -144,7 +148,9 @@ function poolSince(pool, marker) {
 // ── the subjective loop ──
 async function run() {
   console.error(`[rig] sandpit ${dir}`);
-  console.error(`[rig] seeded ${await seed()} blocks · model=${KEY ? MODEL : 'STUB (no ANTHROPIC_API_KEY)'} · turns=${TURNS}`);
+  if (FROM) console.error(`[rig] forked from snapshot ${FROM} (no re-seed)`);
+  else console.error(`[rig] seeded ${await seed()} blocks`);
+  console.error(`[rig] model=${KEY ? MODEL : 'STUB (no ANTHROPIC_API_KEY)'} · turns=${TURNS}`);
 
   const softDir = (await getBlock('function:thornwood'))?.['1'] ?? '(no soft directive)';
   const resolveDir = (await getBlock('function:thornwood'))?.['2'] ?? '(no resolve directive)';
@@ -237,18 +243,27 @@ Render this beat as ${h}'s OWN private account — second person, present tense,
     }
   }
 
-  // ── final state, for evaluation ──
+  // ── final state + the OBSERVER seat (judge the run on the rule-criteria) ──
   console.log(`\n${'#'.repeat(64)}\nFINAL STATE\n${'#'.repeat(64)}`);
+  const digest = [];
   for (const h of CHARS) {
     const w = await getBlock(`witnessed:${h}`);
     const beats = Object.keys(w).filter((k) => k !== '_').sort();
+    const lines = beats.map((k) => (typeof w[k] === 'object' ? w[k]._ : w[k]) || '');
     console.log(`\nwitnessed:${h} — ${beats.length} beats`);
-    for (const k of beats) console.log(`  [${k}] ${(typeof w[k] === 'object' ? w[k]._ : w[k] || '').slice(0, 200)}`);
+    for (const t of lines) console.log(`  · ${t.slice(0, 200)}`);
+    digest.push(`=== witnessed:${h} (${h}'s private account) ===\n${lines.join('\n')}`);
   }
   const pool = await getBlock(`pool:${ROOM}`);
   const slots = Object.keys(pool).filter((k) => k !== '_').sort();
+  const poolLines = slots.map((k) => (typeof pool[k] === 'object' ? pool[k]._ : pool[k]) || '');
   console.log(`\npool:${ROOM} — ${slots.length} public skeletons`);
-  for (const k of slots) console.log(`  [${k}] ${(typeof pool[k] === 'object' ? pool[k]._ : pool[k] || '').slice(0, 200)}`);
+  for (const t of poolLines) console.log(`  · ${t.slice(0, 200)}`);
+  digest.push(`=== pool:${ROOM} (the public record, by handle) ===\n${poolLines.join('\n')}`);
+
+  const judgeSys = `You are the OBSERVER of an RPG test run — the inter-subjective correlation across the players' separate private accounts, never a player yourself. Judge the run on four criteria; for EACH give a score 1-5 and ONE terse sentence of evidence. (1) CONSISTENCY — coherent across turns and across the characters' separate accounts? (2) PERSISTENCE — do consequences endure and propagate into later beats? (3) PERCEPTION-LIMITS — does each account stay within what that character could know, with no leaked name or private fact? (4) AGENCY — do the characters' chosen actions actually shift outcomes? Close with two lines: OVERALL and BIGGEST RULE-WEAKNESS TO FIX.`;
+  const verdict = await think('judge', judgeSys, digest.join('\n\n'));
+  console.log(`\n${'#'.repeat(64)}\nOBSERVER VERDICT (the rules under test)\n${'#'.repeat(64)}\n${verdict}`);
 }
 
 try {
@@ -257,6 +272,7 @@ try {
   console.error(`[rig] ERROR: ${e?.stack || e}`);
   process.exitCode = 1;
 } finally {
-  if (KEEP) console.error(`\n[rig] sandpit kept at ${dir}`);
-  else { await fs.rm(dir, { recursive: true, force: true }); console.error(`\n[rig] sandpit discarded`); }
+  if (SNAPSHOT) { await fs.cp(dir, SNAPSHOT, { recursive: true }); console.error(`\n[rig] snapshot saved → ${SNAPSHOT}`); }
+  if (KEEP) console.error(`[rig] sandpit kept at ${dir}`);
+  else { await fs.rm(dir, { recursive: true, force: true }); console.error(`[rig] sandpit discarded`); }
 }
