@@ -25,7 +25,15 @@ export class FileRedis {
     }
   }
 
-  async set(key, val) {
+  async set(key, val, opts) {
+    // NX (set-if-absent) — mirrors Upstash's atomic `SET … NX` used by the
+    // single-resolution claim. The local rig is single-process and sequential,
+    // so access-then-write is effectively atomic here; real concurrency is
+    // Upstash's job in production. EX (TTL) is a no-op in the file shim.
+    if (opts && opts.nx) {
+      try { await fs.access(this._file(key)); return null; } // exists → NX fails
+      catch { /* absent → fall through and set */ }
+    }
     await fs.mkdir(this.dir, { recursive: true });
     await fs.writeFile(this._file(key), JSON.stringify(val));
     return 'OK';

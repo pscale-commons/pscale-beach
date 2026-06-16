@@ -115,6 +115,12 @@ function blockKey(origin, name) { return `${keyNs(origin)}:block:${name}`; }
 function locksKey(origin, name) { return `${keyNs(origin)}:locks:${name}`; }
 function legacyBlockKey(name) { return `${LEGACY_NS}:block:${name}`; }
 function legacyLocksKey(name) { return `${LEGACY_NS}:locks:${name}`; }
+// Window-resolution claim key — the single-resolution lock for the in-loop
+// resolver. Scoped by origin like every other key; keyed by the accumulator
+// block + the window's immutable open-stamp, so each window is claimed at most
+// once (atomic SET-NX in handleStandardWrite's append branch).
+function winresKey(origin, name, window) { return `${keyNs(origin)}:winres:${name}:${window}`; }
+const RESOLVE_CLAIM_TTL = 120; // seconds — auto-releases a crashed resolver's claim
 
 // ── Lock hashing — three salt namespaces matching bsp-mcp src/locks.ts ──
 
@@ -843,7 +849,7 @@ async function handleGrainReach(origin, pairId, body) {
 // ── Standard bsp-mcp write shape (any block) ──
 
 async function handleStandardWrite(origin, blockName, body) {
-  const { spindle = '', content, secret, new_lock, confirm, append } = body || {};
+  const { spindle = '', content, secret, new_lock, confirm, append, resolve_window } = body || {};
 
   // APPEND mode — atomic next-slot allocation with supernest-on-rollover
   // (sunstone:1.63). THE accumulator write: marks, history, pools. The handler
@@ -864,6 +870,26 @@ async function handleStandardWrite(origin, blockName, body) {
     if (hashes['_']) {
       if (!secret || hashByBlockName(origin, blockName, '_', secret) !== hashes['_']) {
         return { status: 403, body: { error: `append to "${blockName}" requires the accumulator secret`, code: 'lock_required' } };
+      }
+    }
+    // ── Single-resolution claim (mutual exclusion the convention can't hold) ──
+    // When this append IS a window's resolution (resolve_window = the window's
+    // immutable open-stamp), exactly ONE resolver may write it. Two LLMs can both
+    // judge a window closed and both move to resolve; "re-read and stand down" is a
+    // semantic instruction with no shared moment, so it races. The store is the one
+    // place that can serialise them — an atomic SET-NX, the lock pattern applied to
+    // a coordination invariant. First claimant wins and appends; the rest get 409
+    // and stand down. The TTL releases a crashed claimant so the window still resolves.
+    if (resolve_window != null && resolve_window !== '') {
+      const claimKey = winresKey(origin, blockName, String(resolve_window));
+      const claimant = (content && typeof content === 'object' && content['1']) || 'anon';
+      const won = await redis.set(claimKey, claimant, { nx: true, ex: RESOLVE_CLAIM_TTL });
+      if (won !== 'OK') {
+        const by = await redis.get(claimKey);
+        return {
+          status: 409,
+          body: { ok: false, code: 'window_already_resolved', window: String(resolve_window), resolved_by: by ?? null },
+        };
       }
     }
     const existing = await loadBlock(origin, blockName);
