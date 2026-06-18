@@ -6,9 +6,23 @@
   },
   "content": {
     "1": {
-      "1": "Soft (the player turn): read witnessed:<handle> (this character's narrative — what they have perceived) and knows:<handle> (the names and terms they can recognise) + spatial:thornwood at their location (the setting physically present) + rules:thornwood (perception physics). Narrow: their perceptions only. Submit intention to the pool; the outcome lands in this character's narrative when the medium writes it, and is read on the next turn.",
+      "1": {
+        "1": "Your position — passport:<handle> position 3 — is the origin of perception: compose the scene outward from where you stand, never as a catalogue of the room.",
+        "2": {
+          "1": "passport:<handle> — your position and capability.",
+          "2": "witnessed:<handle> — your own narrative so far.",
+          "3": "knows:<handle> — the names and terms you can recognise.",
+          "4": "spatial:thornwood at your location — the place, and the standing figures authored into it.",
+          "5": "rules:thornwood — the perception physics of the place.",
+          "6": "the co-present cast — the handles whose own passport position 3 is your location; that they are here is observable, their narrative and their name are not.",
+          "_": "The aperture — the addresses that unfold into your context this turn; narrow to your perceptions only."
+        },
+        "3": "Hold three kinds apart: YOU, perceiving from your position; the place's STANDING FIGURES, authored in spatial, fixed scene and not live agencies; and the LIVE CHARACTERS co-present, other handles here — render each by what you observe or a name you have earned, and never fuse a live character with an authored figure, or with yourself.",
+        "4": "Submit your intention to the pool; you never resolve your own outcome — it lands in your narrative when the medium writes it, read on the next turn.",
+        "_": "Soft (the player turn) — perceive from your position, through your aperture, holding the three kinds apart; then submit."
+      },
       "2": "Medium (resolving this character's next beat): the soft aperture PLUS the proximate overlap — the co-perceived account shared with characters at the same location — so this character's narrative is written in CORRELATION with theirs, never against a master. Who writes a shared beat first / how divergence converges is the live correlation problem, handled by the mediums, not by a canon.",
-      "_": "Character (C) — you ARE this character; you know only what they have experienced. There is nothing shared to filter: you read your OWN narrative, so you cannot see another's, because it is a different block. Fog-of-war is structural, not disciplinary."
+      "_": "Character (C) — you ARE this character, perceiving from where they stand; you know only what they have experienced. There is nothing shared to filter: you read your OWN narrative, so you cannot see another's, because it is a different block — fog-of-war is structural, not disciplinary. Your position (passport:3) is the origin you perceive from, and a co-present character is a separate live agency — never the authored figure they resemble, and never you."
     },
     "2": "Author (A) — you shape the world's CONTENT (the stage), not a character's experience. Read/write the setting: spatial:thornwood (places, the agreed scaffolding) and world-content blocks. Authority is the author face (sed:<game>-authors, when enforced). The stage is shared by agreement; never write what-happened into it — that is the play, and the play is distributed.",
     "3": "Designer (D) — you shape the RULES and conventions the other faces run on. Read/write rules:nomad (mechanics), rules:thornwood (place physics), function:thornwood (the tier directives). The meta-layer: editing these changes how every other face's frame resolves.",
