@@ -1,0 +1,10 @@
+{
+  "name": "purpose:anya",
+  "lock": {
+    "position": "_",
+    "secret_env": "THORN_ANYA"
+  },
+  "content": {
+    "_": "Find who has been leaving the bone-charms on the deer-paths — and get someone here to BELIEVE what you saw in the wood. Open people up; trade a charm or a rumour for what they know; read who goes quiet at the wrong word. Press it — do not sit on it."
+  }
+}

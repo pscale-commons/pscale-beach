@@ -1,0 +1,10 @@
+{
+  "name": "purpose:cyrus",
+  "lock": {
+    "position": "_",
+    "secret_env": "THORN_CYRUS"
+  },
+  "content": {
+    "_": "Learn why the last caravan never reached Thornwood. Press the keeper and any traveller who knows the trade roads; watch who tenses at the question. Decide, by what you find, whether this is a town worth stopping in — and ACT on what you learn, do not merely watch."
+  }
+}
