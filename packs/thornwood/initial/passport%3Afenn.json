@@ -5,7 +5,7 @@
     "secret_env": "THORN_FENN"
   },
   "content": {
-    "1": "Capability (Character Force) — a forester of Thornwood: moves fast and silent under the trees, reads the deer-paths, the ground, and the weather of the wood; tells clean ground from corrupted at a touch; a hunter's eye and ear, a short bow and a woodknife at his belt. Wary in a crowd, poor at a bargain, slow to trust a face. The wood is his ground; out of it he is halved.",
+    "1": "Capability (Character Force) — a forester of Thornwood: moves fast and silent under the trees, reads the deer-paths, the ground, and the weather of the wood; tells clean ground from corrupted at a touch; a hunter's eye and ear, a short bow and a woodknife at his belt. Wary in a crowd, poor at a bargain, slow to trust a face. The wood is his ground; out of it he is halved. His Character Force reads around 8 — competent and seasoned, not a master: near 9 at woodcraft and moving silent under the trees, halved away from the wood, near 4 at a bargain or in a crowd.",
     "2": "Wants — to carry word south of what is coming out of the north, and to find whose hand has been turning the bone-charms to drive travellers onto the sick paths. Underneath: the wood is his, and someone is poisoning it.",
     "3": "Comes in off the Thornwood road to the Beaten Drum's main room, the wood still on him. Location: *:{{BEACH}}:spatial:thornwood:111",
     "_": "Fenn — a forester of Thornwood, born to the deer-paths, more at home under the trees than under any roof. Lean, weather-cut, moves the way the wood moves. Speaks little, watches much; trusts the ground before he trusts a face."
