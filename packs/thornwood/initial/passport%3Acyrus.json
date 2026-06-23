@@ -5,7 +5,7 @@
     "secret_env": "THORN_CYRUS"
   },
   "content": {
-    "1": "Capability (Character Force) — strong and quick with the worn arming-sword at his hip; a guard's eye for who is armed and who is lying; hard to rattle. Less able with soft words, locks, or letters. Carries the sword, a dented mail shirt rolled in his pack, and a guard's wariness.",
+    "1": "Capability (Character Force) — strong and quick with the worn arming-sword at his hip; a guard's eye for who is armed and who is lying; hard to rattle. Less able with soft words, locks, or letters. Carries the sword, a dented mail shirt rolled in his pack, and a guard's wariness. His Character Force reads around 8 — competent and seasoned, not a master: near 9 with the sword and a threat-read, near 4 with soft words, locks, or letters.",
     "2": "Wants — paid work he can respect, and to learn why the last caravan never reached Thornwood. Underneath: somewhere worth stopping.",
     "3": "Begins in the main room of the Beaten Drum, hale and dry, shaking the rain off by the door. Location: *:{{BEACH}}:spatial:thornwood:111",
     "_": "Cyrus — a caravan guard turned wanderer, a season out of work and a day out of Thornwood. Broad-shouldered, watchful, slow to warm. Reads a room for its exits and its threats before its company."
