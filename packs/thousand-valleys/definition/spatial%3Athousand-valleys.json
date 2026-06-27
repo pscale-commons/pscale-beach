@@ -1,0 +1,40 @@
+{
+ "name": "spatial:thousand-valleys",
+ "lock": {
+  "position": "_",
+  "secret_env": "VALLEYS_GM"
+ },
+ "content": {
+  "1": {
+   "1": {
+    "_": "A wide stone hearth dominates the near wall, its mantel carved with old counting-marks for cattle, and a pot of something thin and grey simmers untended above coals that never seem to go fully out."
+   },
+   "2": {
+    "_": "A long trestle table runs the length of the hall, its surface scarred by generations of hobnails and knife-points, covered tonight in maps weighted at their corners by stones and empty cups."
+   },
+   "3": {
+    "_": "Maret Coll, the hall-keeper, stands near the door with her arms folded and a tally-stick held like a weapon, her eyes moving to every face that enters and holding a moment too long on strangers."
+   },
+   "_": "The Drover's Common stands at the settlement's heart, a low-ceilinged hall of blackened timber where newcomers are brought to the hearth and questioned before they are fed."
+  },
+  "2": {
+   "_": "The stock-pens on the eastern edge of the settlement are half-empty at a season when they should be full, the mud inside churned by animals that departed without explanation, the gate-latch found open three mornings running."
+  },
+  "3": {
+   "_": "Old Pell's counting-house is a single room of dressed stone that also serves as the settlement's memory, its shelves holding ledgers of every beast bought, sold, or tallied on the drove-roads for sixty years."
+  },
+  "4": {
+   "_": "The Far-ridge Path begins at the settlement's western boundary where the last house ends and the snow starts unmarked, a narrow drove-road that climbs toward the high pass and the places from which the lights have been seen."
+  },
+  "5": {
+   "_": "The healing-woman Sanna keeps her cottage pressed against the north slope, its bundles of dried sedge and lungwort hanging in the doorway and a second low door at the back that opens toward no track anyone will explain."
+  },
+  "6": {
+   "_": "The gather-stone at the crossroads of the three largest drove-roads is a flat-topped boulder used for markets and disputes, and someone has recently scratched new marks into its upper face alongside the old ones, in a hand no one in the settlement claims."
+  },
+  "7": {
+   "_": "A grain-store at the settlement's southern end is also where the man called Dav has been sleeping since he arrived a fortnight ago with a lame horse and no livestock and a story that shifted twice in the telling."
+  },
+  "_": "Thousand-valleys sits where nine drove-roads converge on a shelf of land above the treeline, its slate rooftops muffled under early snow while the valleys below swallow sound and the ridges above hold unexplained lights after dark."
+ }
+}
