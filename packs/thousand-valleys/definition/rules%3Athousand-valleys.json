@@ -1,0 +1,22 @@
+{
+ "name": "rules:thousand-valleys",
+ "lock": {
+  "position": "_",
+  "secret_env": "VALLEYS_GM"
+ },
+ "content": {
+  "1": {
+   "1": "Blades may be worn but not drawn. Drovers and travellers who mean to stay set their weapons on the settle by the door — on the drove-roads a sheathed blade is the mark of someone come to trade, not to take.",
+   "2": "Strangers are brought to the hearth and answer for themselves before they are fed; the Common lives off the drove-roads, and one who will not give an account of their business is watched, not yet trusted.",
+   "_": "The Drover's Common — Maret Coll's hall, Maret Coll's floor. The settlement's one warm room is also its threshold: newcomers are received at the hearth and questioned before the hall opens to them. Maret Coll makes first contact with strangers, not the drovers at the long table; a hand raised or a blade drawn indoors is a grave breach, and she can and does put a body out into the snow."
+  },
+  "2": "The settlement's open ground — the crossroads where the drove-roads meet, the half-empty stock-pens, the shuttered stalls — governed by custom and the nearness of the high country. After dark the ways between the slate roofs are unlit and the snow deadens sound; what shows its lights on the ridges at night is its own matter. Stock and goods left in the pens or on the stalls are not taken — the settlement is small enough that theft has a price worse than the gain; yet this season the pens empty anyway, the gate-latch found open with no hand laid on it.",
+  "3": "The high country above the settlement — the Far-ridge Path, the closing passes, the snowfields and the ridges where the lights are seen. By day, on a marked drove-road, it is hard but ordinary going. By night, off the marked ways, or above the snowline, it turns against those who do not belong to it: a traveller without the drove-craft takes +2 to the difficulty of any act of movement, stealth, tracking, or perception in the high country, and the unmarked snow and the closing passes raise it further still. Those bred to the droving — herders, those who read the ground and the weather — are exempt; the high country is their ground, and lends to them what it denies others. NOMAD's numbers (rules:nomad) apply on top of this baseline. A party that wins back to a marked road, or to daylight and shelter, sheds the penalty.",
+  "_": {
+   "1": "Perception — sight needs line of sight and light; the long trestle table and its weighted maps screen the hall's far end from the door, and the hearth's glare blinds those facing it to the cold dark beyond the threshold. Sound carries but muffled: talk at the table's far end is private unless raised, and the snow outside swallows what the timber does not. Draught and smell cross the room: the opening door carries cold and the smell of snow to the hearth, and a new scent — wet wool, blood, tallow — is caught by anyone near.",
+   "2": "Conflict — the medium judges from character capability (Character Force, read from the passport, not invented), position (the one nearest the door reaches it first), and physical reality. Direct contact or immediate threat — a drawn blade, a grabbed arm, a blocked doorway — forces a resolution now; indirect acts — a word, a glance, an entrance — accumulate as events. Dice (rules:nomad) resolve the genuinely uncertain; they never make the impossible happen.",
+   "3": "Pacing — characters acting at different speeds coexist; the quick produce more events, the slow take them in on their next commit. The timing of a commit is a move in itself.",
+   "_": "Rules constraining action in and around Thousand Valleys. Perception is physical: sight needs line of sight and light, sound carries through timber and stone but muffled by snow, smell and draught cross open space, touch is immediate. Conflict resolves by honest narrative judgment — competence, position, and physical reality decide outcomes; NOMAD's numbers (rules:nomad) sharpen contested moments but never override what would plainly happen. One contribution covers one natural beat — seconds in a scuffle, a minute in talk, longer on the road. No turns, no initiative: when you commit is itself a choice — early to shape events, late to know them."
+  }
+ }
+}

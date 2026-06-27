@@ -1,0 +1,16 @@
+{
+ "name": "knows:orvel",
+ "content": {
+  "1": {
+   "1": "Maret Coll — hall-keeper; Orvel's clients named her as the person who would confirm the delivery; he needs her account of what happened at the stock-pens.",
+   "2": "Dav — Orvel heard this name on the road before arriving; he does not yet know Dav is sleeping in the grain-store, only that someone by that name was present when the animals went.",
+   "_": "People orvel can name."
+  },
+  "2": {
+   "1": "The stock-pens — his destination before he came to the hall; he walked past them on arrival and saw the churned mud and the open gate-latch and said nothing to anyone.",
+   "2": "Old Pell's counting-house — his clients mentioned sixty years of drove-road ledgers; he intends to examine the records of the herd he was meant to receive.",
+   "_": "Places and terms orvel knows."
+  },
+  "_": "What orvel has come to know — names recognised; absence means perceived by appearance."
+ }
+}
