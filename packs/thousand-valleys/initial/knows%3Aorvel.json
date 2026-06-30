@@ -12,5 +12,9 @@
    "_": "Places and terms orvel knows."
   },
   "_": "What orvel has come to know — names recognised; absence means perceived by appearance."
+ },
+ "lock": {
+  "position": "_",
+  "secret_env": "TV_ORVEL"
  }
 }

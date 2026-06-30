@@ -17,5 +17,9 @@
    "_": "Manifest of tessavar's blocks."
   },
   "_": "tessavar's character shell at thousand-valleys."
+ },
+ "lock": {
+  "position": "_",
+  "secret_env": "TV_TESSAVAR"
  }
 }

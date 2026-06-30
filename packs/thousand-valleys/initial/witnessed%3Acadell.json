@@ -8,5 +8,9 @@
    "_": "Cadell comes in off the cold road with his spear cased and his shield slung, and sets them on the settle by the door as the custom asks. He takes the warm hall's measure — the keeper watching from the door, the folk bent over maps at the long table — the way he takes any room: where the ways out are, who carries iron, who is afraid. Then he goes looking for the one who pays for trouble."
   },
   "_": "cadell's account at Thousand Valleys, beat by beat."
+ },
+ "lock": {
+  "position": "_",
+  "secret_env": "TV_CADELL"
  }
 }

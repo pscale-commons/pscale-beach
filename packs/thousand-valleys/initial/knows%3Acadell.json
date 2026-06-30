@@ -11,5 +11,9 @@
    "2": "The stock-pens — talk on the road said this settlement's beasts are vanishing; the kind of trouble that has coin behind it."
   },
   "_": "What cadell has come to know — names recognised; absence means perceived by appearance."
+ },
+ "lock": {
+  "position": "_",
+  "secret_env": "TV_CADELL"
  }
 }

@@ -2,5 +2,9 @@
  "name": "purpose:sable",
  "content": {
   "_": "She will request the use of Old Pell's counting-house to compare the new marks on the gather-stone against sixty years of recorded symbols in the drove-road ledgers, and she will resist any attempt to have her interpret the marks publicly before she is ready."
+ },
+ "lock": {
+  "position": "_",
+  "secret_env": "TV_SABLE"
  }
 }

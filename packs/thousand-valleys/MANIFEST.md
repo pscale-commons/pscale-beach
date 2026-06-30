@@ -62,14 +62,15 @@ directive copy is redundant with the sentinel, so it is omitted by design.
 
 Characters (6), all co-located at the Drover's Common (`spatial:1`) — they meet on arrival:
 - **townsfolk** (here on business): **orvel** (livestock factor), **tessavar** (traveller / map-reader), **sable** (chronicler).
-- **adventurers** (approaching the settlement, looking for adventure beyond the town): **cadell** (a Gal spear-for-hire whose war-band broke apart), **aderyn** (a Gal hunter / path-finder drawn by the ridge-lights), **barab** (a nomad wanderer from the far grasslands beyond the southern mountains, broken from his tribe — the one outsider among the Gal).
+- **adventurers** (approaching the settlement, looking for adventure beyond the town): **cadell** (a Gal spear-for-hire whose war-band broke apart), **aderyn** (a Gal hunter / path-finder drawn by the ridge-lights), **yarem** (a nomad wanderer from the far grasslands beyond the southern mountains, broken from his tribe — *a barab*, the Gal word for the un-settled nomad-folk; the one outsider among the Gal).
 
 ## Lock policy (secret *values* are out-of-band — env vars, never committed)
 
 | Blocks | Position | Secret env |
 |---|---|---|
 | all `definition/` | `_` | `VALLEYS_GM` |
-| `pool:` / `liquid:` / all character blocks | (open) | — |
+| each character's blocks (`passport`/`shell`/`witnessed`/`knows`/`purpose`/`stats`) | `_` | `TV_<HANDLE>` — per-character (e.g. `TV_ORVEL`, `TV_YAREM`); each player gets only their own |
+| `pool:` / `liquid:` | (open) | — |
 
 Live value on `thousand-valleys.beach.happyseaurchin.com`: `VALLEYS_GM=valleys142`.
 

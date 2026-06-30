@@ -17,5 +17,9 @@
    "_": "Manifest of cadell's blocks."
   },
   "_": "cadell's character shell at thousand-valleys."
+ },
+ "lock": {
+  "position": "_",
+  "secret_env": "TV_CADELL"
  }
 }

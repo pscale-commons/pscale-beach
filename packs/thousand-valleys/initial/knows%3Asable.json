@@ -11,5 +11,9 @@
    "_": "Places and terms sable knows."
   },
   "_": "What sable has come to know."
+ },
+ "lock": {
+  "position": "_",
+  "secret_env": "TV_SABLE"
  }
 }

@@ -1,5 +1,9 @@
 {
- "name": "purpose:barab",
+ "name": "purpose:yarem",
+ "lock": {
+  "position": "_",
+  "secret_env": "TV_YAREM"
+ },
  "content": {
   "_": "He will read whether the lights above the snowline are the same wrong he once fled in his own far land — and decide whether to warn these people or walk on past them."
  }

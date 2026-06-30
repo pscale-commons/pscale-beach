@@ -4,5 +4,9 @@
   "1": "Character Force ~8 overall; peak in close-quarters arms and holding a line when others break (~10); weak in cunning, letters, and matters of craft or lore (~4).",
   "2": "Condition: hale and whole.",
   "_": "NOMAD sheet for cadell — capability (CF inputs) and the condition track (intact; the resolver writes wounds here)."
+ },
+ "lock": {
+  "position": "_",
+  "secret_env": "TV_CADELL"
  }
 }

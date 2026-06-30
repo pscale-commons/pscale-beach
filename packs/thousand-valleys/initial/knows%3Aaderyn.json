@@ -11,5 +11,9 @@
    "2": "The snowline and the deer-paths — her country; she knows the wild turns against those who do not belong to it, and that lately something has made it worse."
   },
   "_": "What aderyn has come to know — names recognised; absence means perceived by appearance."
+ },
+ "lock": {
+  "position": "_",
+  "secret_env": "TV_ADERYN"
  }
 }

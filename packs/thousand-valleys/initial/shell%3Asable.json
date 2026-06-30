@@ -17,5 +17,9 @@
    "_": "Manifest of sable's blocks."
   },
   "_": "sable's character shell at thousand-valleys."
+ },
+ "lock": {
+  "position": "_",
+  "secret_env": "TV_SABLE"
  }
 }

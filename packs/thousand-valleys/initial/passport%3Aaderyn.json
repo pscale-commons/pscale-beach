@@ -5,5 +5,9 @@
   "2": "She wants to know what is making the lights above the snowline and turning the high ground wrong — and to be the one who walks where others will not, where her craft is worth something.",
   "3": "Aderyn comes in last out of the dusk, hood back and the cold still on her, and stands near the door rather than the fire — a half-step from the way out. Location: *:{{BEACH}}:spatial:thousand-valleys:1",
   "_": "Aderyn is a hunter and path-finder of the high Gal country, who follows the deer and the weather rather than the drove-roads, drawn to this settlement by the strange lights seen above the snowline."
+ },
+ "lock": {
+  "position": "_",
+  "secret_env": "TV_ADERYN"
  }
 }
