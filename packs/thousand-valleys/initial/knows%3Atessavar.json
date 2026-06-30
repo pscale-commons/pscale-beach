@@ -11,5 +11,9 @@
    "_": "Places and terms tessavar knows."
   },
   "_": "What tessavar has come to know."
+ },
+ "lock": {
+  "position": "_",
+  "secret_env": "TV_TESSAVAR"
  }
 }

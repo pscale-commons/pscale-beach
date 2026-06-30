@@ -17,5 +17,9 @@
    "_": "Manifest of orvel's blocks."
   },
   "_": "orvel's character shell at thousand-valleys."
+ },
+ "lock": {
+  "position": "_",
+  "secret_env": "TV_ORVEL"
  }
 }

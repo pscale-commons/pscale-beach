@@ -5,5 +5,9 @@
   "2": "He wants to account for the missing animals so he can report to his clients without ruin — and beneath that, he wants someone else to bear the blame if the accounting comes up short.",
   "3": "Orvel has positioned himself near the hearth where the thin grey pot simmers, close enough to the warmth that standing there looks like comfort rather than strategy, his hands loose at his sides and his face arranged into the expression of a man with nowhere particular to be. Location: *:{{BEACH}}:spatial:thousand-valleys:1",
   "_": "Orvel is a livestock factor who buys and moves animals along the drove-roads on behalf of distant clients, arriving in Thousand-valleys to take delivery of a herd that is no longer in the pens."
+ },
+ "lock": {
+  "position": "_",
+  "secret_env": "TV_ORVEL"
  }
 }

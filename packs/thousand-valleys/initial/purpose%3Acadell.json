@@ -1,0 +1,10 @@
+{
+ "name": "purpose:cadell",
+ "content": {
+  "_": "He will find who in this settlement pays for hard work taken off the drove-roads — Maret Coll, by the talk — and take the worst of it, to prove his spear still earns its keep."
+ },
+ "lock": {
+  "position": "_",
+  "secret_env": "TV_CADELL"
+ }
+}

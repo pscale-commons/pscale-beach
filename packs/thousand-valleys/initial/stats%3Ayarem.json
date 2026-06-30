@@ -1,0 +1,12 @@
+{
+ "name": "stats:yarem",
+ "lock": {
+  "position": "_",
+  "secret_env": "TV_YAREM"
+ },
+ "content": {
+  "1": "Character Force ~8 overall; peak in reading sky, weather, and the signs others miss, and in enduring hardship and distance (~9); weak in the customs, names, and easy trust of this Gal country, where he is a stranger — a barab — trusted slowly (~4).",
+  "2": "Condition: hale and whole.",
+  "_": "NOMAD sheet for yarem — capability (CF inputs) and the condition track (intact; the resolver writes wounds here)."
+ }
+}

@@ -1,0 +1,18 @@
+{
+ "name": "knows:yarem",
+ "lock": {
+  "position": "_",
+  "secret_env": "TV_YAREM"
+ },
+ "content": {
+  "1": {
+   "_": "People yarem can name."
+  },
+  "2": {
+   "1": "The high cold and the snowline — he knows this country and this cold from his own far land, and the lights remind him of something he fled.",
+   "2": "The southern mountains — the pass he came through to reach this place; the way back, if there is anything left to go back to.",
+   "_": "Places and terms yarem knows."
+  },
+  "_": "What yarem has come to know — names recognised; absence means perceived by appearance."
+ }
+}

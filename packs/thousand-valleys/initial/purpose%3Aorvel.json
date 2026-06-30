@@ -2,5 +2,9 @@
  "name": "purpose:orvel",
  "content": {
   "_": "He will work the room at the Drover's Common — starting with Maret Coll — to establish who last saw the animals in the stock-pens and when, and to quietly locate the man called Dav before anyone thinks to mention Dav to him first."
+ },
+ "lock": {
+  "position": "_",
+  "secret_env": "TV_ORVEL"
  }
 }

@@ -8,5 +8,9 @@
    "_": "Orvel has positioned himself near the hearth where the thin grey pot simmers, close enough to the warmth that standing there looks like comfort rather than strategy, his hands loose at his sides and his face arranged into the expression of a man with nowhere particular to be. He has already counted the people in the hall and noted which of the maps on the trestle table shows the eastern edge of the settlement. Maret Coll has not yet come to him, and he is letting her take her time."
   },
   "_": "orvel's account at Thousand Valleys, beat by beat."
+ },
+ "lock": {
+  "position": "_",
+  "secret_env": "TV_ORVEL"
  }
 }

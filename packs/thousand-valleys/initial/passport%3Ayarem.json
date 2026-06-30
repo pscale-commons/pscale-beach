@@ -1,0 +1,13 @@
+{
+ "name": "passport:yarem",
+ "lock": {
+  "position": "_",
+  "secret_env": "TV_YAREM"
+ },
+ "content": {
+  "1": "Character Force ~8 overall; peak in reading sky, weather, and the signs others miss, and in enduring hardship and distance (~9); weak in the customs, names, and easy trust of this Gal country, where he is a stranger — a barab — trusted slowly (~4).",
+  "2": "He wants a sign that his long walk has an end here — and, under that, to belong somewhere again, now his tribe has cast him out and the road has run cold.",
+  "3": "Yarem pauses at the threshold to be seen before he enters, as is right among his people — a lean, weathered stranger in road-worn hides, his skin and his manner not of this country. Location: *:{{BEACH}}:spatial:thousand-valleys:1",
+  "_": "Yarem is a wanderer from the far dry grasslands beyond the southern mountains — a barab, as the Gal name the un-settled nomad-folk — broken from his tribe and walking north until the cold stopped him; a reader of sky, weather, and omen among people who have never seen his like."
+ }
+}

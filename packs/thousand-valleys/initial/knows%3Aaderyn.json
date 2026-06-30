@@ -1,0 +1,19 @@
+{
+ "name": "knows:aderyn",
+ "content": {
+  "1": {
+   "_": "People aderyn can name.",
+   "1": "Sanna — the healing-woman who keeps to the north slope; hunters trade her dried herbs, and Aderyn means to ask what she has seen come down off the high ground."
+  },
+  "2": {
+   "_": "Places and terms aderyn knows.",
+   "1": "The Far-ridge Path — the drove-road that climbs to the high pass where the lights have been seen; her road, if she takes it.",
+   "2": "The snowline and the deer-paths — her country; she knows the wild turns against those who do not belong to it, and that lately something has made it worse."
+  },
+  "_": "What aderyn has come to know — names recognised; absence means perceived by appearance."
+ },
+ "lock": {
+  "position": "_",
+  "secret_env": "TV_ADERYN"
+ }
+}

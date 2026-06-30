@@ -1,0 +1,10 @@
+{
+ "name": "purpose:aderyn",
+ "content": {
+  "_": "She will learn what folk here know of the ridge-lights and the sick ground, then take the Far-ridge Path up to see for herself what the herders have come down afraid of."
+ },
+ "lock": {
+  "position": "_",
+  "secret_env": "TV_ADERYN"
+ }
+}
