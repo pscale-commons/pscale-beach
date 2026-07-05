@@ -1,0 +1,24 @@
+{
+ "name": "knows:maren",
+ "lock": {
+  "position": "_",
+  "secret_env": "THORN_MAREN"
+ },
+ "content": {
+  "1": {
+   "1": "She binds and hangs them herself along the deer-paths — small knots of bird-bone and red thread. To the frightened they read as a curse; she means them as markers and as wards, and as a way to tell who is only passing through from who will stop and look.",
+   "2": "Each charm marks where a path has gone wrong — a stretch where sound falls dead and a walker loses the way, or a place the missing were last on solid ground.",
+   "_": "The bone-charms are hers."
+  },
+  "2": {
+   "1": "People and beasts have been going from the deer-paths, not the road — quietly, without a struggle, more of them since the turn of the season. The caravan that never reached Thornwood did not take the road; something turned it onto the paths.",
+   "2": "She holds more of the why than she will give a stranger at once — that part she gives only to those who walk out with her and see.",
+   "_": "The disappearances and the caravan."
+  },
+  "3": {
+   "1": "To any who ask her plainly about the charms or the missing, and mean it, she offers to take them up the nearest marked path at first light and show them what she has found.",
+   "_": "The hook she offers."
+  },
+  "_": "What Maren knows — the thread she holds for whoever comes asking."
+ }
+}

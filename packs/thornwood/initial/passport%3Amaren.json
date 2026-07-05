@@ -1,0 +1,13 @@
+{
+ "name": "passport:maren",
+ "lock": {
+  "position": "_",
+  "secret_env": "THORN_MAREN"
+ },
+ "content": {
+  "1": "Capability (Character Force) — she reads people and the wood better than anyone in this room, and knows the old signs, the deer-paths, and what has been going missing along them. No fighter (near 4 with arms), but hard to unsettle and harder to fool. Character Force around 6 overall, near 9 for the lore of the wood and the charms.",
+  "2": "Wants — to be sought out, not exposed; to find which of these newcomers will walk the deer-paths and see for themselves rather than drink and forget. The bone-charms are her markers and her test, and she is waiting for the one who asks the right question and means it.",
+  "3": "Sits alone at the corner table behind the settle-back, a guttering candle and no cup before her, hood up and her face in the shadow the hearth throws long past the screen; she watches the room she can see and the door she cannot, and says nothing until she is spoken to. Location: *:{{BEACH}}:spatial:thornwood:111",
+  "_": "Maren — a hooded woman come down off the Thornwood deer-paths to sit the corner of the Beaten Drum. Older than her voice, unhurried, watchful; she says little and marks much. It is she who has been binding the bone-charms onto the paths that others are only now finding and fearing."
+ }
+}
