@@ -848,6 +848,37 @@ async function handleGrainReach(origin, pairId, body) {
 
 // ── Standard bsp-mcp write shape (any block) ──
 
+// Serialise appends per accumulator. load→appendWithSupernest→save is a
+// read-modify-write: two serverless invocations that interleave it both read
+// the same block, allocate the same slot, and the later save erases the
+// earlier append (observed live 2026-07-07: six parallel appends, five told
+// "slot 6", four beats lost). SET-NX with TTL is the same primitive as the
+// single-resolution claim; the TTL releases a crashed claimant. The file-shim
+// rig implements nx (single-process, so the lock is trivially uncontended).
+const APPEND_LOCK_TTL = 5;    // seconds — bounds the stall of a crashed holder
+const APPEND_LOCK_TRIES = 40; // × ~25-75ms jitter ≈ 2s worst-case wait
+
+function appendLockKey(origin, name) { return `${keyNs(origin)}:appendlock:${name}`; }
+
+async function withAppendLock(origin, blockName, fn) {
+  const lockKey = appendLockKey(origin, blockName);
+  const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  for (let i = 0; i < APPEND_LOCK_TRIES; i++) {
+    const won = await redis.set(lockKey, token, { nx: true, ex: APPEND_LOCK_TTL });
+    if (won === 'OK') {
+      try {
+        return { done: await fn() };
+      } finally {
+        // Release only our own claim: if the TTL expired mid-append and a
+        // successor holds the lock, leave theirs standing.
+        if ((await redis.get(lockKey)) === token) await redis.del(lockKey);
+      }
+    }
+    await new Promise((r) => setTimeout(r, 25 + Math.floor(Math.random() * 50)));
+  }
+  return null; // contention exhausted — caller answers 503, client may retry
+}
+
 async function handleStandardWrite(origin, blockName, body) {
   const { spindle = '', content, secret, new_lock, confirm, append, resolve_window } = body || {};
 
@@ -892,11 +923,18 @@ async function handleStandardWrite(origin, blockName, body) {
         };
       }
     }
-    const existing = await loadBlock(origin, blockName);
-    const r = appendWithSupernest(blockName, origin, existing, content);
-    let block = r.block;
-    if (blockName === 'presence') block = sweepStalePresence(block);
-    await saveBlock(origin, blockName, block);
+    const locked = await withAppendLock(origin, blockName, async () => {
+      const existing = await loadBlock(origin, blockName);
+      const r = appendWithSupernest(blockName, origin, existing, content);
+      let block = r.block;
+      if (blockName === 'presence') block = sweepStalePresence(block);
+      await saveBlock(origin, blockName, block);
+      return r;
+    });
+    if (!locked) {
+      return { status: 503, body: { error: 'append contention — retry', code: 'append_contention' } };
+    }
+    const r = locked.done;
     return { status: 200, body: { ok: true, slot: r.slot, supernested: r.supernested, floor: r.floor } };
   }
 
