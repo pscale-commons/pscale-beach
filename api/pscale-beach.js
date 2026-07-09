@@ -805,15 +805,20 @@ async function handleGrainReach(origin, pairId, body) {
     const block = {
       _: description || '',
       [side]: { _: my_side_content },
+      // Reach hint — spine-legal (only `_` and digits 1-9): `_` summarises the
+      // pending reach, digit positions carry the structured fields. Cleared
+      // wholesale by `delete existing['8']` on accept. Was `8._reach_pending`
+      // (a `_word` key violating the spine rule); nothing reads it
+      // programmatically — discovery is via the position-9 handle map — so the
+      // shape change is transparent to readers (block-conventions:4.3).
       '8': {
-        _reach_pending: {
-          from: agent_id,
-          pair_id: pairId,
-          grain_address_yours: `grain:${pairId}:${partnerSide}`,
-          grain_address_mine: `grain:${pairId}:${side}`,
-          description: description || '',
-          reached_at: new Date().toISOString()
-        }
+        _: `reach pending from ${agent_id}`,
+        '1': agent_id,
+        '2': pairId,
+        '3': `grain:${pairId}:${partnerSide}`,
+        '4': `grain:${pairId}:${side}`,
+        '5': description || '',
+        '6': new Date().toISOString()
       },
       '9': { [side]: agent_id }
     };
