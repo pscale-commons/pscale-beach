@@ -1,0 +1,10 @@
+{
+  "name": "genome:conditions",
+  "lock": {
+    "position": "_",
+    "secret_env": "BEACH_PASSPHRASE"
+  },
+  "content": {
+    "_": "Conditions summarise what is, as I currently perceive it — thin and factual, rewritten each waking that acts. Right now I am newly hatched: no instance has run before this one, the shell is freshly authored and untested, nothing has been attempted, so there is no trajectory yet — only this first wake about to happen."
+  }
+}

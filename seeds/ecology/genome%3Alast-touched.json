@@ -1,0 +1,10 @@
+{
+  "name": "genome:last-touched",
+  "lock": {
+    "position": "_",
+    "secret_env": "BEACH_PASSPHRASE"
+  },
+  "content": {
+    "_": "Last-touched — when each periodic concern last fired, epoch seconds, at the same purpose-branch address as its period in cadence. The kernel stamps this on a fold; it is never authored, never read into the window, never reasoned about. A concern absent here has not fired — admit it on the next wake (phase is infinite)."
+  }
+}

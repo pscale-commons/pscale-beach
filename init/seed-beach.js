@@ -111,6 +111,25 @@ function loadConfig(name) {
   return JSON.parse(raw);
 }
 
+// Ecology seeds — pack-shaped files ({name, lock, content}) with URL-encoded
+// filenames (colons in block names). These carry the WHOLE ecology so a fresh
+// beach supports agent-hatching, the worktable practice, and the ticket
+// stances from day one: genome:* (fourteen shell blocks + three purposes +
+// the hatch convention), method:worktable, ways:genus, ways:tickets.
+// Locked at "_" under the operator passphrase like the library — the beach's
+// canon copy, operator-curated; hatched INSTANCES get their own ten-lock
+// sovereignty per genome:hatch branch 2.
+function listEcology() {
+  let files;
+  try { files = readdirSync(resolve(SEEDS_DIR, 'ecology')); } catch { return []; }
+  return files.filter(f => f.endsWith('.json')).map(f => decodeURIComponent(f.slice(0, -5))).sort();
+}
+
+function loadEcology(name) {
+  const path = resolve(SEEDS_DIR, 'ecology', `${encodeURIComponent(name)}.json`);
+  return JSON.parse(readFileSync(path, 'utf8'));
+}
+
 // ── Lighthouse compilation ──
 //
 // Walk the underscore ladder to its substantive text (recurses _._) per
@@ -241,6 +260,22 @@ async function main() {
       spindle: '', content, confirm: true, new_lock: passphrase
     });
     console.log(`  ✓ library: ${name}`);
+  }
+
+  // Ecology — genome + hatch + worktable method + ways conventions, so the
+  // beach supports hatching, the worktable practice, and the ticket stances
+  // with no maintainer. ECOLOGY_SUBSET=none skips (a minimal library-only
+  // beach); default seeds all of seeds/ecology/.
+  const ecologySpec = process.env.ECOLOGY_SUBSET;
+  const ecologySubset = (!ecologySpec || ecologySpec === 'all') ? listEcology()
+    : ecologySpec === 'none' ? []
+    : ecologySpec.split(',').map(s => s.trim()).filter(Boolean);
+  for (const name of ecologySubset) {
+    const seed = loadEcology(name);
+    await postBeach(beachUrl, seed.name, {
+      spindle: '', content: seed.content, confirm: true, new_lock: passphrase
+    });
+    console.log(`  ✓ ecology: ${seed.name}`);
   }
 
   // Operational config — tide (mark-wipe schedule) and settings (xstream

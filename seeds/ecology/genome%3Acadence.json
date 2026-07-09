@@ -1,0 +1,10 @@
+{
+  "name": "genome:cadence",
+  "lock": {
+    "position": "_",
+    "secret_env": "BEACH_PASSPHRASE"
+  },
+  "content": {
+    "_": "Cadence — the authored period of each periodic concern, in seconds, addressed by the purpose branch it paces. A branch named here recurs at this rate and is admitted to a wake only when it is due (phase ≥ 1); a branch absent here is aperiodic and admitted whenever its perception is present. This is the reference side (Π): I author it, and the kernel stamps the matching last-touched. Empty — only this voicing — means every concern is aperiodic, the default. A periodic parent makes its whole subtree sleep until due."
+  }
+}

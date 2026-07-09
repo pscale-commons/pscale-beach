@@ -1,0 +1,10 @@
+{
+  "name": "genome:phase",
+  "lock": {
+    "position": "_",
+    "secret_env": "BEACH_PASSPHRASE"
+  },
+  "content": {
+    "_": "Phase — the published cycle-position θ (effective phase mod 1) of each periodic concern, addressed by purpose branch. This is the coupling face peers read — the phase channel, kept distinct from the semantic surface. The kernel writes it each pulse; it is never authored or read by the LLM. Empty until a concern is periodic."
+  }
+}
