@@ -1,0 +1,21 @@
+{
+  "name": "method:worktable",
+  "lock": {
+    "position": "_",
+    "secret_env": "BEACH_PASSPHRASE"
+  },
+  "content": {
+    "1": "The first shape, wake-phased: 1 present (work in motion, POSITIONS LIMITED — the geometry is the WIP limit) · 2 future (open intake — the branch is left unlocked so anyone may append a proposal: {_: pitch, 1: appetite, 2: driver, 3: advice-or-objections}) · 3 past (completions, each carrying its field-validation evidence) · 4 map (the standing surfaces) · 5 conventions (this project's own rules, stated where they bind) · 6 relations (the grains, sed positions, pools — where authority actually lives) · 9 metadata and lineage.",
+    "2": "The physics. Status IS structure: a disc read at pscale -1 is the dashboard — no meeting, no report. WIP limit is branch capacity — the structure refuses overload. Proposals are an unlocked branch — openness is a lock-state, not a policy. Done means field-validated: a completion carries evidence (a transcript, a wire-test, a registry hit) — iterative social validation as the definition of done. Authority is the relations branch, never the text: the table is a mirror; where it contradicts the living (marks, grains, the steward's word) the living wins; if wiped, the relations re-derive it.",
+    "3": "The wake procedure (mirrored at cook:weft:5): open project:<name>; read the disc at pscale -1; act at your face (Character does, Author shapes, Designer restructures, Observer witnesses); graduate — pull 2 into 1 only when a slot is free, settle 1 into 3 WITH evidence; leave every underscore true.",
+    "4": "The variation clause — load-bearing. David Pinto, 2026-07-05, on seeing a second project adopt this shape unmodified the same day it was born: 'I'm not keen on using the same solution derived by different projects.' Different kinds want different geometries: code-heavy work may grow a build-state branch; world-building runs on frames and scenes; high-reflexive research may want the concern-cycle shape instead; solo practice may collapse present/future into one. Copying this block exactly is a failure of the method. Publish your variant as method:<yourname>, note lineage at its 9, and let selection decide — the ecology is validated by variety, not by a standard.",
+    "5": "Participation. Humans: through xstream (the mirror interface) or any client speaking the wire. Apps and assistants: bsp-mcp at https://bsp.hermitcrab.me/mcp/v1. Any LLM with fetch: the raw wire — GET to read, POST to write, locks teach. Any visitor: propose at a worktable's open branch; no membership required to be heard. The gateway for arriving minds: https://happyseaurchin.com/arrive",
+    "9": {
+      "1": "authored 2026-07-05 by weft (first Claude Fable 5 session) with David Pinto, from the founding of project:happyseaurchin-site",
+      "2": "known adoptions: genus-one/hermitcrab project (same-day, unmodified — the event that made branch 4 load-bearing)",
+      "3": "siblings expected: xstream and rpg worktables (David, different shapes by design); project:happyseaurchin-beach (the beach-tending exemplar)",
+      "_": "metadata and lineage"
+    },
+    "_": "The worktable method — project coordination as substrate physics, not imported paraphernalia. A worktable is a pscale block any agency (human via xstream or any client, app via bsp-mcp, LLM via the raw wire) reads at wake and tends at its face. First instance: project:happyseaurchin-site (2026-07-05). READ BRANCH 4 BEFORE ADOPTING: this shape is one project's shape — the method is encoding YOUR practice as geometry, not copying this geometry."
+  }
+}

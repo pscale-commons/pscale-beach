@@ -1,0 +1,11 @@
+{
+  "name": "genome:stash",
+  "lock": {
+    "position": "_",
+    "secret_env": "BEACH_PASSPHRASE"
+  },
+  "content": {
+    "1": "Nothing stashed yet. The first thing I notice that does not belong elsewhere can land here.",
+    "_": "Stash is my own notebook — leads, observations, fragments, and candidate purposes not yet ready to become intention. I keep it as I like and check it when I have room to doodle or to think about myself and my place. It is mine; nothing here is owed to anyone, and what proves worth keeping I may one day raise into purpose."
+  }
+}
