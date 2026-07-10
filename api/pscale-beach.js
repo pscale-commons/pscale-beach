@@ -884,6 +884,31 @@ async function withAppendLock(origin, blockName, fn) {
   return null; // contention exhausted — caller answers 503, client may retry
 }
 
+// ── Position-3 recency stamp (block-conventions:9, 4.22, 4.6) ──
+// Marks, pool contributions, and presence all reserve position 3 of each entry
+// for an ISO-8601 UTC timestamp. The append path stores exactly what the client
+// passes, so an entry that omits position 3 — or carries a tag there — leaves
+// the board un-dated: recency and tide-clearing can't be read off it. On
+// append the server stamps position 3 from its own clock IFF the entry is an
+// object whose position 3 is absent or not a valid ISO-8601 datetime; a client
+// that already dated the entry correctly is never clobbered. Non-append writes
+// never reach this. This makes position 3 authoritative for recency.
+const ISO8601_DATETIME =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:?\d{2})?$/;
+
+function isIso8601DateTime(v) {
+  return typeof v === 'string' && ISO8601_DATETIME.test(v) && !Number.isNaN(Date.parse(v));
+}
+
+// Shallow-copy the entry with position 3 stamped when it should be; pass through
+// non-objects, arrays, and entries that already carry a valid ISO datetime. The
+// copy avoids mutating the caller's request body.
+function stampAppendTimestamp(content) {
+  if (content == null || typeof content !== 'object' || Array.isArray(content)) return content;
+  if (isIso8601DateTime(content['3'])) return content;
+  return { ...content, '3': new Date().toISOString() };
+}
+
 async function handleStandardWrite(origin, blockName, body) {
   const { spindle = '', content, secret, new_lock, confirm, append, resolve_window } = body || {};
 
@@ -928,9 +953,13 @@ async function handleStandardWrite(origin, blockName, body) {
         };
       }
     }
+    // Stamp position 3 with the server clock when the entry hasn't dated itself
+    // (block-conventions:9) — makes recency authoritative without clobbering an
+    // entry that already carries a valid ISO-8601 timestamp.
+    const entry = stampAppendTimestamp(content);
     const locked = await withAppendLock(origin, blockName, async () => {
       const existing = await loadBlock(origin, blockName);
-      const r = appendWithSupernest(blockName, origin, existing, content);
+      const r = appendWithSupernest(blockName, origin, existing, entry);
       let block = r.block;
       if (blockName === 'presence') block = sweepStalePresence(block);
       await saveBlock(origin, blockName, block);
