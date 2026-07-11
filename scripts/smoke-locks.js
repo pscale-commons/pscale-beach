@@ -27,10 +27,15 @@ const BLOCK = 'r5:smoke';
 let pass = 0, fail = 0;
 const ok = (c, m, detail = '') => { if (c) pass++; else { fail++; console.error('  ✗', m, detail); } };
 
+// Optional Cookie header — lets the battery run against a protection-gated
+// Vercel PREVIEW: harvest the _vercel_jwt via the share link, pass it as
+// BEACH_COOKIE='_vercel_jwt=...'. Unset for the rig and production.
+const COOKIE = process.env.BEACH_COOKIE || '';
+
 async function call(method, body, qs = '') {
   const r = await fetch(`${EP}${qs}`, {
     method,
-    headers: { 'content-type': 'application/json', Accept: 'application/json' },
+    headers: { 'content-type': 'application/json', Accept: 'application/json', ...(COOKIE ? { Cookie: COOKIE } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   let j = {};
