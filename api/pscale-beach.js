@@ -1010,6 +1010,26 @@ async function handleStandardWrite(origin, blockName, body) {
   }
   const stored = hashes[lockKey];
 
+  // R5 — relinquish. new_lock null or '' returns the position to its PRE-lock
+  // state: the hash entry is deleted, the position is open again as if never
+  // locked (no tombstone — "locked" is nothing but an entry here). Authority
+  // is the same as rotation: a stored lock demands the current secret (the
+  // check below). '' doubling as relinquish also disarms the old footgun:
+  // hash('') was un-provable (an empty secret reads as absent), so storing it
+  // bricked the position forever. Ordinary blocks only — sed:/grain:
+  // positions are locked to their registrants for life (registration
+  // immutability); relinquishing one would open it to homestead capture.
+  const relinquish = new_lock === null || new_lock === '';
+  if (relinquish && (blockName.startsWith('sed:') || blockName.startsWith('grain:'))) {
+    return {
+      status: 405,
+      body: {
+        error: 'relinquish (new_lock null or "") is not supported on substrate-prefixed blocks — sed:/grain: positions stay locked to their registrants',
+        code: 'invalid_shape'
+      }
+    };
+  }
+
   // Lock check for content writes.
   if (content !== undefined && stored) {
     if (!secret) {
@@ -1054,8 +1074,19 @@ async function handleStandardWrite(origin, blockName, body) {
   }
 
   if (new_lock !== undefined) {
-    hashes[lockKey] = hashByBlockName(origin, blockName, lockKey, new_lock);
-    await saveHashes(origin, blockName, hashes);
+    if (relinquish) {
+      // R5 — only touch storage when there is a lock to remove: relinquishing
+      // an open (or absent) position is an idempotent no-op, and skipping the
+      // save avoids minting a stray empty locks entry for a block that was
+      // never locked.
+      if (stored !== undefined) {
+        delete hashes[lockKey];
+        await saveHashes(origin, blockName, hashes);
+      }
+    } else {
+      hashes[lockKey] = hashByBlockName(origin, blockName, lockKey, new_lock);
+      await saveHashes(origin, blockName, hashes);
+    }
   }
 
   return { status: 200, body: { ok: true } };

@@ -10,7 +10,8 @@
     "smoke:floor": "node scripts/smoke-floor.js",
     "migrate:keys": "node scripts/migrate-keys.js",
     "repair:floor": "node scripts/repair-floor.js",
-    "smoke:append": "node scripts/smoke-append.js"
+    "smoke:append": "node scripts/smoke-append.js",
+    "smoke:locks": "node scripts/smoke-locks.js"
   },
   "dependencies": {
     "@upstash/redis": "^1.34.0"
