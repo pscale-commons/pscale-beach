@@ -19,7 +19,26 @@ import { gunzipSync } from 'node:zlib';
 const arg = (n, d) => { const i = process.argv.indexOf(`--${n}`); return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : d; };
 const has = (n) => process.argv.includes(`--${n}`);
 const IN = arg('in'), ONLY = arg('only'), CONFIRM = has('confirm');
-if (!IN) { console.error('usage: --in <beach-*.json|.gz> [--only <substr>] [--confirm]'); process.exit(1); }
+const BLOCKFILE = arg('block-file'), ORIGIN = arg('origin'), NAME = arg('name');
+
+// Mode B — restore ONE block's content from a per-block file (e.g. a version checked out of the
+// git mirror: `git checkout <commit> -- <origin>/<block>.json`). Content only (the mirror carries
+// no lock hashes); the block's existing lock is left untouched.
+if (BLOCKFILE) {
+  if (!ORIGIN || !NAME) { console.error('block-file mode needs --origin <url> and --name <block>'); process.exit(1); }
+  const originFull = ORIGIN.startsWith('http') ? ORIGIN : `https://${ORIGIN}`;
+  const k = `pscale-beach-v2:${originFull}:block:${NAME}`;
+  const content = JSON.parse(await fs.readFile(BLOCKFILE, 'utf8'));
+  console.error(`block-file → ${k}`);
+  if (!CONFIRM) { console.error('DRY RUN — re-run with --confirm to set this block content.'); process.exit(0); }
+  const url = process.env.KV_REST_API_URL, token = process.env.KV_REST_API_TOKEN;
+  if (!url || !token) { console.error('missing KV creds — source your beach clone .env.local first'); process.exit(1); }
+  await new Redis({ url, token }).set(k, content);
+  console.error(`✓ restored block content ${NAME} @ ${originFull} (lock untouched)`);
+  process.exit(0);
+}
+
+if (!IN) { console.error('usage: --in <beach-*.json|.gz> [--only <substr>] [--confirm]  OR  --block-file <f> --origin <url> --name <block> [--confirm]'); process.exit(1); }
 
 const raw = await fs.readFile(IN);
 const text = IN.endsWith('.gz') ? gunzipSync(raw).toString() : raw.toString();
