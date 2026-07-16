@@ -40,8 +40,8 @@ handler) never changes — the cartridge is the data.
 | `passport:<h>` | capability (CF), wants, location, identity |
 | `witnessed:<h>` | the character's **floor-1 spine** (beats at digits 1,2,3,…; append-clean) |
 | `knows:<h>` | the naming index — people (`1`) and places (`2`) the character can recognise |
-| `pool:beaten-drum-main` | the room's public event-skeleton stream (opens empty) |
-| `liquid:pool:beaten-drum-main` | the staging window (opens empty) |
+| `pool:111` | the room's public event-skeleton stream (opens empty) |
+| `liquid:pool:111` | the staging window (opens empty) |
 
 Characters: **cyrus**, **anya**, **fenn**.
 
