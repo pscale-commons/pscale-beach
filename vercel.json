@@ -2,6 +2,10 @@
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/w/:world/.well-known/pscale-beach",
+      "destination": "/api/pscale-beach?world=:world"
+    },
+    {
       "source": "/.well-known/pscale-beach",
       "destination": "/api/pscale-beach"
     }
