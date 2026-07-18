@@ -1,0 +1,67 @@
+{
+  "name": "identity:brackenfoot",
+  "lock": { "position": "_", "secret_env": "BRACK_GM" },
+  "content": {
+    "1": {
+      "1": {
+        "1": {
+          "1": "Home, and shame worn in the open — the common where a proud neighbour will be broken so the rest of us learn to keep still; every door faces it, and we are made to watch and forbidden to help.",
+          "2": "The stage — where an example is made. Put a strong man in the new ash and the whole holding is told at once who holds it; the watching is the work, and the mud and the cold do the rest.",
+          "3": "A muddy common, and a raw new thing in the middle of an old grey place — pale ash stocks weeping sap where everything else is weathered. The one new thing tells the whole story to an eye that reads it.",
+          "_": "The Green as held — the same mud, three ways: the village's place of shame, the crew's stage, the newcomer's first plain sign that something here is wrong."
+        },
+        "_": "The Green — held by those made to watch, by those who make them, and by the stranger who reads the new wood."
+      },
+      "5": {
+        "1": {
+          "1": "Our winter, locked away — the seed-corn we plant or starve without, the cheese and wool that were the year's work, taken and counted and held against us behind our own padlock.",
+          "2": "The prize — everything worth carting up the valley, gathered in one lockable room; guard it slack by day and it is still ours by right of the warrant.",
+          "3": "A padlocked barn under a bored guard — the pressure point: seize it and the crew has nothing to cart, hold it and they have nothing to lose, empty it and the village eats. Each at a different cost.",
+          "4": "Stock against the count — baskets and sacks that must tally when the carts come; a short barn is the village's fault, never the factor's.",
+          "_": "The Store as held — winter to the village, prize to the crew, leverage to the party, a line in the ledger to the Master."
+        },
+        "_": "The Store — the village's stolen winter, the crew's prize, the party's pressure point."
+      },
+      "6": {
+        "1": {
+          "1": "The water, and the dread by it — where the girls draw of a morning, and where the small vile man waits now, so that even the well is no longer only the well.",
+          "2": "Where the factor takes his ease and his little pleasures — the count's edge, the place a back is easiest turned, easiest watched.",
+          "3": "An ordinary well-head at the Green's edge, and something wrong loitering at it — the spark, in plain sight, waiting for the day the smith will not swallow it.",
+          "_": "The Well as held — daily water gone fearful to the village, a loitering-place to the crew, the visible spark to the party."
+        },
+        "_": "The Well — the village's fouled daily water, the factor's loitering-place, the party's plain-sight trigger."
+      },
+      "_": "The Village as held — the same grey scatter of cottages, held three ways at once: home under occupation to those who live in it (1), a backwater to be held and squeezed to the crew (2), and a place that is wrong, to be left or freed, to the newcomer (3). The holds diverge most where the occupation touches: the Green, the Store, the Well."
+    },
+    "2": {
+      "1": {
+        "1": {
+          "1": "The parish edge, and the mouth of our trouble — where the good road and the King's peace give out and theirs begins; folk we love left this way and the ones who came back changed it.",
+          "2": "The barrier and the chokepoint — the one road in to wave a stranger off, and the one road out a rider must cross to bring the Lord's thirty men. Hold it and no help comes; lose it and none is needed.",
+          "3": "A shallow ford with a rope and a slack watch — first contact with the occupation, and the whole tactical shape of the thing: the way in, and the only way out for a rider.",
+          "_": "The Slip as held — the edge of the known world to the village, the barrier-and-lifeline to the crew, first contact and last resort to the party."
+        },
+        "_": "The Slip — the parish edge to those who live behind it, the chokepoint to those who hold it, the door to those arriving."
+      },
+      "_": "The Road In as held — the way home, or the way trouble comes, depending which way you face on it."
+    },
+    "3": {
+      "1": {
+        "1": {
+          "1": "Backbreaking, pointless misery — driven up daily to hack pale stone from the hill for no reason any of us is told, a man with a broken hand still made to haul, the quota always rising.",
+          "2": "The quota — baskets to be counted and carted, the reason the levy is here at all; guard it by day, doze by noon, the men are too spent to run.",
+          "3": "A raw cut in the slope and a dozing guard, and a wrongness under the misery: the stone is counted and carted and never explained, and the not-knowing is the coldest thing on the hill.",
+          "4": "The count — pale stone the Master wants and the factor tallies, basket by basket; what it is for is not the village's to know, nor the Lord's, and the not-explaining is the point.",
+          "_": "The Diggings as held — misery to the men driven to it, quota to the crew, an unexplained wrongness to the party, and to the Master only the count — the one cold note, left cold."
+        },
+        "_": "The Diggings — pointless cruelty to the village, the quota to the crew, the cold thread to the party and the Master."
+      },
+      "_": "The Slopes & the Diggings as held — the ground above, where the misery has a number on it and no one is told what the number is for."
+    },
+    "_": {
+      "_": {
+        "_": "IDENTITY:BRACKENFOOT — the identity aspect of the holding, the third coordinate. Alone the block is senseless: every address here is spatial:brackenfoot's address, and meaning is the fold of the two, with time appended at the place's own pools. At a place's coordinate the digits fan into GROUP PERSPECTIVES — the place as each 'we' holds it: 1 the villagers (the held), 2 the crew (the holders), 3 the newcomer (the outside eye that must decide the place is worth it), 4 the Master (cold, at the count alone — left unexplained). Authored where the holds genuinely diverge — the Green, the Store, the Well, the Slip, the Diggings — with room to land more. Insight is read from the nearest fan at or above a standpoint, the slot selected by standing: a villager reads the village's hold, a levy-man the crew's, a stranger the newcomer's. Grown by Author-face writes of those who hold the place; a person outranks any stored account of their own holding (a villager may tell it otherwise, and their telling wins); accounts stay plural — folded at read, never merged into one canon. No magic here; the one wrong note is the Master's hold of the Diggings, and it stays a note."
+      }
+    }
+  }
+}

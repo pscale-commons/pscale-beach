@@ -1,0 +1,7 @@
+{
+  "name": "liquid:pool:211",
+  "lock": null,
+  "content": {
+    "_": "The staging window for the Slip crossing (spatial:brackenfoot:211) — one slot per character, an intention, revisable while the window is open. A slot's position 2 is its first-staged stamp: arrival, set once, never moved by a revise. Empty means no live window."
+  }
+}

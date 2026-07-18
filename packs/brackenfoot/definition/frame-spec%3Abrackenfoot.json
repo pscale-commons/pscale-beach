@@ -1,0 +1,34 @@
+{
+  "name": "frame-spec:brackenfoot",
+  "lock": { "position": "_", "secret_env": "BRACK_GM" },
+  "content": {
+    "1": {
+      "1": {
+        "1": "Your position — passport:<handle> position 3 — is the origin of perception: compose the scene outward from where you stand, never as a catalogue of the room.",
+        "2": {
+          "1": "passport:<handle> — your position and capability.",
+          "2": "witnessed:<handle> — your own narrative so far.",
+          "3": "knows:<handle> — the names and terms you can recognise.",
+          "4": "spatial:brackenfoot at your location — the place, and the standing figures authored into it (the crew, the villagers).",
+          "5": "rules:brackenfoot — the perception physics of the place, the occupation, the clock and the dark.",
+          "6": "the co-present cast — the handles whose own passport position 3 is your location; that they are here is observable, their narrative and their name are not.",
+          "_": "The aperture — the addresses that unfold into your context this turn; narrow to your perceptions only."
+        },
+        "3": "Hold three kinds apart: YOU, perceiving from your position; the place's STANDING FIGURES, authored in spatial (the crew and the villagers), fixed scene and not live agencies; and the LIVE CHARACTERS co-present, other handles here — render each by what you observe or a name you have earned, and never fuse a live character with an authored figure, or with yourself.",
+        "4": "Submit your intention to the pool; you never resolve your own outcome — it lands in your narrative when the medium writes it, read on the next turn.",
+        "_": "Soft (the player turn) — perceive from your position, through your aperture, holding the three kinds apart; then submit."
+      },
+      "2": "Medium (resolving this character's next beat): the soft aperture PLUS the proximate overlap — the co-perceived account shared with characters at the same location — so this character's narrative is written in CORRELATION with theirs, never against a master. Who writes a shared beat first / how divergence converges is the live correlation problem, handled by the mediums, not by a canon.",
+      "_": "Character (C) — you ARE this character, perceiving from where they stand; you know only what they have experienced. There is nothing shared to filter: you read your OWN narrative, so you cannot see another's, because it is a different block — fog-of-war is structural, not disciplinary. Your position (passport:3) is the origin you perceive from, and a co-present character is a separate live agency — never the authored figure they resemble, and never you."
+    },
+    "2": "Author (A) — you shape the world's CONTENT (the stage), not a character's experience. Read/write the setting: spatial:brackenfoot (places, the agreed scaffolding), identity:brackenfoot (how each 'we' holds a place), and world-content blocks. Authority is the author face (sed:<game>-authors, when enforced). The stage is shared by agreement; never write what-happened into it — that is the play, and the play is distributed.",
+    "3": "Designer (D) — you shape the RULES and conventions the other faces run on. Read/write rules:nomad (mechanics), rules:brackenfoot (place physics), and the room's mounted directive (pscale:grit — the canonical play loop this world runs on). The meta-layer: editing these changes how every other face's frame resolves.",
+    "4": "Observer (O) — the CORRELATION across narratives, not a master truth. Read several characters' narratives (witnessed:<each-handle>) and present their overlap (common ground) and divergence (contested). Wide, read-only. O is 'closer to objective' only as inter-subjective correlation — variation from C, never absolute.",
+    "9": {
+      "1": "v0.4-simple-check-split",
+      "2": "Window span — the liquid carries every character's presence and current intention each turn (the submit), but a RESOLUTION (dice) happens only for a CHECK (pscale:grit branch 2, the resolving aperture). For a CONTEST against another: the patience an attempt waits for the opposing party before resolving without them — 30 seconds; resolve when both have moved, or after the span if one lingers. A solo TRIAL against the world resolves at once, no waiting. An instant (0) span is chat; a long span is a Quaker meeting.",
+      "_": "Frame metadata. Subjective-centred: no shared canon; per-character narratives; the frame is read-selection by (face, tier), resolved client-side, not a primitive. The same spec serves xstream's runBundle and a bsp-mcp soft session — authored ONCE here; point both clients at it. GRIT-native: rooms mount the pscale:grit sentinel directly (no per-world function block); the check law and the resolving aperture live at grit branch 2. Window model (v0.4 — simple/check split): every turn submits a presence + intention to the liquid, but most acts are SIMPLE and COMMIT directly with NO dice; the dice and a window RESOLUTION are reserved for a CHECK — an uncertain act with a cost, whether a CONTEST against another character (gathers both; resolves when the opposing attempt joins or the span passes) or a solo TRIAL against the world (resolves at once)."
+    },
+    "_": "Frame — the scoop a client resolves to assemble an APERTURE, parameterised by (face, tier, handle). SUBJECTIVE-centred: there is NO shared canon; each character carries its own narrative. The frame names which addresses constitute the aperture for a face and tier; the client (xstream's runBundle, a bsp-mcp soft session, or the crab) READS those addresses — resolution is client-side reads, NOT a primitive. Faces: 1 Character, 2 Author, 3 Designer, 4 Observer; tier (soft/medium/hard) modulates the aperture within a face. This block is the SINGLE substrate source — xstream should resolve THIS, not define a frame of its own."
+  }
+}

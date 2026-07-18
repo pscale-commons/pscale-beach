@@ -1,0 +1,84 @@
+{
+  "name": "spatial:brackenfoot",
+  "lock": { "position": "_", "secret_env": "BRACK_GM" },
+  "content": {
+    "1": {
+      "1": {
+        "1": {
+          "1": "The old market cross — a stump of weathered stone at the Green's centre, the arms long broken off. Folk gathered here once for fair-days; now the crew musters the village here to watch what it wants watched.",
+          "3": "The new stocks — cut from green ash, pale and raw and still weeping sap, brand-new against everything else in Brackenfoot. Empty, this morning, and the emptiness is a question no one on the Green will say aloud. Sized for a grown man. Set square in the open where every cottage door can see it.",
+          "5": "The mire — the common trodden to churned mud by three weeks of boots that do no work; a man put here is put in the wet, and the whole village is made to keep its distance and watch.",
+          "_": "The common ground — standing on the Green, mud to the ankle, the broken cross at the back and the raw new stocks square in the middle. Cottage doors face it on every side, and behind their shutters the village watches without seeming to. This is the public stage: whatever the crew does here, it does to be seen, and the being-seen is the point. This morning it is only cold and quiet and waiting."
+        },
+        "_": "The Green — a muddy common at the village heart, ringed by the grey cottages and the alehouse and the smith's. Weathered to the same grey as everything else in Brackenfoot — everything but the pale new stocks, which tell the whole story to anyone who reads them. The way through the village crosses it; anyone on it is seen from every door."
+      },
+      "2": {
+        "1": {
+          "2": "The trestle — dark with age and spilled ale, and behind it Maerla the alewife: lean, closed-faced, keeps her head down and her counsel closer, and sees everything that crosses her floor. She knows the crew's drinking to the cup and says nothing she is not forced to; a quiet ally to one who earns it.",
+          "3": "The hearth — the one real warmth, and the hard-cases keep the settle nearest it; two of them most evenings, scarred and bored, drinking heavy and past caring, useless on their feet by dark.",
+          "_": "The taproom — low, smoke-dark, a packed-earth floor and a few trestles. Warm, because the crew has made it theirs of an evening; they drink here every night and drink themselves stupid, and their watch after dark is one dozing man at best — the single largest fact in Brackenfoot for anyone minded to move against them. By day it is near empty, Maerla wiping down, the ashes cold."
+        },
+        "2": "Bole's back room — the alehouse's one private room, taken by the sergeant for his ease. A cot, a table, the crew's few valuables, and — folded in greasy oilcloth, most likely here — the warrant with the Lord's seal. (Stub — extend by subnest when play reaches it.)",
+        "_": "The Brindled Sow — the alehouse, half-commandeered as the crew's billet and nightly drinking-hole. Low and smoky, Maerla behind the trestle, the crew's boots by the door. The warmest roof in a cold holding, and the crew's chief weakness: what drinks every night guards badly every night."
+      },
+      "3": {
+        "1": {
+          "1": "The tally-ledger open on the board, and bent over it Pell — the Master's factor: knee-high and hunched, grey-toothed, wetting his fingers to count, and a reek of tallow and old sweat and something rotten under it that no washing fixes. He counts everything — the baskets from the diggings, the sacks from the barn, who is short, who is hiding — and the count is the only thing he loves. Oily and servile to a face; vicious the instant a back is turned. Coward's courage, and behind it the one threat even the soldiers flinch from: I'll tell the Master. He never explains it. No one asks.",
+          "_": "The counting-room — the Long House's front room, where the tithe is reckoned and Pell keeps his tallies. Sacks stacked against the wall, a scale, a stub of candle, and the ledger that never closes. The administrative heart of the occupation: what leaves Brackenfoot is written down here first."
+        },
+        "2": "The bed-chamber — the reeve's own bed, taken by Sergeant Bole: vast and red-faced and sweating, a real soldier gone to fat and lazy-cruel, who would rather extort than rise from the mattress. A stoppered crock of honied plums by the bolster that he eats one at a time and shares with none. The warrant is his to produce; comfort is his lever — threaten the warm bed and the easy graft and he will weigh it, for he does not want to fight, bleed, or be reported up the line for losing a backwater. (Standing figure; extend by subnest when play reaches it.)",
+        "_": "The Long House — the reeve's house, the biggest in Brackenfoot, and the seat of the occupation: Pell counts in the front room, Bole sleeps in the back, and Reeve Haldan, turned out of his own bed, keeps to the edges of it and hates himself. Where the grain is counted and the orders come from."
+      },
+      "4": {
+        "1": "The forge — Aldous Hewn's, gone cold: a banked-dead fire, tools hung and unhandled three weeks, the anvil silent. A cold forge in a working village is a wound everyone can see and no one names. Aldous keeps near it when he is let, grey and burn-scarred and swallowing his fury by the day — the strongest and most respected man in Brackenfoot, and its conscience, one insult from breaking. (Standing figure.)",
+        "2": "The family quarters — behind the forge: Mistress Hewn, grim and capable and dignified, who has kept the fire fed on nothing for three weeks; and Lina, fifteen, the daughter. And Tam, eighteen, big like his father and hot-headed, who cannot yet do the arithmetic of survival. The reason the trouble here is felt and not merely solved. (Standing figures.)",
+        "_": "The Smithy — Aldous's forge and the family's rooms behind it, gone quiet and cold since the smith stopped working. The heart of the village's pride, banked like its fire."
+      },
+      "5": {
+        "1": "The barn floor — flagstone and timber, stacked with the village's seized grain, its cheese and wool, and the dig-baskets of pale stone waiting to cart up to the keep. Padlocked; guarded by day, slackly, by one bored hard-case — or by Cob, the sixteen-year-old, sick and scared and the weak seam in the whole crew. The crew's prize, and its pressure point: seize it, burn it, or hold it, each at a different cost.",
+        "_": "The Store — the tithe-barn, stone-and-timber, now padlocked and watched: where the crew stockpiles everything it takes, against the carts that will haul it up the valley. What the occupation is FOR, gathered in one lockable room."
+      },
+      "6": {
+        "1": {
+          "1": "The well-head itself — a low ring of stone, a bucket on a fraying rope, the water cold and good; the one thing in Brackenfoot the crew has not found a way to tax.",
+          "2": "Lina at the water, most mornings — Aldous's daughter, fifteen, drawing for the house; and Pell, loitering near, wetting his fingers, saying the small vile things he says. The concrete trigger: the day the smith sees this and will not swallow it is the day Brackenfoot breaks.",
+          "_": "The well-head — the centre of village life and gossip, where the women draw water and the news passes. Where Lina draws, and Pell loiters, and the spark waits."
+        },
+        "_": "The Well — the village's common water and its gossip-place both, at the edge of the Green. Ordinary, daily, and this season the place where the worst of it happens in plain sight."
+      },
+      "7": "The Chapel — small, plain, the priest long gone up the valley and not come back; the crew uses it now as a lock-up and a dry store, and there is no comfort left in it. (Stub — extend by subnest when play reaches it.)",
+      "_": "The Village — a muddy scatter of cottages at the foot of the bracken slopes, grey with weather and three weeks of fear. Sheep, oats, a little hard cheese, and the diggings above. The good road dies at the Slip below; the wild begins at the slopes above. Six of the Lord's men hold it, and it is one cruel word from breaking. Everything is weathered the same grey — everything but the new ash stocks on the Green, which are the one new thing and the whole story."
+    },
+    "2": {
+      "1": {
+        "1": {
+          "1": "The leaning post and the rope strung across the water — the crew's slack barrier; a traveller is stopped here, looked over, and turned back or grudgingly waved through with a word: a local matter, the Lord's business, move along.",
+          "2": "The watch — one hard-case, most hours, bored and half-asleep by the little fire on the near bank; the ford is a chokepoint, and a rider sent to the keep for reinforcements MUST cross here. Hold the Slip and no rider gets out; let one clear it and the burn-clock starts.",
+          "_": "The crossing — a shallow stony ford where the good road gives out and the track to Brackenfoot begins. Cold water to the shin, a leaning post, a rope, and a slack watch. This is where a newcomer first meets the occupation: turned back, or waved through with a warning that tells them something here is wrong. Reeve Haldan comes down to this post sometimes, to warn off travellers before they can make trouble he will have to pay for — stooped, sleepless, insistent: don't; whatever you are thinking, don't; it is our trouble, leave it ours."
+        },
+        "_": "The Slip — the ford where the good road ends and Brackenfoot's track begins, at the parish edge. The one road in and the one road out; a rider for the keep is stopped here or nowhere. The crew keeps a lazy eye on it. First contact, and last resort."
+      },
+      "2": {
+        "1": "The sunken lane — the track climbs through Holloway Wood as a hollow-way, banks higher than a man on either side: made for an ambush, in either direction, by anyone who knows the ground. (Extend by subnest.)",
+        "2": "Old Burr's clearing — a charcoal-burner's ground off the lane: smoke-smell, turf-mounds, a lean-to. Burr himself is weathered and neutral and knows every path and back-way the crew does not; he can be ally, guide, or simply the man who digs a grave and asks nothing. (Standing figure.)",
+        "3": "The hidden dell — deeper in, a fold in the wood the crew never found: where the not-yet-broken villagers could rally, or where Aldous stashed the grain the count could not reach. (Extend by subnest.)",
+        "_": "Holloway Wood — the Long Wood, that the track climbs through as a sunken lane. Charcoal-smoke and old paths and the back-ways off them. Cover, ambush-ground, and refuge, for whoever learns it."
+      },
+      "3": "The Boundary Stone — a moss-furred standing stone at the parish edge, just inside the wood, where folk once left offerings. After the killing, a likely place the crew leaves the body; or where a newcomer finds the first plain sign that Brackenfoot is wrong. (Stub — extend by subnest.)",
+      "_": "The Road In — the approach to Brackenfoot from the good road: the Slip below, the Long Wood the track climbs through, the boundary stone at the parish edge. The way in for the party, and the only way out for a rider — which is the whole tactical shape of the scenario."
+    },
+    "3": {
+      "1": {
+        "1": "The working face — a raw cut into the slope, a black spoil-heap, a hand-windlass, baskets of pale glass-stone. The village men are driven up here daily to hack it out for the keep, backbreaking and pointless-seeming; a man with a strapped, broken hand is still made to haul. One bored hard-case guards it and dozes by noon. WHY the stone matters is never answered — it is counted and carted away, and that is all anyone here knows.",
+        "_": "The Diggings — up behind the village, where the men are driven to cut the pale stone for the keep. Misery with no explanation attached: the baskets are counted, the quota rises, and no one is told what any of it is for."
+      },
+      "2": "The high bracken slopes — above the diggings the ground climbs into rust-brown bracken taller than a child, and then the wild. The last hearth is below; up here is only wind, sheep-track, and the edge of the holding. (Stub — extend by subnest.)",
+      "_": "The Slopes & the Diggings — the ground above the village: the raw cut where the stone is worked, and above it the bracken and the wild. Brackenfoot is the last holding before the high country begins."
+    },
+    "_": {
+      "_": {
+        "_": "Spatial map of Brackenfoot — the furthest, poorest holding in the valley, where the good road gives out at the foot of the high bracken slopes. Floor 3: top-level positions are pscale +2 (the holding's three grounds — the Village, the Road In, the Slopes), their children pscale +1 (buildings and features), their children pscale 0 (rooms and spots, human scale, where a handful meet), and below the floor the fixtures (−1), the places to stand (−2), and what is held or hidden (−3). A three-digit address lands where people gather. Author by subnest (finer detail within a place) and supernest (a coarser layer wrapped above); existing addresses absorb under leading-zero padding. The state here is the morning the party arrives — the day it breaks: the squeeze already cruel, the stocks new and empty, Pell already at the Well. No magic shows in Brackenfoot; the one wrong note is Pell and the Master he answers to, and it is never explained. Leave it cold."
+      }
+    }
+  }
+}

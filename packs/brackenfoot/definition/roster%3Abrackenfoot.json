@@ -1,0 +1,35 @@
+{
+  "name": "roster:brackenfoot",
+  "lock": { "position": "_", "secret_env": "BRACK_GM" },
+  "content": {
+    "1": {
+      "1": "Character Force ~8 overall; peak (~9) in a fight and in reading a fight's arithmetic — who will hold, who will run, when the odds have turned; weak spot (~4) in soft talk and patience. Has soldiered, and knows a real levy from robbery with a document.",
+      "2": "To find a quiet living somewhere the fighting is done — and the plain inability to walk past this once it is seen.",
+      "3": "Broad and scarred and unhurried, moving like someone who has stood in a line and held it; a worn blade set aside by custom, not by weakness.",
+      "4": { "1": "soldiering, hard captains, the smell of an order that is really a theft", "2": "the roads a levy-party rides, how a keep sends and answers" },
+      "_": "The old campaigner — a hedge-soldier off a war, weathered and slow to anger and very hard once moved. The honest steel of a party: reads a fight true, and knows the difference between men who will die for a cause and men who will not die for another man's plums."
+    },
+    "2": {
+      "1": "Character Force ~8 overall; peak (~9) in reading people and quick, warm talk — finding the seam in a frightened man, bargaining, turning a mood; weak spot (~4) in any straight fight. Talks, listens, and slips away before it comes to blows.",
+      "2": "To sell the pack and move on before winter — and a stubborn softness that keeps not moving on.",
+      "3": "Quick-eyed and easy, a pedlar's pack and a pedlar's patter, the kind of face frightened people find themselves talking to.",
+      "4": { "1": "how a scared man bargains, who informs and who only wishes they dared", "2": "every road in the valley, which villages are being squeezed and by whom" },
+      "_": "The quick tongue — a road-pedlar and talker who reads a room the way others read a map. The party's face: peels the weak seam off a crew, splits paid men from believers, and can turn a bent reeve if shown a way through he can believe."
+    },
+    "3": {
+      "1": "Character Force ~8 overall; peak (~9) in the back-ways — stealth, tracking, moving unseen, reading ground, knowing where a rider must cross; weak spot (~4) indoors and in a crowd. The quiet one who is already outside while the others are still deciding.",
+      "2": "To be left alone in country like this — and the trouble of caring what happens to the people in it.",
+      "3": "Weather-brown and quiet, wood-smell and old leather, eyes that keep going to the treeline and the ways out.",
+      "4": { "1": "poachers, charcoal-burners, the sort who know the back-ways", "2": "how to read a wood and a ford, where an ambush lies in a sunken lane" },
+      "_": "The woodsman — a poacher and forester at home in the Long Wood and on the slopes. The party's scout: holds the Slip against a rider, finds Burr's back-ways in and out unseen, and turns a hollow-way into a trap."
+    },
+    "4": {
+      "1": "Character Force ~8 overall; peak (~9) in tending the hurt and reading a body and a room — herb-lore, small remedies, seeing what a frightened village hides; weak spot (~4) in force of any kind. Mends, steadies, and is trusted where a blade is not.",
+      "2": "To ease what is broken here — and the harder want underneath, to be believed about what that costs.",
+      "3": "Watchful and steady, capable hands and a satchel of cures, the manner of someone people bring their sick and their secrets to.",
+      "4": { "1": "midwives and wise-women, who in a village is quietly ill or quietly brave", "2": "herb-lore, the hedges and where the healing things grow" },
+      "_": "The hedge-wife — a healer and wise-woman, the moral centre and the quiet nerve of a party. Reaches the villagers where force cannot, tends the hurt when the killing starts, and holds the mercy that a hard scenario keeps trying to spend."
+    },
+    "_": "roster:brackenfoot — a hand of ready ROLES a newcomer may ADOPT at genesis, or set aside to build their own. Each is a nameless template: the player brings the NAME (their handle); adoption copies the role's capability (1, in rules:nomad terms), want (2), appearance (3), and knowings (4) into their OWN locked passport, at the arrival the interview chooses. The seeds are UNPLACED — no location, no lock, no presence — so they are never live figures in the world; a role becomes a person only when a player takes it up and walks genesis. Four here (steel, tongue, back-ways, mercy — a party's natural spread, and Brackenfoot's four ways through), with room to land more."
+  }
+}
