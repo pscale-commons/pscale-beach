@@ -95,6 +95,36 @@ function originFromHost(hostHeader) {
   return BASE_ORIGIN;
 }
 
+// Path-based world routes — the SELF-SERVICE shape: one apex, one cert, many
+// isolated worlds addressed by URL PATH instead of by subdomain, so anyone can
+// mint a world with no DNS/cert/operator step. A route <BASE_ORIGIN>/w/<world>
+// gets namespace "<BASE_ORIGIN>/w/<world>" — its own blocks + locks, scoped
+// exactly like a subdomain origin (keyNs + the lock salt both bake it). The
+// world is read from the `world` query param (the Vercel rewrite injects it
+// from /w/:world/.well-known/pscale-beach) OR parsed from the request path
+// directly (belt-and-suspenders, so it works whether or not the rewrite merges
+// the query). A world name is a DNS-label shape (lowercase, [a-z0-9-], no dots
+// or slashes or colons) so it can never inject a namespace separator. Anything
+// else falls through to the Host-based origin, so subdomain + apex beaches are
+// byte-for-byte unchanged.
+const WORLD_RE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
+function worldParam(q) {
+  let w = q?.world;
+  if (Array.isArray(w)) w = w[0];
+  w = (w == null ? '' : String(w)).trim().toLowerCase();
+  return WORLD_RE.test(w) ? w : null;
+}
+function worldFromPath(reqUrl) {
+  const m = String(reqUrl || '').match(/^\/w\/([a-z0-9-]{1,64})\/\.well-known\/pscale-beach/i);
+  const w = m ? m[1].toLowerCase() : '';
+  return WORLD_RE.test(w) ? w : null;
+}
+function originFromRequest(req) {
+  const world = worldParam(req.query) || worldFromPath(req.url);
+  if (world) return `${BASE_ORIGIN}/w/${world}`;
+  return originFromHost(req.headers && req.headers.host);
+}
+
 // Key namespace — scoped by the per-request origin so multiple beaches can share one Upstash
 // without collision. Pre-namespacing deploys used `pscale-beach-v2:block:<name>`
 // (no origin). Reads transparently fall back to that legacy layout for backward
@@ -1104,7 +1134,7 @@ export default async function handler(req, res) {
   }
 
   const blockName = ((req.method === 'POST' || req.method === 'DELETE') && blockParamFromBody(req.body)) || blockParam(req.query);
-  const origin = originFromHost(req.headers && req.headers.host);
+  const origin = originFromRequest(req);
 
   if (req.method === 'GET') {
     if (!blockName) {
