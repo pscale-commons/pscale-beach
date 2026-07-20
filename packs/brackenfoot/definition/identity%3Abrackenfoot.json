@@ -1,6 +1,9 @@
 {
   "name": "identity:brackenfoot",
-  "lock": { "position": "_", "secret_env": "BRACK_GM" },
+  "lock": {
+    "position": "_",
+    "secret_env": "BRACK_GM"
+  },
   "content": {
     "1": {
       "1": {
@@ -12,10 +15,49 @@
         },
         "_": "The Green — held by those made to watch, by those who make them, and by the stranger who reads the new wood."
       },
+      "2": {
+        "1": {
+          "1": "Our alehouse, and Maerla behind the trestle — she keeps her counsel and ours, pours for them because she must, and knows their drinking to the cup: they are sodden by dark every night, and their watch after is one dozing man. We say none of this aloud.",
+          "2": "Our billet and our board — warm settle, full cups, the Sow pours and knows her place; the nights are ours and the mornings are nobody's.",
+          "3": "The warmest roof in a cold holding, an alewife who answers in half-sentences and watches everything, and soldiers' boots by the door of an evening. Worth an evening's quiet watching.",
+          "_": "The taproom as held — three ways round one trestle."
+        },
+        "_": "The Brindled Sow — our alehouse under their boots to the village, billet and board to the crew, the warmest roof and a closed face to the newcomer."
+      },
+      "3": {
+        "1": {
+          "1": "Where Pell counts us short — the Master's factor, grey-toothed and wet-fingered, who tallies what leaves and who hid what; his one threat, 'I'll tell the Master', cows even the soldiers, and no one knows what it means. Our reeve Haldan stands at his own hearth like a guest.",
+          "2": "The factor's room and the factor's count — the ledger rules here, not the sergeant, and every basket and sack answers to it before it leaves.",
+          "3": "A counting-room running a village like a debtor's estate, and a clerk more feared than the men with steel — fear out of proportion to the man, which is itself worth knowing.",
+          "_": "The counting-room as held."
+        },
+        "2": {
+          "1": "Bole sleeps in our reeve's bed — Sergeant Bole, fat and sweating and lazy-cruel, who would rather squeeze than fight; his plums and his comfort are the whole of him.",
+          "2": "The sergeant's ease is the sergeant's right — his warrant, his bed, his board; wake him at your peril and bore him at your ease.",
+          "3": "The man in charge keeps to a bed that is not his and is not seen before noon — command gone soft, and softness has a price it will pay to stay comfortable.",
+          "_": "The bed-chamber as held."
+        },
+        "_": "The Long House — the reeve's house made the occupation's house: shame to the village, headquarters to the crew, the locked heart of it to the newcomer."
+      },
+      "4": {
+        "1": {
+          "1": "Aldous Hewn's forge, cold three weeks — the strongest man in Brackenfoot and its conscience, made to dig stone while his anvil rusts; every day he swallows it, and we all know the day he stops swallowing.",
+          "2": "The smith is the one to watch — big, respected, and idle by our order; keep him poor, keep him tired, and he keeps the rest quiet for us.",
+          "3": "A cold forge in a working village is a wound nobody names — and the grey, burn-scarred man who keeps near it is the one the whole village watches without looking.",
+          "_": "The forge as held."
+        },
+        "2": {
+          "1": "Mistress Hewn keeps the house fed on nothing; Lina draws the morning water and we all see who loiters near her; Tam is eighteen and his father's size and has not yet learned to look down. The family is the village's heart, and its danger.",
+          "2": "The smith's brood — a wife who glares, a girl worth a look, a boy asking to be taught a lesson; nothing a firm hand won't keep in order.",
+          "3": "A capable household under strain: a daughter the factor circles, a son one insult from a killing, a mother doing survival arithmetic for all of them. If Brackenfoot breaks, it breaks here first.",
+          "_": "The family quarters as held."
+        },
+        "_": "The Smithy — the village's pride banked cold: our smith to the village, a risk they sit on to the crew, a cold forge and a coiled spring to the newcomer."
+      },
       "5": {
         "1": {
           "1": "Our winter, locked away — the seed-corn we plant or starve without, the cheese and wool that were the year's work, taken and counted and held against us behind our own padlock.",
-          "2": "The prize — everything worth carting up the valley, gathered in one lockable room; guard it slack by day and it is still ours by right of the warrant.",
+          "2": "The prize — everything worth carting up the valley, gathered in one lockable room; guard it slack by day and it is still ours by right of the warrant. The day-watch falls oftenest to Cob — sixteen, sick, scared, and ours.",
           "3": "A padlocked barn under a bored guard — the pressure point: seize it and the crew has nothing to cart, hold it and they have nothing to lose, empty it and the village eats. Each at a different cost.",
           "4": "Stock against the count — baskets and sacks that must tally when the carts come; a short barn is the village's fault, never the factor's.",
           "_": "The Store as held — winter to the village, prize to the crew, leverage to the party, a line in the ledger to the Master."
@@ -24,7 +66,7 @@
       },
       "6": {
         "1": {
-          "1": "The water, and the dread by it — where the girls draw of a morning, and where the small vile man waits now, so that even the well is no longer only the well.",
+          "1": "The water, and the dread by it — where the girls draw of a morning: Lina Hewn most days, and Pell the factor loitering near, wetting his fingers, saying his small vile things, so that even the well is no longer only the well.",
           "2": "Where the factor takes his ease and his little pleasures — the count's edge, the place a back is easiest turned, easiest watched.",
           "3": "An ordinary well-head at the Green's edge, and something wrong loitering at it — the spark, in plain sight, waiting for the day the smith will not swallow it.",
           "_": "The Well as held — daily water gone fearful to the village, a loitering-place to the crew, the visible spark to the party."
@@ -36,12 +78,21 @@
     "2": {
       "1": {
         "1": {
-          "1": "The parish edge, and the mouth of our trouble — where the good road and the King's peace give out and theirs begins; folk we love left this way and the ones who came back changed it.",
+          "1": "The parish edge, and the mouth of our trouble — where the good road and the King's peace give out and theirs begins; folk we love left this way and the ones who came back changed it. Our reeve, Haldan, goes down himself some days to wave strangers off before they become trouble we pay for — stooped, sleepless, and right.",
           "2": "The barrier and the chokepoint — the one road in to wave a stranger off, and the one road out a rider must cross to bring the Lord's thirty men. Hold it and no help comes; lose it and none is needed.",
           "3": "A shallow ford with a rope and a slack watch — first contact with the occupation, and the whole tactical shape of the thing: the way in, and the only way out for a rider.",
           "_": "The Slip as held — the edge of the known world to the village, the barrier-and-lifeline to the crew, first contact and last resort to the party."
         },
         "_": "The Slip — the parish edge to those who live behind it, the chokepoint to those who hold it, the door to those arriving."
+      },
+      "2": {
+        "2": {
+          "1": "Old Burr's ground — he burns his mounds and owes nobody; he knows every path the crew has never walked, and he has buried men before and asked nothing. Neutral the way weather is neutral.",
+          "2": "A smoke-smell off the lane and an old man not worth the walk — nothing up there but turf and charcoal.",
+          "3": "A burner who watches more than he says, on ground the soldiers plainly never visit — the man to ask about ways that avoid the rope, once there is trust to spend.",
+          "_": "The charcoal-burner's clearing as held."
+        },
+        "_": "Holloway Wood — the back-ways to those who know them, dead ground to those who hold the road."
       },
       "_": "The Road In as held — the way home, or the way trouble comes, depending which way you face on it."
     },
