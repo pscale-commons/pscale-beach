@@ -940,7 +940,7 @@ function stampAppendTimestamp(content) {
 }
 
 async function handleStandardWrite(origin, blockName, body) {
-  const { spindle = '', content, secret, new_lock, confirm, append, resolve_window } = body || {};
+  const { spindle = '', content, secret, new_lock, confirm, append, resolve_window, resolve_seen } = body || {};
 
   // APPEND mode — atomic next-slot allocation with supernest-on-rollover
   // (sunstone:1.63). THE accumulator write: marks, history, pools. The handler
@@ -971,17 +971,68 @@ async function handleStandardWrite(origin, blockName, body) {
     // place that can serialise them — an atomic SET-NX, the lock pattern applied to
     // a coordination invariant. First claimant wins and appends; the rest get 409
     // and stand down. The TTL releases a crashed claimant so the window still resolves.
+    //
+    // The stage-vs-claim race (NHITL 2026-07-22): a stage landing between the
+    // folder's last read and their claim was cleared client-side without being
+    // woven — the staged act vanished, and the stand-down told its author they
+    // were inside the fold. Three closures here: (1) resolve_seen — the newest
+    // first-staged stamp (liquid position 2) the folder saw; a newer stage in the
+    // buffer rejects the claim as window_moved WITH the live buffer, so the folder
+    // re-weaves without another read; (2) the winning claim snapshots-and-clears
+    // the liquid HERE, returning `cleared` in the ack (the client skips its own
+    // clear), so a stage landing after the snapshot survives into a fresh buffer
+    // instead of being wiped by a later client-side clear; (3) the stand-down
+    // carries the landed fold, so a stood-down author verifies inclusion instead
+    // of being assured of it.
+    let clearedBuffer = null;
     if (resolve_window != null && resolve_window !== '') {
+      const liquidName = `liquid:${blockName}`;
+      if (resolve_seen != null && resolve_seen !== '') {
+        const seen = Date.parse(String(resolve_seen));
+        const liquidNow = await loadBlock(origin, liquidName);
+        if (!Number.isNaN(seen) && liquidNow && typeof liquidNow === 'object') {
+          const moved = Object.keys(liquidNow).some((k) => {
+            if (k === '_') return false;
+            const slot = liquidNow[k];
+            const first = slot && typeof slot === 'object' ? Date.parse(String(slot['2'] ?? '')) : NaN;
+            return !Number.isNaN(first) && first > seen;
+          });
+          if (moved) {
+            return {
+              status: 409,
+              body: { ok: false, code: 'window_moved', window: String(resolve_window), buffer: liquidNow },
+            };
+          }
+        }
+      }
       const claimKey = winresKey(origin, blockName, String(resolve_window));
       const claimant = (content && typeof content === 'object' && content['1']) || 'anon';
       const won = await redis.set(claimKey, claimant, { nx: true, ex: RESOLVE_CLAIM_TTL });
       if (won !== 'OK') {
         const by = await redis.get(claimKey);
+        let landed = null;
+        try {
+          const poolNow = await loadBlock(origin, blockName);
+          if (poolNow && typeof poolNow === 'object') {
+            const slots = Object.keys(poolNow).filter((k) => /^[1-9]\d*$/.test(k)).map(Number);
+            if (slots.length) { const top = String(Math.max(...slots)); landed = { slot: top, entry: poolNow[top] }; }
+          }
+        } catch { /* best-effort — stand-down still stands without it */ }
         return {
           status: 409,
-          body: { ok: false, code: 'window_already_resolved', window: String(resolve_window), resolved_by: by ?? null },
+          body: { ok: false, code: 'window_already_resolved', window: String(resolve_window), resolved_by: by ?? null, landed },
         };
       }
+      // Winning claim: snapshot-and-clear as one server-side act. Re-load at the
+      // claim for the tightest snapshot; the millisecond sliver between this read
+      // and the clear is the residual (visible in `cleared`, never silent).
+      try {
+        const liquidAtClaim = await loadBlock(origin, liquidName);
+        if (liquidAtClaim && typeof liquidAtClaim === 'object') {
+          clearedBuffer = liquidAtClaim;
+          await saveBlock(origin, liquidName, { _: `Liquid pre-commit buffer for ${liquidName} (block-conventions:4.5) — one slot per author, overwriting; the social mirror of pending intentions before commit. Empty means no live window.` });
+        }
+      } catch { /* best-effort: worst case the client clears as before */ }
     }
     // Stamp position 3 with the server clock when the entry hasn't dated itself
     // (block-conventions:9) — makes recency authoritative without clobbering an
@@ -999,7 +1050,7 @@ async function handleStandardWrite(origin, blockName, body) {
       return { status: 503, body: { error: 'append contention — retry', code: 'append_contention' } };
     }
     const r = locked.done;
-    return { status: 200, body: { ok: true, slot: r.slot, supernested: r.supernested, floor: r.floor } };
+    return { status: 200, body: { ok: true, slot: r.slot, supernested: r.supernested, floor: r.floor, ...(clearedBuffer ? { cleared: clearedBuffer } : {}) } };
   }
 
   // Shape gate: reject _word keys and JSON-stringified sub-objects on writes.
