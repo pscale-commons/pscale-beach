@@ -1089,7 +1089,37 @@ async function handleStandardWrite(origin, blockName, body) {
     }
     throw e;
   }
-  const stored = hashes[lockKey];
+  // AUTHORITY INHERITS — the coarse binds the fine (proposal
+  // 2026-07-26-lock-inheritance). A lock is still SET at one position, but the
+  // authority governing a write is the nearest LOCKED ANCESTOR: the position
+  // itself if it carries its own lock, otherwise the root.
+  //
+  // Everywhere else in this substrate the coarse binds the fine — the horizon
+  // delivers ancestors, an address resolves to its coarsest decided rung, and a
+  // digit lock has always covered its whole subtree. Locks broke that at exactly
+  // one place: the root did not bind its siblings, so a block "locked" at its
+  // root still had every digit writable by any hand carrying no credential. That
+  // single exception was the whole ceremony — protecting one authored bubble
+  // took about twenty lock writes, and a forgotten one left that branch open.
+  //
+  // A block with NO root lock is unchanged: every digit is open to homestead,
+  // which is what a roster and every shared accumulator depend on. A digit
+  // carrying its own lock still wins, so a position may be delegated to a
+  // different holder.
+  //
+  // ORDINARY BLOCKS ONLY. sed: and grain: are registration substrates whose
+  // positions ARE their identities — a registrant's position-of-arrival, a
+  // grain party's side — allocated and locked together by their own state
+  // machines. Their root lock is the founder's, and letting it bind the
+  // registrants' positions would put every member under the founder's key.
+  // They keep flat per-position authority.
+  const inherits = !blockName.startsWith('sed:') && !blockName.startsWith('grain:');
+  let authKey = lockKey;
+  let stored = hashes[lockKey];
+  if (inherits && stored === undefined && lockKey !== '_' && hashes['_'] !== undefined) {
+    authKey = '_';
+    stored = hashes['_'];
+  }
 
   // R5 — relinquish. new_lock null or '' returns the position to its PRE-lock
   // state: the hash entry is deleted, the position is open again as if never
@@ -1114,16 +1144,18 @@ async function handleStandardWrite(origin, blockName, body) {
   // Lock check for content writes.
   if (content !== undefined && stored) {
     if (!secret) {
-      return { status: 403, body: { error: `position "${lockKey}" of "${blockName}" is locked, secret required`, code: 'lock_required' } };
+      return { status: 403, body: { error: authKey === lockKey
+        ? `position "${lockKey}" of "${blockName}" is locked, secret required`
+        : `position "${lockKey}" of "${blockName}" inherits the lock at its root, secret required`, code: 'lock_required' } };
     }
-    if (hashByBlockName(origin, blockName, lockKey, secret) !== stored) {
+    if (hashByBlockName(origin, blockName, authKey, secret) !== stored) {
       return { status: 403, body: { error: 'secret does not match', code: 'lock_required' } };
     }
   }
 
   // Lock-rotation authority.
   if (new_lock !== undefined && stored) {
-    if (!secret || hashByBlockName(origin, blockName, lockKey, secret) !== stored) {
+    if (!secret || hashByBlockName(origin, blockName, authKey, secret) !== stored) {
       return { status: 403, body: { error: 'lock rotation requires current secret', code: 'lock_required' } };
     }
   }
@@ -1160,6 +1192,16 @@ async function handleStandardWrite(origin, blockName, body) {
       // an open (or absent) position is an idempotent no-op, and skipping the
       // save avoids minting a stray empty locks entry for a block that was
       // never locked.
+      if (stored !== undefined && authKey !== lockKey) {
+        // The position carries no lock of its own — it is governed by the root.
+        // Opening it individually would need a tombstone ("open here" stored as
+        // an entry), and this substrate stores no tombstones: "locked" is
+        // nothing but the presence of an entry. Say so rather than return a
+        // success that leaves the position exactly as closed as it was.
+        return { status: 409, body: {
+          error: `position "${lockKey}" of "${blockName}" holds no lock of its own — it inherits the one at the root. Relinquish the root to open the whole block, or set a distinct lock here to delegate this position.`,
+          code: 'inherited_lock' } };
+      }
       if (stored !== undefined) {
         delete hashes[lockKey];
         await saveHashes(origin, blockName, hashes);
