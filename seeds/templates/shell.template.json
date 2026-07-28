@@ -1,9 +1,11 @@
 {
   "_": "{{HANDLE}}'s shell at {{BEACH_URL}}. Personal operational state — faces, watched beaches, manifest of named blocks, pool subscriptions. Locked with {{HANDLE}}'s passphrase.",
   "3": {
-    "_": "Manifest of {{HANDLE}}'s named blocks at {{BEACH_URL}}. Add entries here as new blocks are authored.",
+    "_": "Manifest of {{HANDLE}}'s named blocks at {{BEACH_URL}} — the address a stranger's LLM reads to find the rest of the shell without walking the whole beach index. The four below are the standard shell (pscale://shell-genome); add entries here as new blocks are authored, and keep it current, because a manifest that lags is worse than none — it is trusted.",
     "1": "passport:{{HANDLE}}",
-    "2": "history:{{HANDLE}}"
+    "2": "shell:{{HANDLE}}",
+    "3": "history:{{HANDLE}} — automatic, one entry per session; append, never a computed slot",
+    "4": "stash:{{HANDLE}} — deliberate, kept by choice; same law as history"
   },
   "9": {
     "_": "Shell metadata.",
