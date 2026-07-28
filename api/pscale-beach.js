@@ -489,6 +489,24 @@ function writeAt(block, address, value) {
   }
   const lastDigit = digits[digits.length - 1];
   const lastKey = lastDigit === '0' ? '_' : lastDigit;
+  const target = node[lastKey];
+  // Voicing-at-the-terminus, the mirror of subnest-on-growth above. Where the
+  // loop moves a STRING down into `_` when a position gains children, this puts
+  // a string INTO `_` when the children are already there: a scalar written at a
+  // position holding a subtree sets that position's SEMANTIC, never flattens it.
+  // Same rule bsp-mcp's applyWrite has carried at its point-write path; the beach
+  // is the write surface for raw-HTTP callers and had no equivalent, so a summary
+  // paid at a zero-slot (N0 — the container's own address, per the trailing-zero
+  // canonicalisation in block-conventions:3.4) replaced the container and every
+  // entry under it, silently, ok:true. Replacing a subtree stays possible and
+  // stays explicit: send an object.
+  if (
+    target !== null && typeof target === 'object' && !Array.isArray(target) &&
+    (value === null || typeof value !== 'object')
+  ) {
+    target._ = value;
+    return block;
+  }
   node[lastKey] = value;
   return block;
 }
