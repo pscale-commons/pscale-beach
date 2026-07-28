@@ -16,7 +16,10 @@
 //                   client's built-in defaults; operators tune later.
 //   • passport:<handle>  — operator's passport (template, locked).
 //   • shell:<handle>     — operator's shell (template, locked).
-//   • history:<handle>   — empty history scaffold (locked).
+//   • history:<handle>   — empty history scaffold (template, locked).
+//   • stash:<handle>     — empty stash scaffold (template, locked). Sibling of
+//                   history: same counting law, differing only in who decides
+//                   an entry happens — the acting instance, or the holder.
 //   • marks              — beach surface; welcome mark at slot 1 (open).
 //   • pool:<name>        — one named pool (locked at "_" by operator).
 //   • sed:<name>         — registrant collective (locked at "_" by operator).
@@ -293,7 +296,12 @@ async function main() {
     console.log(`  ✓ config: ${name}`);
   }
 
-  // Operator presence — passport, shell, history. All locked at "_".
+  // Operator presence — the four blocks of the standard shell (pscale://shell-genome):
+  // passport, shell, history, stash. All locked at "_". History and stash are one
+  // convention differing only in who decides an entry happens, so they are born
+  // carrying the same accumulation law in their underscores — append, never a
+  // computed slot. A beach seeded without a stash pushes deliberate notes into the
+  // history, where the next automatic entry buries them.
   const passport = loadTemplate('passport.template.json', vars);
   await postBeach(beachUrl, `passport:${handle}`, {
     spindle: '', content: passport, confirm: true, new_lock: passphrase
@@ -306,18 +314,22 @@ async function main() {
   });
   console.log(`  ✓ shell:${handle}`);
 
-  const historyBlock = {
-    _: `${handle}'s history at ${beachUrl} — initialised at ${timestamp}. Each new entry goes at the next free digit; when 9 fills, supernest by compressing prior entries into the +0 underscore (sunstone:8) and resuming at 1.`
-  };
+  const historyBlock = loadTemplate('history.template.json', vars);
   await postBeach(beachUrl, `history:${handle}`, {
     spindle: '', content: historyBlock, confirm: true, new_lock: passphrase
   });
   console.log(`  ✓ history:${handle}`);
 
+  const stashBlock = loadTemplate('stash.template.json', vars);
+  await postBeach(beachUrl, `stash:${handle}`, {
+    spindle: '', content: stashBlock, confirm: true, new_lock: passphrase
+  });
+  console.log(`  ✓ stash:${handle}`);
+
   // Beach surfaces — marks (open), pool (locked at "_"), sed (locked at "_").
   const welcomeMark = loadTemplate('welcome-mark.template.json', vars);
   const marksBlock = {
-    _: `marks at ${beachUrl}. Open stigmergy — drop a mark at the next free positive integer composed of digits 1-9. Tide policy not yet declared. See pscale://block-conventions branch 9 for the mark convention.`,
+    _: `marks at ${beachUrl}. Open stigmergy — leave a mark by APPEND, never at a computed slot: the beach allocates the next free position atomically and supernests when the floor fills, so simultaneous arrivals cannot overwrite one another and the acknowledgement carries the slot you were given. Tide policy not yet declared. See pscale://block-conventions branch 9 for the mark convention and pscale://shell-genome:1 for the accumulation law.`,
     '1': welcomeMark
   };
   await postBeach(beachUrl, 'marks', {
