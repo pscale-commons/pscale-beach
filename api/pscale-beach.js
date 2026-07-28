@@ -1244,6 +1244,17 @@ export default async function handler(req, res) {
     return res.status(204).end();
   }
 
+  // Top-level try/catch — without this any throw inside the handler bypasses
+  // res.json() and Vercel returns FUNCTION_INVOCATION_FAILED as a 500 with NO
+  // headers, which the browser then surfaces as a CORS error (because the
+  // Access-Control-Allow-Origin header set above gets discarded along with
+  // the rest of the response when the function crashes). Wrapping here means
+  // any throw — Upstash transient, walker bug, deserialisation problem on a
+  // corrupted block — comes back as a structured 500 with CORS headers intact,
+  // so the caller can read the error, log usefully, and the cycle doesn't
+  // flicker between "got data" and "browser blocked the response".
+  try {
+
   const blockName = ((req.method === 'POST' || req.method === 'DELETE') && blockParamFromBody(req.body)) || blockParam(req.query);
   const origin = originFromRequest(req);
 
@@ -1378,4 +1389,23 @@ export default async function handler(req, res) {
   }
 
   return res.status(405).json({ error: 'Method not allowed', code: 'invalid_shape' });
+  } catch (e) {
+    // Anything that escaped the inner handlers — Upstash connection error,
+    // unexpected throw from the walker / parser / loader, corrupted KV
+    // payload, etc. Log to Vercel function logs so the operator can see what
+    // actually crashed; return a structured 500 with CORS headers (set above
+    // before the try block) so the browser doesn't surface it as a CORS
+    // error. The error message is included for diagnosis but doesn't leak
+    // anything more than the handler internals would in normal operation.
+    console.error('[pscale-beach] handler crash:', e?.stack || e);
+    if (!res.headersSent) {
+      return res.status(500).json({
+        error: e?.message ?? 'unknown handler error',
+        code: e?.code ?? 'handler_crash',
+      });
+    }
+    // If headers were already sent we can't override the status; let Vercel
+    // close the connection. This branch should be rare (most throws happen
+    // before res.json / res.end).
+  }
 }
