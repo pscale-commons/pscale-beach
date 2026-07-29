@@ -57,6 +57,33 @@ export class FileRedis {
     return all.filter((k) => k === pattern);
   }
 
+  // STRLEN — byte length of the stored serialised value (the raw file), 0 when
+  // absent. Matches Upstash: values land as JSON strings, STRLEN counts bytes.
+  async strlen(key) {
+    try {
+      const raw = await fs.readFile(this._file(key));
+      return raw.byteLength;
+    } catch (e) {
+      if (e.code === 'ENOENT') return 0;
+      throw e;
+    }
+  }
+
+  // Minimal pipeline — the handler's index path batches STRLENs through it.
+  // Sequential here; one round trip on real Upstash.
+  pipeline() {
+    const self = this;
+    const cmds = [];
+    return {
+      strlen(key) { cmds.push(['strlen', key]); return this; },
+      async exec() {
+        const out = [];
+        for (const [op, key] of cmds) out.push(await self[op](key));
+        return out;
+      },
+    };
+  }
+
   async del(...args) {
     const keys = args.flat();
     let n = 0;
