@@ -93,6 +93,15 @@ try {
   // Apex still intact after all world traffic.
   ok((await apexRead()).body?._ === 'APEX', 'apex survives all world writes byte-for-byte');
 
+  // Derived index carries per-block bytes — the weight read before the block.
+  const idx = (await req('GET', `/.well-known/pscale-beach`)).body;
+  ok(Array.isArray(idx?.blocks) && idx.blocks.includes('demo'), 'apex index lists its blocks');
+  ok(idx?.bytes && typeof idx.bytes === 'object', 'index carries a bytes map');
+  const demoLen = Buffer.byteLength(JSON.stringify((await apexRead()).body));
+  ok(typeof idx?.bytes?.demo === 'number' && idx.bytes.demo > 0 && Math.abs(idx.bytes.demo - demoLen) < 64, `bytes.demo plausible (${idx?.bytes?.demo} vs serialised ${demoLen})`);
+  const widx = (await req('GET', `/.well-known/pscale-beach?world=alpha`)).body;
+  ok(widx?.bytes?.demo > 0 && widx.blocks.includes('viapath'), 'world index carries bytes for its own blocks');
+
   console.log(fails ? `\n${fails} FAILED` : '\nworld-route isolation: all pass ✓');
 } finally {
   beach.kill();

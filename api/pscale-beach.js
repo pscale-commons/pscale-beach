@@ -363,12 +363,48 @@ async function listBlockNames(origin) {
   const prefix = `${keyNs(origin)}:block:`;
   const newKeys = await redis.keys(`${prefix}*`);
   const names = newKeys.map(k => k.slice(prefix.length));
+  let usedPrefix = prefix;
   if (names.length === 0) {
     const legacyPrefix = `${LEGACY_NS}:block:`;
     const legacyKeys = await redis.keys(`${legacyPrefix}*`);
     for (const k of legacyKeys) names.push(k.slice(legacyPrefix.length));
+    if (names.length > 0) usedPrefix = legacyPrefix;
   }
-  return Array.from(new Set(names)).sort();
+  const sorted = Array.from(new Set(names)).sort();
+  const bytes = await blockBytes(usedPrefix, sorted);
+  return { names: sorted, bytes };
+}
+
+// Per-block stored-JSON size via pipelined STRLEN — one extra round trip for
+// the whole surface, values never transferred. The weight beside the name is
+// what lets a reader choose an aperture (a disc probe, a spindle) BEFORE
+// paying for a read: a grown accumulator is visible as such from the index
+// instead of after a whole-block pull. Sizes are an affordance, never a gate —
+// on any error, or a client without pipeline/strlen (older rigs), the index
+// degrades to its nameless-weight shape unchanged.
+async function blockBytes(prefix, names) {
+  if (names.length === 0) return null;
+  try {
+    let lens;
+    if (typeof redis.pipeline === 'function') {
+      const p = redis.pipeline();
+      for (const n of names) p.strlen(`${prefix}${n}`);
+      lens = await p.exec();
+    } else if (typeof redis.strlen === 'function') {
+      lens = [];
+      for (const n of names) lens.push(await redis.strlen(`${prefix}${n}`));
+    } else {
+      return null;
+    }
+    const out = {};
+    names.forEach((n, i) => {
+      const v = Number(lens[i]);
+      if (Number.isFinite(v) && v > 0) out[n] = v;
+    });
+    return Object.keys(out).length > 0 ? out : null;
+  } catch {
+    return null;
+  }
 }
 
 // ── Presence sweep ──
@@ -1261,12 +1297,15 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     if (!blockName) {
       // Derived index: list named blocks at this surface. The surface is the
-      // beach; the blocks listed are what's actually here.
-      const blocks = await listBlockNames(origin);
+      // beach; the blocks listed are what's actually here. `bytes` (when the
+      // store supports STRLEN) maps each block to its stored-JSON size, so a
+      // reader picks an aperture before paying for a read.
+      const { names: blocks, bytes } = await listBlockNames(origin);
       return res.status(200).json({
-        _: `URL surface at ${origin}. Named sibling blocks listed below; address each via ?block=<name>. Substrate-wide conventions at bsp(agent_id='pscale', block='block-conventions').`,
+        _: `URL surface at ${origin}. Named sibling blocks listed below; address each via ?block=<name>${bytes ? '; bytes maps each block to its stored size — pick an aperture before the read' : ''}. Substrate-wide conventions at bsp(agent_id='pscale', block='block-conventions').`,
         origin,
-        blocks
+        blocks,
+        ...(bytes ? { bytes } : {})
       });
     }
     const block = await loadBlock(origin, blockName);
