@@ -1048,7 +1048,17 @@ async function handleStandardWrite(origin, blockName, body) {
           const moved = Object.keys(liquidNow).some((k) => {
             if (k === '_') return false;
             const slot = liquidNow[k];
-            const first = slot && typeof slot === 'object' ? Date.parse(String(slot['2'] ?? '')) : NaN;
+            // The FIRST-STAGED arrival stamp sits at field 6 (block-conventions:4.51,
+            // settled 2026-08-02); a slot staged before that carries it at 2, so read
+            // both — and by ISO shape, never Date.parse alone, because a temporal
+            // spine address like "2026" parses as a year. Reading only 2 left this
+            // guard INERT for every slot xstream wrote: field 2 held an address there,
+            // Date.parse returned NaN, and `moved` could never become true — a staged
+            // act could be silently dropped by a fold it arrived after.
+            const stamp = slot && typeof slot === 'object'
+              ? (isIso8601DateTime(slot['6']) ? slot['6'] : (isIso8601DateTime(slot['2']) ? slot['2'] : null))
+              : null;
+            const first = stamp === null ? NaN : Date.parse(stamp);
             return !Number.isNaN(first) && first > seen;
           });
           if (moved) {
