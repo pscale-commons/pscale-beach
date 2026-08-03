@@ -11,6 +11,7 @@
     "migrate:keys": "node scripts/migrate-keys.js",
     "repair:floor": "node scripts/repair-floor.js",
     "smoke:append": "node scripts/smoke-append.js",
+    "smoke:append-spindle": "node scripts/smoke-append-spindle.js",
     "smoke:locks": "node scripts/smoke-locks.js",
     "smoke:subbeach": "node scripts/smoke-subbeach.mjs",
     "smoke:world-routes": "node scripts/smoke-world-routes.mjs",
