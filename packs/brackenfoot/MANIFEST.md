@@ -1,5 +1,15 @@
 # Cartridge: brackenfoot
 
+> **The composition law lives on the substrate, not in this file.** What a world
+> is made of — the four surface shapes, the block roster with each block's
+> born-carrying underscore, the graft law, the door contract, and the
+> reference-table default — is the bsp-mcp sentinel **`pscale://world-genome`**
+> (`bsp(agent_id="pscale", block="world-genome")`), with the per-shape mint
+> writes at the reference beach's `ways:authoring` branch 8. A pack is the
+> FILE-FORM of a scenario — rung 4 of the maker's ladder (`ways:authoring` 7):
+> distribution and reset tooling, the operator's lane. Where this MANIFEST and
+> the sentinel disagree, the sentinel wins.
+
 A **resettable starter scenario** — the URB holding of Brackenfoot, seeded as a
 self-contained pscale-block bundle. A poor village at the foot of the bracken
 slopes, held by six of the Lord's men; the party arrives the day it breaks. Hard,
