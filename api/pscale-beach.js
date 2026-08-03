@@ -1,6 +1,6 @@
 import { Redis } from '@upstash/redis';
 import { createHash } from 'node:crypto';
-import { hasFloor, defaultIdentity, repairFloor, appendWithSupernest } from './floor.js';
+import { hasFloor, defaultIdentity, repairFloor, appendWithSupernest, appendAtNode } from './floor.js';
 
 // ── Pscale Beach v2 — URL surface, sibling blocks ──
 // Spec: https://github.com/pscale-commons/bsp-mcp-server/blob/main/docs/protocol-pscale-beach-v2.md
@@ -993,6 +993,124 @@ function stampAppendTimestamp(content) {
   return { ...content, '3': new Date().toISOString() };
 }
 
+// ── Append at a spindle — the accumulator law, node-scoped (ways:grain 5) ──
+//
+// `append: true` + a non-empty `spindle` grows the NODE the spindle names:
+// the beach walks to it, allocates the next free zero-free slot BENEATH it,
+// and supernests THAT NODE when its 1-9 fill — the node wraps {_: the old
+// node entire}, its underscore (a grain side's reach text) riding one level
+// deeper untouched, and the ladder continues within (first post-wrap slot
+// 11). The block root, siblings, and every other position are byte-untouched.
+// The driving case is the grain-side conversation (side 2's holder at 2.1,
+// then 2.2, onward); the demonstrated failure it closes is the 2026-08-02
+// spill — a side full at nine spilling its tenth message to undefined root
+// position 3, where it grew a fan nobody's key protects.
+//
+// Authority is the lock GOVERNING the addressed node, resolved exactly as an
+// ordinary write at this spindle: the position's own lock if set, else (on
+// ordinary blocks) inheritance to the root. For a grain side this lands on
+// the side-holder's lock by construction — side 2's key appends beneath 2, a
+// foreign key is refused — with nothing grain-specific added: sed:/grain:
+// keep their flat per-position authority here as everywhere.
+//
+// The node must EXIST and be an object: append never creates the node, and
+// appending beneath a string leaf is refused rather than auto-wrapping
+// someone's prose. resolve_window does not compose (window resolution is a
+// root-append act on a pool). The ack carries the landed slot's FULL address
+// from the block root, single-decimal form ("2.3", "2.11").
+async function handleAppendAtSpindle(origin, blockName, spindle, content, secret, resolveWindow) {
+  if (spindle.includes('*')) {
+    return { status: 400, body: { error: `append walks to a node; the star operator addresses a hidden directory — "${spindle}" cannot take an append`, code: 'invalid_address' } };
+  }
+  if (resolveWindow != null && resolveWindow !== '') {
+    return { status: 400, body: { error: 'resolve_window is a root-append act (window resolution lands at the accumulator root); it does not compose with spindle', code: 'invalid_shape' } };
+  }
+  const preBlock = await loadBlock(origin, blockName);
+  if (preBlock == null) {
+    return { status: 404, body: { error: `block "${blockName}" not found — append at a spindle grows an existing node, never creates the block`, code: 'not_found' } };
+  }
+  // Strict at the boundary BEFORE authority: a malformed address is a 400
+  // whatever keys ride with it. (For sed:/grain: names lockKeyForWrite splits
+  // on the dot without parsing, so without this a multi-dot spindle would
+  // reach the lock check and answer 403 — misroute-shaped, the whetstone:1.3
+  // trap.) The walk itself re-parses under the mutex against the live floor.
+  try {
+    parseSpindle(spindle, floorDepth(preBlock));
+  } catch (e) {
+    if (e instanceof InvalidAddressError) {
+      return { status: 400, body: { error: e.message, code: 'invalid_address' } };
+    }
+    throw e;
+  }
+  // Authority — resolved against the current block, same derivation and same
+  // inheritance as the ordinary write path at this spindle.
+  const hashes = await loadHashes(origin, blockName);
+  const lockKey = lockKeyForWrite(blockName, spindle, preBlock);
+  const inherits = !blockName.startsWith('sed:') && !blockName.startsWith('grain:');
+  let authKey = lockKey;
+  let stored = hashes[lockKey];
+  if (inherits && stored === undefined && lockKey !== '_' && hashes['_'] !== undefined) {
+    authKey = '_';
+    stored = hashes['_'];
+  }
+  if (stored) {
+    if (!secret) {
+      return { status: 403, body: { error: authKey === lockKey
+        ? `position "${lockKey}" of "${blockName}" is locked, secret required`
+        : `position "${lockKey}" of "${blockName}" inherits the lock at its root, secret required`, code: 'lock_required' } };
+    }
+    if (hashByBlockName(origin, blockName, authKey, secret) !== stored) {
+      return { status: 403, body: { error: 'secret does not match', code: 'lock_required' } };
+    }
+  }
+  // Same recency law as the root append (block-conventions:9) — object entries
+  // that haven't dated themselves get position 3 stamped; strings ride through.
+  const entry = stampAppendTimestamp(content);
+  // Same per-accumulator mutex as the root append — the storage unit is the
+  // whole block (one KV SET), so serialising per block IS the (block, node)
+  // exclusion: appends beneath one node never race on a slot, and appends
+  // beneath different nodes serialise exactly as much as the whole-block save
+  // already requires. A finer per-node key would let two node-appends erase
+  // each other's SET — the 2026-07-07 lost-update, reintroduced one level down.
+  const locked = await withAppendLock(origin, blockName, async () => {
+    const existing = await loadBlock(origin, blockName);
+    if (existing == null) return { missing: true };
+    // Re-derive the walk under the mutex: a root append serialised just ahead
+    // of this one may have supernested the block, raising its floor — the
+    // floor-aware parse keeps the spindle aimed at the same semantic node.
+    const fl = floorDepth(existing);
+    let digits;
+    try {
+      digits = parseSpindle(spindle, fl).digits;
+    } catch (e) {
+      if (e instanceof InvalidAddressError) return { invalid: e.message };
+      throw e;
+    }
+    const r = appendAtNode(existing, digits, entry);
+    if (r.missing || r.leaf) return { ...r, floor: fl, digits };
+    await saveBlock(origin, blockName, existing);
+    return { ...r, floor: fl, digits };
+  });
+  if (!locked) {
+    return { status: 503, body: { error: 'append contention — retry', code: 'append_contention' } };
+  }
+  const r = locked.done;
+  if (r.invalid) {
+    return { status: 400, body: { error: r.invalid, code: 'invalid_address' } };
+  }
+  if (r.missing) {
+    return { status: 404, body: { error: `no node at "${spindle}" of "${blockName}" — append lands beneath an existing node; write the node first`, code: 'not_found' } };
+  }
+  if (r.leaf) {
+    return { status: 409, body: { error: `"${spindle}" of "${blockName}" holds a scalar, not a node — appending beneath it would bury that text under a wrap it never asked for; write the position as an object (its prose at "_") before growing beneath it`, code: 'append_at_leaf' } };
+  }
+  // The landed slot's FULL address from the block root — single-decimal form,
+  // never multi-dot: node digits + the slot's digits, emitted by formatAddress
+  // against the floor the walk actually ran at.
+  const address = formatAddress(r.digits.concat(r.slot.split('')), r.floor);
+  return { status: 200, body: { ok: true, slot: r.slot, address, node: formatAddress(r.digits, r.floor), supernested: r.supernested } };
+}
+
 async function handleStandardWrite(origin, blockName, body) {
   const { spindle = '', content, secret, new_lock, confirm, append, resolve_window, resolve_seen } = body || {};
 
@@ -1008,6 +1126,14 @@ async function handleStandardWrite(origin, blockName, body) {
     const shapeErr = validateShape(content);
     if (shapeErr) {
       return { status: 400, body: { error: shapeErr, code: 'invalid_shape' } };
+    }
+    // Append AT A SPINDLE — the same law, node-scoped (ways:grain 5): the
+    // spindle names an interior node; the next free slot is allocated BENEATH
+    // it and the NODE supernests when its 1-9 fill. Root append (no spindle)
+    // continues below, byte-unchanged.
+    const appendSpindle = spindle == null ? '' : String(spindle);
+    if (appendSpindle !== '') {
+      return handleAppendAtSpindle(origin, blockName, appendSpindle, content, secret, resolve_window);
     }
     // Whole-accumulator authority: the `_` lock governs append (an accumulator
     // is locked or open as a unit; per-slot locks don't fit an append stream).

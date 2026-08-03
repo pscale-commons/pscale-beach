@@ -27,14 +27,21 @@ export class FileRedis {
 
   async set(key, val, opts) {
     // NX (set-if-absent) — mirrors Upstash's atomic `SET … NX` used by the
-    // single-resolution claim. The local rig is single-process and sequential,
-    // so access-then-write is effectively atomic here; real concurrency is
-    // Upstash's job in production. EX (TTL) is a no-op in the file shim.
-    if (opts && opts.nx) {
-      try { await fs.access(this._file(key)); return null; } // exists → NX fails
-      catch { /* absent → fall through and set */ }
-    }
+    // single-resolution claim and the per-accumulator append mutex. The 'wx'
+    // open flag makes it one atomic syscall (fail-if-exists), so Promise.all'd
+    // handler invocations interleaving at awaits still contend correctly —
+    // access-then-write had a window between the two awaits. EX (TTL) is a
+    // no-op in the file shim.
     await fs.mkdir(this.dir, { recursive: true });
+    if (opts && opts.nx) {
+      try {
+        await fs.writeFile(this._file(key), JSON.stringify(val), { flag: 'wx' });
+        return 'OK';
+      } catch (e) {
+        if (e.code === 'EEXIST') return null; // exists → NX fails
+        throw e;
+      }
+    }
     await fs.writeFile(this._file(key), JSON.stringify(val));
     return 'OK';
   }
