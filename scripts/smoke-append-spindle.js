@@ -124,8 +124,15 @@ async function main() {
   ok(after['2']._._ === 'reach from side two', '(c) reach text at the wrapped underscore, untouched');
   ok(after['2']._['1'] === 'first message' && after['2']._['9'] === 'message 9', '(c) messages 1..9 absorbed under the side underscore');
   ok(after['2']['1']['1'] === 'tenth message', '(c) tenth at side[1][1] (address 2.11)');
+  // (g) the ack NAMES the zero-slot it just made due, in the block's own
+  // address space — the debt announced at the instant it is created, to the
+  // one agent who can pay it. Block-relative, not side-relative: 2.10, not 10.
+  ok(eq(r.body.due, { address: '2.10', covers_first: '2.01', covers_last: '2.09' }),
+    '(g) the supernesting append names 2.10 due over 2.01-2.09', JSON.stringify(r.body.due));
+  ok(after['2']['1']._ === undefined, '(g) that zero-slot stands EMPTY — paying it destroys nothing');
   r = await post({ block: 'grain:cafe', append: true, spindle: '2', content: 'eleventh message', secret: 'key-two' });
   ok(r.status === 200 && r.body.address === '2.12' && r.body.supernested === false, '(c) ladder continues within — 2.12', JSON.stringify(r.body));
+  ok(r.body.due === undefined, '(g) a mid-span append claims no debt');
 
   // (d) missing node / string leaf / missing block refuse cleanly
   r = await post({ block: 'grain:cafe', append: true, spindle: '5', content: 'x', secret: 'key-two' });
@@ -149,6 +156,19 @@ async function main() {
     '(e) root append → slot 1, ack shape unchanged (no address field)', JSON.stringify(r.body));
   r = await post({ block: 'marks-smoke', append: true, content: { _: 'second mark', '1': 'someone' } });
   ok(r.status === 200 && r.body.slot === '2', '(e) root append → slot 2', JSON.stringify(r.body));
+  ok(r.body.due === undefined, '(g) root: no debt while the first span is still filling');
+  for (let i = 3; i <= 9; i++) await post({ block: 'marks-smoke', append: true, content: { _: `mark ${i}`, '1': 'someone' } });
+  r = await post({ block: 'marks-smoke', append: true, content: { _: 'tenth mark', '1': 'someone' } });
+  ok(r.status === 200 && r.body.slot === '11' && r.body.supernested === true, '(g) root: tenth supernests to slot 11', JSON.stringify(r.body));
+  // The covered span renders '1'-'9', not '01'-'09', and that is the parser
+  // telling the truth: a ROOT supernest raises the block floor, so left-padding
+  // makes '1' and '01' the same address and every citation written before the
+  // wrap still resolves. Contrast the node case above, where covers render
+  // '2.01'-'2.09' with the zero MANDATORY — a node supernest cannot raise the
+  // floor, so nothing re-pads and the pre-wrap citation '2.5' now walks nowhere.
+  // Same law, one asymmetry, visible right here in the two acks.
+  ok(eq(r.body.due, { address: '10', covers_first: '1', covers_last: '9' }),
+    '(g) root: the ack names 10 due over 1-9, its zero preserved where it is load-bearing', JSON.stringify(r.body.due));
 
   // recency law rides along: an undated OBJECT entry gets position 3 stamped
   r = await post({ block: 'grain:cafe', append: true, spindle: '1', content: { _: 'structured entry', '1': 'julie' }, secret: 'key-one' });

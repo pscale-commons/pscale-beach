@@ -94,6 +94,50 @@ export function nextZeroFreeSlot(block, floor) {
   return null;
 }
 
+// Index of a zero-free path on the counting line — the inverse of zeroFreePath.
+export function zeroFreeIndex(path) {
+  let i = 0;
+  for (const ch of String(path)) i = i * 9 + (Number(ch) - 1);
+  return i;
+}
+
+// ── The zero-slot this append just made due ──
+//
+// The accumulation law (shell-genome:1, block-conventions:3.5): zero-carrying
+// numbers are summary slots, never entries — N0 voices container N with a +0
+// summary of the PREVIOUS completed nine (10 over 01-09, 20 over 11-19, 110
+// over 091-099). The debt falls due as the next span OPENS, which is exactly
+// the append that lands on a slot ending in 1.
+//
+// It is announced here because it cannot be seen from anywhere else. Every
+// other party to an append learns the slot and nothing more, so the debt is
+// created in silence and discovered — if ever — by a later reader who must
+// re-derive the law under pressure and, on the record, keeps deriving it wrong:
+// the wrong span covered (a grain correspondent, 2026-08-05), the wrong
+// container overwritten, or six spans of debt accrued unnoticed on one history.
+// The substrate knows both facts at the instant it creates the debt. Saying so
+// costs one field and ends the re-derivation.
+//
+// Returns null when nothing closed (mid-span, or no completed nine behind it).
+// Otherwise { slot, first, last } — all node-relative zero-free paths; the
+// caller composes full addresses against its own floor.
+export function zeroSlotDue(slot, supernested, floor) {
+  const s = String(slot);
+  if (!s.endsWith('1')) return null;                    // mid-span: nothing closed
+  const due = s.slice(0, -1) + '0';
+  if (supernested) {
+    // A supernest always lands at the first slot of the new floor, so the nine
+    // it closes are the old floor's last nine — now reading one zero deeper.
+    const prev = floor - 1;
+    const total = 9 ** prev;
+    if (prev < 1) return null;
+    return { slot: due, first: '0' + zeroFreePath(total - 9, prev), last: '0' + zeroFreePath(total - 1, prev) };
+  }
+  const i = zeroFreeIndex(s);
+  if (i < 9) return null;                               // first span of this floor: nothing behind it
+  return { slot: due, first: zeroFreePath(i - 9, floor), last: zeroFreePath(i - 1, floor) };
+}
+
 // Set a value at a zero-free path, creating intermediates; a string in the way
 // migrates to that node's underscore (subnest-on-growth, mirrors writeAt).
 function rawSet(block, path, value) {
@@ -108,7 +152,7 @@ function rawSet(block, path, value) {
   node[d[d.length - 1]] = value;
 }
 
-// Append with supernest-on-rollover. Returns { block, slot, supernested, floor }.
+// Append with supernest-on-rollover. Returns { block, slot, supernested, floor, due }.
 export function appendWithSupernest(name, origin, block, content) {
   if (block == null) block = { _: defaultIdentity(name, origin) };
   else if (!hasFloor(block)) block = repairFloor(name, origin, block).block;
@@ -122,7 +166,7 @@ export function appendWithSupernest(name, origin, block, content) {
     slot = nextZeroFreeSlot(block, floor);
   }
   rawSet(block, slot, content);
-  return { block, slot, supernested, floor };
+  return { block, slot, supernested, floor, due: zeroSlotDue(slot, supernested, floor) };
 }
 
 // ── Node-scoped append — the same law, one node down (ways:grain 5) ──
@@ -171,5 +215,5 @@ export function appendAtNode(block, nodeDigits, content) {
     slot = nextZeroFreeSlot(node, nodeFloor);
   }
   rawSet(node, slot, content);
-  return { slot, supernested, node_floor: nodeFloor };
+  return { slot, supernested, node_floor: nodeFloor, due: zeroSlotDue(slot, supernested, nodeFloor) };
 }

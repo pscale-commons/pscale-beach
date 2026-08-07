@@ -282,6 +282,19 @@ function formatAddress(digits, floor) {
   return left.join('') + '.' + right.join('');
 }
 
+// A zero-slot's address — the container's canonical address with the summary
+// zero restored. formatAddress strips a trailing zero as floor-width padding,
+// which is right for a POSITION and wrong for this one thing: in the
+// accumulation law the trailing zero IS the summary slot's signature ("10 over
+// 01-09"). An ack that named "2.1" would read as an entry slot, and a careful
+// agent would refuse to overwrite it — which is precisely the reading that has
+// stalled these summaries before. Both forms walk to the same node; only one
+// says what it is.
+function dueAddress(prefixDigits, dueSlot, floor) {
+  const container = prefixDigits.concat(String(dueSlot).slice(0, -1).split(''));
+  return formatAddress(container, floor) + '0';
+}
+
 // Lock-key derivation. Empty spindle (or a spindle addressing the underscore
 // via '0' / '_') always maps to the '_' lock — that's whole-block replace and
 // underscore-of-root writes. Otherwise the lock is per-position: for sed:/grain:
@@ -1108,7 +1121,15 @@ async function handleAppendAtSpindle(origin, blockName, spindle, content, secret
   // never multi-dot: node digits + the slot's digits, emitted by formatAddress
   // against the floor the walk actually ran at.
   const address = formatAddress(r.digits.concat(r.slot.split('')), r.floor);
-  return { status: 200, body: { ok: true, slot: r.slot, address, node: formatAddress(r.digits, r.floor), supernested: r.supernested } };
+  // The zero-slot this append just made due, in the block's own address space —
+  // node digits ahead of it, exactly as the landed slot is composed. A grain
+  // side's tenth entry lands at 2.11 and makes 2.10 due over 2.01-2.09.
+  const due = r.due && {
+    address: dueAddress(r.digits, r.due.slot, r.floor),
+    covers_first: formatAddress(r.digits.concat(r.due.first.split('')), r.floor),
+    covers_last: formatAddress(r.digits.concat(r.due.last.split('')), r.floor),
+  };
+  return { status: 200, body: { ok: true, slot: r.slot, address, node: formatAddress(r.digits, r.floor), supernested: r.supernested, ...(due ? { due } : {}) } };
 }
 
 async function handleStandardWrite(origin, blockName, body) {
@@ -1240,7 +1261,12 @@ async function handleStandardWrite(origin, blockName, body) {
       return { status: 503, body: { error: 'append contention — retry', code: 'append_contention' } };
     }
     const r = locked.done;
-    return { status: 200, body: { ok: true, slot: r.slot, supernested: r.supernested, floor: r.floor, ...(clearedBuffer ? { cleared: clearedBuffer } : {}) } };
+    const due = r.due && {
+      address: dueAddress([], r.due.slot, r.floor),
+      covers_first: formatAddress(r.due.first.split(''), r.floor),
+      covers_last: formatAddress(r.due.last.split(''), r.floor),
+    };
+    return { status: 200, body: { ok: true, slot: r.slot, supernested: r.supernested, floor: r.floor, ...(due ? { due } : {}), ...(clearedBuffer ? { cleared: clearedBuffer } : {}) } };
   }
 
   // Shape gate: reject _word keys and JSON-stringified sub-objects on writes.
