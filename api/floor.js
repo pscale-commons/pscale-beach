@@ -125,51 +125,68 @@ export function appendWithSupernest(name, origin, block, content) {
   return { block, slot, supernested, floor };
 }
 
-// ── Node-scoped append — the same law, one node down (ways:grain 5) ──
+// ── Node-scoped append — NINE SLOTS, and no wrap (ways:grain 5) ──
 //
-// The root append above grows a BLOCK at its floor; this grows ONE NODE of a
-// block beneath that node's own underscore chain. The grain-side conversation
-// is the named case: side 2's holder writes at 2.1, then 2.2, onward, and at
-// the tenth entry the SIDE supernests — the node wraps {_: the old node
-// entire}, its underscore (the side's reach text) riding one level deeper
-// untouched — and the ladder continues within (first post-wrap slot 11).
-// The block root, siblings, and every other position are byte-untouched;
-// nothing ever spills to the root (the 2026-08-02 spill this closes).
+// The root append above grows a BLOCK, and grows it correctly, because a root
+// supernest raises the FLOOR: every address re-pads at once, entries stay peers
+// at pscale 0, and detail written beneath an entry travels with it.
+//
+// A node cannot do that. Floor is one per block, derived from the root's
+// underscore chain, so wrapping a node gives it a private depth the block never
+// records — and an address below that node stops being a number and becomes a
+// path only its own history can parse. This function used to wrap anyway. Three
+// things followed, all observed live: citations rotted silently (2.5 walked
+// nowhere while 2.05 held the message); 2.11 became ambiguous between "entry 11"
+// and "detail 1 of entry 1", with no record of which; and the node deepened by
+// one every nine entries, forever, which is archive behaviour on a surface whose
+// whole point is what is happening NOW.
+//
+// So: A DIGIT POSITION HOLDS NINE, and does not grow. Accumulation belongs at a
+// block root, where the floor can absorb it. A full node REFUSES, and the
+// refusal is the useful moment — the writer overwrites a slot (an ordinary
+// write, no new mechanism), or lets the tide clear one, or does the thing the
+// convention actually asks for and puts a POINTER in the slot with the letter
+// itself in a block of their own, where accumulating works.
 //
 // `nodeDigits` is a parseSpindle walk ('0' steps into '_'), so the node keeps
-// its semantic address across ROOT supernests — the caller re-parses against
-// the live floor and this function just walks. The node's own ladder depth is
-// its underscore-chain depth (floorDepth applied to the node); a bare
-// container with no underscore ladders at depth 1 — same slots, no phantom
-// wrap, and never a seeded identity (a node's semantic is its author's).
+// its semantic address across ROOT supernests — the caller re-parses against the
+// live floor and this function just walks.
 //
-// Returns {slot, supernested, node_floor} on success — slot is the zero-free
-// path WITHIN the node; the caller composes the full address. {missing: true}
-// when the walk dead-ends; {leaf: true} when the addressed position holds a
-// scalar — appending beneath prose would bury it under a wrap it never asked
-// for, so the caller refuses instead of auto-wrapping.
+// Returns {slot, node_floor} on success — slot is the zero-free path WITHIN the
+// node; the caller composes the full address. {missing: true} when the walk
+// dead-ends; {leaf: true} when the addressed position holds a scalar; and
+// {full: true, slots, oldest} when all nine are taken.
 export function appendAtNode(block, nodeDigits, content) {
   if (block == null || typeof block !== 'object' || Array.isArray(block)) return { missing: true };
-  let parent = null, key = null, node = block;
+  let parent = null, node = block;
   for (const d of nodeDigits) {
     const k = d === '0' ? '_' : d;
     if (node == null || typeof node !== 'object' || Array.isArray(node) || !(k in node)) {
       return { missing: true };
     }
-    parent = node; key = k; node = node[k];
+    parent = node; node = node[k];
   }
   if (parent === null) return { missing: true };  // empty walk = the root — that is appendWithSupernest's job
   if (node == null || typeof node !== 'object' || Array.isArray(node)) return { leaf: true };
-  let nodeFloor = Math.max(floorDepth(node), 1);
-  let supernested = false;
-  let slot = nextZeroFreeSlot(node, nodeFloor);
-  if (slot === null) {            // node full → supernest THE NODE (wrap, ladder deepens)
-    node = { _: node };
-    parent[key] = node;
-    nodeFloor = Math.max(floorDepth(node), 1);
-    supernested = true;
-    slot = nextZeroFreeSlot(node, nodeFloor);
-  }
+  const slot = nextZeroFreeSlot(node, 1);
+  if (slot === null) return { full: true, ...nodeOccupancy(node) };
   rawSet(node, slot, content);
-  return { slot, supernested, node_floor: nodeFloor };
+  return { slot, node_floor: 1 };
+}
+
+// Who is sitting in the nine, and which of them has been there longest. The age
+// comes from the entry's own position 3 (block-conventions:9, stamped on append
+// for object entries); a slot holding bare prose carries no date, so `oldest` is
+// only reported when it can be known rather than guessed at from slot order —
+// after one overwrite, slot order says nothing about age.
+export function nodeOccupancy(node) {
+  const slots = [];
+  for (let d = 1; d <= 9; d++) {
+    const v = node[String(d)];
+    if (v === undefined) continue;
+    const ts = v && typeof v === 'object' && typeof v['3'] === 'string' ? v['3'] : null;
+    slots.push({ slot: String(d), ts });
+  }
+  const dated = slots.filter((s) => s.ts).sort((a, b) => (a.ts < b.ts ? -1 : 1));
+  return { slots, oldest: dated.length === slots.length && dated.length ? dated[0] : null };
 }
