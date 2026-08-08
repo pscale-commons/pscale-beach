@@ -208,7 +208,7 @@ Re-running is idempotent for unlocked surfaces and rejects without the secret on
 | `history:<handle>` | Operator's journal — an accumulator, born carrying the accumulation law | locked at `_` |
 | `stash:<handle>` | Operator's runbook shelf — the second accumulator, likewise born carrying the law. The standard shell is four blocks (`pscale://shell-genome`) | locked at `_` |
 | `marks` | Open stigmergy — anyone drops a mark; welcome mark at slot 1 | open |
-| `pool:<name>` | Voice-preserving multi-party accumulator (default: `pool:visiting`) | locked at `_` |
+| `pool:<name>` | Voice-preserving multi-party accumulator (default: `pool:visiting`). **Open, like `marks`** — a visitor posts without a passphrase, which is the whole point of it. A root lock would inherit down to every position and refuse them | open |
 | `sed:<name>` | Registrant collective (default: `sed:<handle>-commons`) | locked at `_` |
 | `presence` | *Not seeded* — created on first heartbeat by whichever client writes one, and swept of stale entries by the handler. The wizard's closing banner points at it because it is the block that answers "who is here right now", not because init wrote it | open |
 | `lighthouse` | Operator-curated navigation block — one entry per target (passport, marks, pools, sed: collectives, the library seeded here, optionally neighbouring beaches), each as `<address> — <full underscore>`. See [pscale://block-conventions](https://github.com/pscale-commons/bsp-mcp-server/blob/main/src/block-conventions.json) at spindle `4.4`. The progression block (step 3, Mark) suggests reading the lighthouse on arrival; the bsp tool description does not hammer it on every call. | locked at `_` |

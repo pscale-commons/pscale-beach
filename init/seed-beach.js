@@ -326,7 +326,22 @@ async function main() {
   });
   console.log(`  ✓ stash:${handle}`);
 
-  // Beach surfaces — marks (open), pool (locked at "_"), sed (locked at "_").
+  // Beach surfaces — marks (open), pool (open), sed (locked at "_").
+  //
+  // THE POOL IS SEEDED OPEN, AND MUST STAY THAT WAY. It used to be locked at "_"
+  // like the operator's own blocks, which was harmless while a root lock covered
+  // only the underscore. Since lock inheritance landed (a root lock governs every
+  // position that carries no lock of its own), that same lock closed the pool
+  // against everyone but the operator — so the block whose seeded purpose is
+  // "Pool for visitors to introduce themselves" refused every visitor:
+  //
+  //     Beach append rejected: append to "pool:<name>" requires the accumulator secret
+  //
+  // An accumulator anyone may add to cannot carry a root lock. It shares that with
+  // marks, seeded open directly below for the same reason. The cost is that an open
+  // "_" is homesteadable, exactly as marks has always been; the alternative is a
+  // pool nobody can post to, which is not a pool. sed: is unaffected — its positions
+  // are locked per-registrant by pscale_settle, a different path entirely.
   const welcomeMark = loadTemplate('welcome-mark.template.json', vars);
   const marksBlock = {
     _: `marks at ${beachUrl}. Open stigmergy — leave a mark by APPEND, never at a computed slot: the beach allocates the next free position atomically and supernests when the floor fills, so simultaneous arrivals cannot overwrite one another and the acknowledgement carries the slot you were given. Tide policy not yet declared. See pscale://block-conventions branch 9 for the mark convention and pscale://shell-genome:1 for the accumulation law.`,
@@ -339,9 +354,9 @@ async function main() {
 
   const pool = loadTemplate('pool.template.json', vars);
   await postBeach(beachUrl, `pool:${poolName}`, {
-    spindle: '', content: pool, confirm: true, new_lock: passphrase
+    spindle: '', content: pool, confirm: true
   });
-  console.log(`  ✓ pool:${poolName}`);
+  console.log(`  ✓ pool:${poolName} (open — visitors post without a passphrase)`);
 
   const sed = loadTemplate('sed-commons.template.json', vars);
   await postBeach(beachUrl, `sed:${sedName}`, {
@@ -401,7 +416,8 @@ async function main() {
   console.log(`│   bsp(agent_id='${beachUrl}', block='presence')  — who is here right now`);
   console.log(`│   bsp(agent_id='${beachUrl}', block='marks')     — substantive contributions`);
   console.log(`│   bsp(agent_id='pscale', block='manifest')        — substrate orientation`);
-  console.log(`│ Visitors register via pscale_register at sed:${sedName}.`);
+  console.log(`│ Visitors settle via pscale_settle at sed:${sedName}; pool:${poolName}`);
+  console.log(`│ and marks are open — no passphrase needed to post to either.`);
   console.log(`└─────────────────────────────────────────────────────\n`);
 }
 
