@@ -8,9 +8,12 @@
 //   (a) grain side append allocates 2.1 then 2.2 (side-holder's key)
 //   (b) a cross-side key is refused — the general lock resolution, no
 //       grain-specific code
-//   (c) the tenth entry supernests the SIDE only: the node wraps {_: old
-//       side}, the reach text rides one level deeper untouched, root keys
-//       byte-unchanged, no spill to root position 3, ladder continues at 2.12
+//   (c) NINE SLOTS, AND NO WRAP: the tenth REFUSES (409 node_full), naming the
+//       node, its nine occupied addresses and the longest-standing one where
+//       the entries carry dates. The reach text stays AT the side underscore,
+//       the nine keep their single-decimal addresses, nothing is invented at
+//       2.11, no spill to root position 3 — and the way on is an ordinary
+//       overwrite of a slot, which needs no mechanism of its own
 //   (d) append under a missing node and under a string leaf both refuse
 //       cleanly (404 / 409) — never an auto-wrap of someone's prose
 //   (e) root append (no spindle) byte-unchanged — same slots, same ack shape
@@ -34,29 +37,34 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // ── Pure-function unit checks (appendAtNode) ──
 
 {
-  // The side ladder: 1..9 beneath the node, then the NODE wraps.
+  // The side holds nine — 1..9 beneath the node — and then it is full.
   const block = { _: 'grain', '2': { _: 'reach' } };
   for (let i = 1; i <= 9; i++) {
     const r = appendAtNode(block, ['2'], `m${i}`);
-    ok(r.slot === String(i) && !r.supernested, `unit: entry ${i} → slot ${i}, no wrap`);
+    ok(r.slot === String(i) && !r.full, `unit: entry ${i} → slot ${i}`);
   }
   const r10 = appendAtNode(block, ['2'], 'm10');
-  ok(r10.supernested === true && r10.slot === '11', 'unit: tenth wraps the node → slot 11');
-  ok(block['2']._._ === 'reach', 'unit: reach text rides one level deeper untouched');
-  ok(rawWalk(block['2']._, '1') === 'm1' && rawWalk(block['2']._, '9') === 'm9', 'unit: m1..m9 absorbed under the node underscore');
-  ok(rawWalk(block['2'], '11') === 'm10', 'unit: m10 at node[1][1]');
-  ok(block._ === 'grain' && floorDepth(block) === 1, 'unit: block root and floor untouched by the node wrap');
-  const r11 = appendAtNode(block, ['2'], 'm11');
-  ok(r11.slot === '12' && !r11.supernested, 'unit: ladder continues within — 12');
+  ok(r10.full === true && r10.slot === undefined, 'unit: the tenth REFUSES — nine slots, no wrap');
+  ok(block['2']._ === 'reach', 'unit: reach text stands AT the node underscore, never pushed deeper');
+  ok(rawWalk(block['2'], '1') === 'm1' && rawWalk(block['2'], '9') === 'm9', 'unit: m1..m9 stay at their single-decimal addresses');
+  ok(rawWalk(block['2'], '11') === undefined, 'unit: nothing invented at 11 — no phantom container');
+  ok(block._ === 'grain' && floorDepth(block) === 1, 'unit: block root and floor untouched');
+  ok(r10.slots.length === 9 && r10.slots[0].slot === '1', 'unit: the refusal reports the nine occupants');
+  ok(r10.oldest === null, 'unit: undated prose yields no oldest — slot order is not age');
+  // Dated entries DO yield an oldest — what a tide sweep needs to choose by.
+  const dated = { _: 'g', '2': { _: 'reach' } };
+  for (let i = 1; i <= 9; i++) appendAtNode(dated, ['2'], { _: `e${i}`, '3': `2026-0${i}-01T00:00:00Z` });
+  const rd = appendAtNode(dated, ['2'], { _: 'tenth' });
+  ok(rd.full === true && rd.oldest && rd.oldest.slot === '1', 'unit: dated entries name the longest-standing slot');
   // Refusals.
   ok(appendAtNode(block, ['5'], 'x').missing === true, 'unit: missing node → missing');
-  ok(appendAtNode(block, ['2', '1', '1'], 'x').leaf === true, 'unit: string leaf → leaf');
+  ok(appendAtNode(block, ['2', '1'], 'x').leaf === true, 'unit: string leaf → leaf');
   ok(appendAtNode(block, [], 'x').missing === true, 'unit: empty walk is the root append’s job');
   // A bare container (no underscore) ladders at depth 1 — no phantom wrap,
   // no seeded identity.
   const bare = { _: 'b', '3': { '1': 'kept' } };
   const rb = appendAtNode(bare, ['3'], 'new');
-  ok(rb.slot === '2' && !rb.supernested && bare['3']['1'] === 'kept', 'unit: bare container node → next slot 2, nothing invented');
+  ok(rb.slot === '2' && bare['3']['1'] === 'kept', 'unit: bare container node → next slot 2, nothing invented');
 }
 
 // ── In-process rig — the REAL handler over a temp-dir FileRedis ──
@@ -96,7 +104,7 @@ async function main() {
 
   // (a) side append allocates 2.1 then 2.2
   r = await post({ block: 'grain:cafe', append: true, spindle: '2', content: 'first message', secret: 'key-two' });
-  ok(r.status === 200 && r.body.slot === '1' && r.body.address === '2.1' && r.body.node === '2' && r.body.supernested === false,
+  ok(r.status === 200 && r.body.slot === '1' && r.body.address === '2.1' && r.body.node === '2',
     '(a) first side append → slot 1, address 2.1', JSON.stringify(r.body));
   r = await post({ block: 'grain:cafe', append: true, spindle: '2', content: 'second message', secret: 'key-two' });
   ok(r.status === 200 && r.body.address === '2.2', '(a) second side append → address 2.2', JSON.stringify(r.body));
@@ -109,28 +117,48 @@ async function main() {
   r = await post({ block: 'grain:cafe', append: true, spindle: '2', content: 'keyless' });
   ok(r.status === 403 && r.body.code === 'lock_required', '(b) keyless side append refused', JSON.stringify(r.body));
 
-  // (c) the tenth supernests the SIDE only
+  // (c) NINE SLOTS, AND NO WRAP — the tenth refuses instead of deepening
   for (let i = 3; i <= 9; i++) {
     r = await post({ block: 'grain:cafe', append: true, spindle: '2', content: `message ${i}`, secret: 'key-two' });
-    ok(r.status === 200 && r.body.slot === String(i) && r.body.supernested === false, `(c) fill: slot ${i}`, JSON.stringify(r.body));
+    ok(r.status === 200 && r.body.slot === String(i) && r.body.supernested === undefined, `(c) fill: slot ${i}`, JSON.stringify(r.body));
   }
   r = await post({ block: 'grain:cafe', append: true, spindle: '2', content: 'tenth message', secret: 'key-two' });
-  ok(r.status === 200 && r.body.supernested === true && r.body.slot === '11' && r.body.address === '2.11',
-    '(c) tenth supernests the side → address 2.11', JSON.stringify(r.body));
+  ok(r.status === 409 && r.body.code === 'node_full', '(c) the tenth REFUSES — a digit position holds nine', JSON.stringify(r.body));
+  ok(r.body.node === '2' && r.body.slots.length === 9 && r.body.slots[0].address === '2.1' && r.body.slots[8].address === '2.9',
+    '(c) the refusal names the node and all nine occupied addresses', JSON.stringify(r.body.slots));
+  ok(r.body.oldest === null, '(c) undated prose slots report no oldest rather than guessing from slot order');
+  ok(/holds nine and does not grow/.test(r.body.error) && /POINTER/.test(r.body.error),
+    '(c) the refusal carries the law and the way out', r.body.error);
+
   const after = (await read('grain:cafe')).body;
   ok(after['3'] === undefined, '(c) NO spill to root position 3');
   ok(eq(after['1'], rootBefore['1']) && eq(after['9'], rootBefore['9']) && after._ === rootBefore._,
     '(c) root keys byte-unchanged (side 1, position 9, root underscore)');
-  ok(after['2']._._ === 'reach from side two', '(c) reach text at the wrapped underscore, untouched');
-  ok(after['2']._['1'] === 'first message' && after['2']._['9'] === 'message 9', '(c) messages 1..9 absorbed under the side underscore');
-  ok(after['2']['1']['1'] === 'tenth message', '(c) tenth at side[1][1] (address 2.11)');
-  r = await post({ block: 'grain:cafe', append: true, spindle: '2', content: 'eleventh message', secret: 'key-two' });
-  ok(r.status === 200 && r.body.address === '2.12' && r.body.supernested === false, '(c) ladder continues within — 2.12', JSON.stringify(r.body));
+  ok(after['2']._ === 'reach from side two', '(c) the reach text stands AT the side underscore — never wrapped one deeper');
+  ok(after['2']['1'] === 'first message' && after['2']['9'] === 'message 9', '(c) the nine stand at 2.1-2.9, single-decimal, addresses intact');
+  ok(after['2']['11'] === undefined && (after['2']['1'] === null || typeof after['2']['1'] !== 'object'),
+    '(c) nothing was written at 2.11 and no phantom container appeared');
+
+  // …and the refusal is not a dead end: overwriting a slot is an ordinary write
+  r = await post({ block: 'grain:cafe', spindle: '2.4', content: 'tenth message, in the recycled slot', secret: 'key-two' });
+  ok(r.status === 200, '(c) a slot is freed by ordinary overwrite — no new mechanism needed', JSON.stringify(r.body));
+  r = await read('grain:cafe', '2.4');
+  ok(r.body === 'tenth message, in the recycled slot', '(c) the recycled slot holds the new message at its unchanged address');
+
+  // dated entries DO yield an oldest — the tide's handle on which slot to clear
+  await post({ block: 'grain:dated', action: 'reach', side: '1', agent_id: 'a', partner_agent_id: 'b', description: 'dated grain', my_side_content: 'one', my_passphrase: 'p1' });
+  await post({ block: 'grain:dated', action: 'reach', side: '2', agent_id: 'b', my_side_content: 'two', my_passphrase: 'p2' });
+  for (let i = 1; i <= 9; i++) {
+    await post({ block: 'grain:dated', append: true, spindle: '2', content: { _: `entry ${i}`, '1': 'b', '3': `2026-0${i}-01T00:00:00Z` }, secret: 'p2' });
+  }
+  r = await post({ block: 'grain:dated', append: true, spindle: '2', content: { _: 'tenth', '1': 'b' }, secret: 'p2' });
+  ok(r.status === 409 && r.body.oldest === '2.1' && /Longest-standing is 2\.1/.test(r.body.error),
+    '(c) with dated entries the refusal names the longest-standing slot', JSON.stringify(r.body.oldest));
 
   // (d) missing node / string leaf / missing block refuse cleanly
   r = await post({ block: 'grain:cafe', append: true, spindle: '5', content: 'x', secret: 'key-two' });
   ok(r.status === 404 && r.body.code === 'not_found', '(d) append under a missing node → 404', JSON.stringify(r.body));
-  r = await post({ block: 'grain:cafe', append: true, spindle: '2.12', content: 'x', secret: 'key-two' });
+  r = await post({ block: 'grain:cafe', append: true, spindle: '2.4', content: 'x', secret: 'key-two' });
   ok(r.status === 409 && r.body.code === 'append_at_leaf', '(d) append under a string leaf → 409, prose never auto-wrapped', JSON.stringify(r.body));
   r = await post({ block: 'no-such-block', append: true, spindle: '1', content: 'x' });
   ok(r.status === 404 && r.body.code === 'not_found', '(d) append at a spindle never creates the block', JSON.stringify(r.body));

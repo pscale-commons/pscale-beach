@@ -1087,7 +1087,7 @@ async function handleAppendAtSpindle(origin, blockName, spindle, content, secret
       throw e;
     }
     const r = appendAtNode(existing, digits, entry);
-    if (r.missing || r.leaf) return { ...r, floor: fl, digits };
+    if (r.missing || r.leaf || r.full) return { ...r, floor: fl, digits };
     await saveBlock(origin, blockName, existing);
     return { ...r, floor: fl, digits };
   });
@@ -1104,11 +1104,36 @@ async function handleAppendAtSpindle(origin, blockName, spindle, content, secret
   if (r.leaf) {
     return { status: 409, body: { error: `"${spindle}" of "${blockName}" holds a scalar, not a node — appending beneath it would bury that text under a wrap it never asked for; write the position as an object (its prose at "_") before growing beneath it`, code: 'append_at_leaf' } };
   }
+  if (r.full) {
+    // A digit position holds NINE and does not grow. The refusal carries what
+    // the writer needs to act on it in the same turn, rather than a bare 409
+    // that invites a guessed slot or a spill to the root.
+    const at = (s) => formatAddress(r.digits.concat(s.split('')), r.floor);
+    const nodeAddr = formatAddress(r.digits, r.floor);
+    const occupied = r.slots.map((s) => at(s.slot)).join(', ');
+    const oldest = r.oldest
+      ? ` Longest-standing is ${at(r.oldest.slot)} (${r.oldest.ts}).`
+      : ' No slot carries a date, so which is oldest is yours to judge — slot order does not say, once anything has been overwritten.';
+    return {
+      status: 409,
+      body: {
+        error:
+          `"${nodeAddr}" of "${blockName}" is full: nine slots, all taken (${occupied}).` +
+          oldest +
+          ` A digit position holds nine and does not grow — accumulation belongs at a block root, where a supernest can raise the floor. Overwrite a slot with an ordinary write to its address, or let the tide clear one.` +
+          ` If this is a channel rather than a store, put a POINTER in the slot and keep the thing itself in a block of your own, where it can accumulate properly (ways:grain 6, the letter).`,
+        code: 'node_full',
+        node: nodeAddr,
+        slots: r.slots.map((s) => ({ address: at(s.slot), ts: s.ts })),
+        oldest: r.oldest ? at(r.oldest.slot) : null,
+      },
+    };
+  }
   // The landed slot's FULL address from the block root — single-decimal form,
   // never multi-dot: node digits + the slot's digits, emitted by formatAddress
   // against the floor the walk actually ran at.
   const address = formatAddress(r.digits.concat(r.slot.split('')), r.floor);
-  return { status: 200, body: { ok: true, slot: r.slot, address, node: formatAddress(r.digits, r.floor), supernested: r.supernested } };
+  return { status: 200, body: { ok: true, slot: r.slot, address, node: formatAddress(r.digits, r.floor) } };
 }
 
 async function handleStandardWrite(origin, blockName, body) {
