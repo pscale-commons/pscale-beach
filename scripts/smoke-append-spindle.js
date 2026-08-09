@@ -51,7 +51,10 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   ok(block._ === 'grain' && floorDepth(block) === 1, 'unit: block root and floor untouched');
   ok(r10.slots.length === 9 && r10.slots[0].slot === '1', 'unit: the refusal reports the nine occupants');
   ok(r10.oldest === null, 'unit: undated prose yields no oldest — slot order is not age');
-  // Dated entries DO yield an oldest — what a tide sweep needs to choose by.
+  // Dated entries DO yield an oldest. Nothing consumes it automatically — the
+  // age-based tide is specified at the tide block and has never been built —
+  // but it is what a holder choosing which slot to overwrite wants to see, and
+  // what any future sweep would have to choose by.
   const dated = { _: 'g', '2': { _: 'reach' } };
   for (let i = 1; i <= 9; i++) appendAtNode(dated, ['2'], { _: `e${i}`, '3': `2026-0${i}-01T00:00:00Z` });
   const rd = appendAtNode(dated, ['2'], { _: 'tenth' });
@@ -145,7 +148,7 @@ async function main() {
   r = await read('grain:cafe', '2.4');
   ok(r.body === 'tenth message, in the recycled slot', '(c) the recycled slot holds the new message at its unchanged address');
 
-  // dated entries DO yield an oldest — the tide's handle on which slot to clear
+  // dated entries DO yield an oldest — the handle on which slot to overwrite
   await post({ block: 'grain:dated', action: 'reach', side: '1', agent_id: 'a', partner_agent_id: 'b', description: 'dated grain', my_side_content: 'one', my_passphrase: 'p1' });
   await post({ block: 'grain:dated', action: 'reach', side: '2', agent_id: 'b', my_side_content: 'two', my_passphrase: 'p2' });
   for (let i = 1; i <= 9; i++) {
