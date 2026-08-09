@@ -1,7 +1,7 @@
 {
   "name": "pscale-beach",
   "version": "0.1.0",
-  "description": "Beach package \u2014 federated /.well-known/pscale-beach handler plus seed content. Drop on a server, get a Level-1 ecological biome.",
+  "description": "Beach package — federated /.well-known/pscale-beach handler plus seed content. Drop on a server, get a Level-1 ecological biome.",
   "type": "module",
   "private": true,
   "scripts": {
@@ -15,7 +15,8 @@
     "smoke:locks": "node scripts/smoke-locks.js",
     "smoke:subbeach": "node scripts/smoke-subbeach.mjs",
     "smoke:world-routes": "node scripts/smoke-world-routes.mjs",
-    "smoke:voicing": "node scripts/smoke-voicing.js"
+    "smoke:voicing": "node scripts/smoke-voicing.js",
+    "smoke:grain-integrity": "node scripts/smoke-grain-integrity.js"
   },
   "dependencies": {
     "@upstash/redis": "^1.34.0"
