@@ -108,6 +108,52 @@ function rawSet(block, path, value) {
   node[d[d.length - 1]] = value;
 }
 
+// Zero-slot dues — which container underscores are owed a summary, and unpaid.
+//
+// The law (block-conventions:3.5, shell-genome:1): zero-carrying numbers are
+// summary slots and never entries, N0 is container N's own address by
+// trailing-zero canonicalisation, and the voicing is +0 INDUCTIVE — N0 voices
+// the PREVIOUS completed nine, not the nine nested inside N. So 10 voices 1-9,
+// 20 voices 11-19, 110 voices the last pre-wrap leaves 91-99. A due falls the
+// moment the NEXT span opens: the tenth entry slots at 11 and 10 becomes owed.
+//
+// Reported so the debt is visible where it is incurred. It was not, and the
+// cost was measurable: ten folds stood unpaid across two accumulators for
+// months because nothing ever announced them, and marks reached 82 entries and
+// nine unvoiced containers on a board written mostly by people with no LLM in
+// the loop. The writer never owes this — canon assigns payment to the
+// requesting LLM as service-payment — so an ack that says nothing leaves a
+// keyless human's perfectly good append accruing a debt no one can see.
+//
+// Dues settle oldest first, and the returned list is already in that order.
+export function owedSummaries(block) {
+  if (block == null || typeof block !== 'object') return [];
+  const floor = floorDepth(block);
+  if (floor < 2) return [];        // never wrapped — no completed span exists yet
+  const prefixLen = floor - 1;
+  const span = p => rawWalk(block, p);
+  const complete = node =>
+    node != null && typeof node === 'object' &&
+    Array.from({ length: 9 }, (_, k) => String(k + 1)).every(d => d in node);
+  const out = [];
+  for (let i = 0; i < 9 ** prefixLen; i++) {
+    const container = zeroFreePath(i, prefixLen);
+    const node = span(container);
+    if (node == null || typeof node !== 'object') continue;   // this span never opened
+    // The span this container's underscore voices: the one before it. For the
+    // first container that is the pre-wrap era, which supernest moved under the
+    // root underscore — reached by the same path with every digit read as `_`.
+    const prevPath = i === 0
+      ? '_'.repeat(prefixLen)
+      : zeroFreePath(i - 1, prefixLen);
+    if (!complete(span(prevPath))) continue;                  // nothing due yet
+    if (typeof node._ === 'string' && node._.trim() !== '') continue; // already paid
+    const p = prevPath.replace(/_/g, '');   // a wrapped era reads at its bare addresses
+    out.push({ slot: `${container}0`, over: `${p}1-${p}9` });
+  }
+  return out;
+}
+
 // Append with supernest-on-rollover. Returns { block, slot, supernested, floor }.
 export function appendWithSupernest(name, origin, block, content) {
   if (block == null) block = { _: defaultIdentity(name, origin) };

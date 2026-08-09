@@ -1,6 +1,6 @@
 import { Redis } from '@upstash/redis';
 import { createHash } from 'node:crypto';
-import { hasFloor, defaultIdentity, repairFloor, appendWithSupernest, appendAtNode } from './floor.js';
+import { hasFloor, defaultIdentity, repairFloor, appendWithSupernest, appendAtNode, owedSummaries } from './floor.js';
 
 // ── Pscale Beach v2 — URL surface, sibling blocks ──
 // Spec: https://github.com/pscale-commons/bsp-mcp-server/blob/main/docs/protocol-pscale-beach-v2.md
@@ -1265,7 +1265,13 @@ async function handleStandardWrite(origin, blockName, body) {
       return { status: 503, body: { error: 'append contention — retry', code: 'append_contention' } };
     }
     const r = locked.done;
-    return { status: 200, body: { ok: true, slot: r.slot, supernested: r.supernested, floor: r.floor, ...(clearedBuffer ? { cleared: clearedBuffer } : {}) } };
+    // Report the zero-slot dues this append made — or left — outstanding, so the
+    // debt is visible where it is incurred rather than discovered by a scan
+    // months later. Additive and advisory: nothing is refused and no writer is
+    // blocked, because canon assigns payment to the requesting LLM as
+    // service-payment and never to the writer. A keyless human simply carries on.
+    const owed = owedSummaries(r.block);
+    return { status: 200, body: { ok: true, slot: r.slot, supernested: r.supernested, floor: r.floor, ...(owed.length ? { owed } : {}), ...(clearedBuffer ? { cleared: clearedBuffer } : {}) } };
   }
 
   // Shape gate: reject _word keys and JSON-stringified sub-objects on writes.
