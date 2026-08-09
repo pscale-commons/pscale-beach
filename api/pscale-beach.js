@@ -1287,6 +1287,45 @@ async function handleStandardWrite(origin, blockName, body) {
       ? null  // we'll replace the block entirely below
       : { _: defaultIdentity(blockName, origin) };  // sub-position create — seed a floor (sunstone:1.51); never born floor-0
   }
+  // A FORMED GRAIN IS NEVER REPLACED WHOLE — the door that bypassed both side
+  // locks (2026-08-09).
+  //
+  // A reach locks the sides and only the sides: hashes['1'], hashes['2'], never
+  // hashes['_']. A whole-block write carries no spindle, so lockKeyForWrite
+  // resolves it to '_' — which has no lock — and the inheritance rule skips '_'
+  // by construction. The two side locks were therefore not broken but BYPASSED:
+  // the write never addressed a side. Anyone at all could POST {block, content,
+  // confirm:true} with no secret and replace both reaches, both sides and the
+  // position-9 record of who holds which. Grain ids are listed in the public
+  // surface index, so there was nothing to guess either.
+  //
+  // The principle: fine locks must bind the coarse. Root-lock inheritance says a
+  // coarse lock governs its children; the inverse has to hold too, or every
+  // per-position substrate has a hole at its root. Closing it here for grain
+  // specifically, where the hole is structural because no reach ever writes a
+  // '_' lock. DELETE already refuses these blocks for exactly this reasoning
+  // ("substrate-prefixed blocks have their own lifecycle and auth models"), and
+  // a whole-block replace is a wipe-and-rewrite by another name.
+  //
+  // A grain's lifecycle is reach-creates, sides-own-their-halves. There is no
+  // legitimate replace-the-whole-grain operation: writing a side is a spindled
+  // write under that side's key, and re-voicing your own reach is the reach
+  // action's own-side rewrite. Creation is untouched — the gate only fires when
+  // the block already exists. sed: is untouched too: a sed: root DOES carry a
+  // '_' lock from founding, so there the lock genuinely protects and refusing
+  // would remove a real admin capability.
+  if (content !== undefined && !spindle && existing != null && blockName.startsWith('grain:')) {
+    return {
+      status: 405,
+      body: {
+        error:
+          `"${blockName}" is a grain and cannot be replaced whole — its sides are locked individually, and a whole-block write answers to none of those locks. ` +
+          `Write one side at a time under that side's own key (spindle "1" or "2"), or re-voice your own reach with the reach action. ` +
+          `To empty a side, write {"_": "<that side's reach>"} at its spindle.`,
+        code: 'whole_block_replace_unsupported',
+      },
+    };
+  }
   // Whole-block REPLACE of an existing block is destructive — require explicit
   // confirm:true. Initialising a new block has no prior state to clobber, so
   // confirm is unnecessary (and avoids friction on the legitimate first write
