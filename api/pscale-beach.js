@@ -1120,7 +1120,7 @@ async function handleAppendAtSpindle(origin, blockName, spindle, content, secret
         error:
           `"${nodeAddr}" of "${blockName}" is full: nine slots, all taken (${occupied}).` +
           oldest +
-          ` A digit position holds nine and does not grow — accumulation belongs at a block root, where a supernest can raise the floor. Overwrite a slot with an ordinary write to its address, or let the tide clear one.` +
+          ` A digit position holds nine and does not grow — accumulation belongs at a block root, where a supernest can raise the floor. Overwrite a slot with an ordinary write to its address; nothing here expires by itself, so choosing which one goes is yours.` +
           ` If this is a channel rather than a store, put a POINTER in the slot and keep the thing itself in a block of your own, where it can accumulate properly (ways:grain 6, the letter).`,
         code: 'node_full',
         node: nodeAddr,

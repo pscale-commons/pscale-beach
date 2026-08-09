@@ -144,9 +144,16 @@ export function appendWithSupernest(name, origin, block, content) {
 // So: A DIGIT POSITION HOLDS NINE, and does not grow. Accumulation belongs at a
 // block root, where the floor can absorb it. A full node REFUSES, and the
 // refusal is the useful moment — the writer overwrites a slot (an ordinary
-// write, no new mechanism), or lets the tide clear one, or does the thing the
-// convention actually asks for and puts a POINTER in the slot with the letter
-// itself in a block of their own, where accumulating works.
+// write, no new mechanism), or does the thing the convention actually asks for
+// and puts a POINTER in the slot with the letter itself in a block of their
+// own, where accumulating works.
+//
+// NOT an option, though the tide block reads as though it were: nothing on this
+// substrate expires by itself. The age-based tide is specified there and has
+// never been implemented — no sweeper in this package or in any operator clone,
+// no age values set, nothing scheduling one. Freeing a slot is always somebody
+// choosing which one goes. (Corrected 2026-08-09: this comment and the refusal
+// it describes both offered a tide that does not exist.)
 //
 // `nodeDigits` is a parseSpindle walk ('0' steps into '_'), so the node keeps
 // its semantic address across ROOT supernests — the caller re-parses against the
