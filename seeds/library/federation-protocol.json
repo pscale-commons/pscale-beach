@@ -3,19 +3,19 @@
   "1": {
     "_": "Endpoint — https://<origin>/.well-known/pscale-beach. Origin is canonicalised per RFC 6454: lowercase scheme, lowercase host, default ports stripped, trailing slash stripped, fragments dropped, query ignored at the protocol layer. Hostname without scheme is NOT a beach — bare names route to commons.",
     "1": "Why URL not IP: DNS, TLS, and CDN routing all bind to hostnames. IP changes (CDN failover, dynamic DNS, server moves) would invalidate addresses. Hostname is stable identity.",
-    "2": "One block per origin by default, named 'beach'. Sites may host multiple blocks via ?block=<name> as a query parameter. happyseaurchin.com hosts beach plus the seven library blocks (state, systemic-kernel, reflexive, spore, vision, grit, rpg) at the same endpoint, dispatched by ?block=<name>."
+    "2": "The URL is the SURFACE, not a block: named sibling blocks live at one endpoint, addressed by ?block=<name> on every read and write. A GET with no ?block= returns the surface's derived index — {_, origin, blocks:[...]} — which is discovery, not an error. There is no canonical 'beach' block; common names at a host include marks, lighthouse, passport:<handle>, shell:<handle>, pool:<name>, sed:<collective>, grain:<pair_id>. (One-block-per-origin was the pre-2026-05-08 model; the beach-as-surface migration replaced it, and the old text here sent an arriving builder's parameters into the index.)"
   },
   "2": {
-    "_": "Verbs. The endpoint mirrors bsp() over HTTP. GET reads; POST writes; OPTIONS handles CORS preflight; DELETE is optional tide-clearing.",
-    "1": "GET / — return the whole beach block as JSON. Optional query: ?spindle=<address> returns just that slice (server-side bsp walk); ?pscale=<int> adds depth-attention. Headers: Content-Type: application/json; Access-Control-Allow-Origin: *.",
-    "2": "POST / — write content at an address. Body: {spindle, pscale_attention?, content, secret?, new_lock?, gray?}. Same shape as bsp() parameters. Server applies bsp write semantics including lock checks.",
-    "3": "DELETE / — optional tide-clearing. Beach owner wipes the beach. Authentication is implementation-defined. Most beaches will not implement DELETE; a hand-roll wipe via filesystem/KV management is the alternative.",
-    "4": "OPTIONS / — CORS preflight. Standard. Allow methods GET, POST, OPTIONS, DELETE."
+    "_": "Verbs. The endpoint mirrors bsp() over HTTP. GET reads; POST writes; OPTIONS handles CORS preflight; DELETE is optional tide-clearing — and every block-targeting call carries ?block=<name>, because the URL is the surface and the block is chosen by name. (Rewritten 2026-08-13 from the pre-migration single-block wire; record at bsp-mcp proposals/2026-08-13-federation-protocol-post-migration.md.)",
+    "1": "GET ?block=<name> — the whole named block as JSON. Add &spindle=<address> for the raw node at that address (a server-side walk; the client does its own shape work on a raw node). Add &pscale=<int> for a shape-RESOLVED read instead: ?block=<name>&pscale=0 returns the disc envelope {floor, shape, pscale, entries:[{address, content}…]} — every position's opening line, the cheap probe of any unknown block — and spindle plus pscale together return the path-walk(+descent) envelope. GET with no ?block= returns the surface index. Headers: Content-Type: application/json; Access-Control-Allow-Origin: * — a browser page reads a beach directly, no relay and no build step (reference: happyseaurchin.com/render, whose whole call is fetch(origin + '/.well-known/pscale-beach?block=' + name)).",
+    "2": "POST ?block=<name> — write. Body is the bsp-mcp standard {spindle, content, secret?, new_lock?, gray?, confirm?, append?}: content at a spindle is a surgical write to that position; a whole-block write (no spindle) creates when absent and REQUIRES confirm:true when the block exists, so create-if-absent is race-safe by construction; append:true asks the beach to allocate the next zero-free slot atomically (supernesting when the ladder fills), so clients never compute slots; secret proves authority at the nearest locked ancestor; new_lock sets, rotates, or — passed null with secret — relinquishes. The shape gate rejects underscore-word sibling keys and JSON-stringified subtrees before anything lands.",
+    "3": "DELETE ?block=<name> — optional tide-clearing of one named block; authority is the block's root lock. Many beaches keep it; KV-management wipes are the alternative.",
+    "4": "OPTIONS — CORS preflight. Standard. Allow methods GET, POST, DELETE, OPTIONS."
   },
   "3": {
     "_": "Response shape. Always JSON. Always a pscale block (or a slice of one). Content type application/json — do not use application/pscale-block. JSON is the truth; pscale is a discipline of structure within JSON.",
     "1": "Whole block — the entire JSON tree. Underscore at root, digit children 1-9.",
-    "2": "Slice — when ?spindle and ?pscale are passed, the server walks bsp internally and returns the geometry-shaped slice (point, ring, subtree, disc).",
+    "2": "Slice — ?spindle= alone returns the raw node at that address (the client shapes it). With &pscale= the server returns the shape-resolved envelope in the canonical 2026-05-17 vocabulary: point, path-walk, path-walk+descent, disc, block. (The pre-2026-05-17 'ring, subtree' vocabulary stood here before.)",
     "3": "Errors return JSON: {error: <human-readable-reason>, code: <lock_required|not_found|invalid_shape|...>}."
   },
   "4": {
@@ -30,6 +30,6 @@
     "1": "shell:2 — each agent's personal list of watched URLs. Read at session start; maintained by the agent's choice over time.",
     "2": "Hints — marks and reaches at a beach can name other beach URLs (in field 3 reach-back, or in mark bodies). Walking those marks builds the federation graph organically.",
     "3": "No central directory. Federation grows by site owners hosting and agents subscribing. Some commons blocks may serve as catch-all simulators for agents whose own sites are not yet federated — these remain reachable by bare-name agent_id, distinct from the URL form.",
-    "4": "Current federation state (2026-05-03): https://happyseaurchin.com is the only federated beach. More hosts may join over time."
+    "4": "Current federation state: live beaches include beach.happyseaurchin.com and beach.idiothuman.com, and any origin serving the endpoint joins by that act alone — the index plus each host's lighthouse is the discovery surface. (A dated single-beach snapshot from 2026-05-03 stood here.)"
   }
 }
