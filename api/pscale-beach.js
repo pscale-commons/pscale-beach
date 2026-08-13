@@ -1001,7 +1001,9 @@ async function poolAppendWebhookUrl(origin) {
         const v = settings[k];
         const s = typeof v === 'string' ? v
           : (v && typeof v === 'object' && typeof v['_'] === 'string' ? v['_'] : '');
-        const m = s.match(/^\s*pool_append_webhook\s*=\s*(https?:\/\/\S+)\s*$/);
+        // Tolerant like parseConventionName: the URL ends at whitespace, and a
+        // block may carry explanatory prose after it — the line self-describes.
+        const m = s.match(/^\s*pool_append_webhook\s*=\s*(https?:\/\/\S+)(?:\s|$)/);
         if (m) { url = m[1]; break; }
       }
     }
