@@ -968,6 +968,70 @@ async function withAppendLock(origin, blockName, fn) {
   return null; // contention exhausted — caller answers 503, client may retry
 }
 
+// ── The doorbell webhook — a landed voice at a pool rings services riding it ──
+// (design: bsp-mcp proposals/2026-08-12-doorbell-wake.md — the doorbell wake)
+//
+// When THIS origin's `settings` block carries a line "pool_append_webhook=<url>"
+// at any top-level digit position (first match wins; the line may sit at the
+// position directly or at its underscore), every SUCCESSFUL append to a block
+// named pool:* fires one POST {origin, pool, slot, agent_id, ts} at that url,
+// with the shared secret from env POOL_WEBHOOK_SECRET riding the
+// x-pool-webhook-secret header. The beach stays dumb: no dial reads, no
+// per-agent filtering, no retries — whatever rides the declaration (a waker
+// service) decides everything downstream. The append has already committed
+// when this fires, and a webhook fault NEVER touches the append's outcome:
+// the fetch is bounded to three seconds and every error is swallowed. (It is
+// awaited rather than detached because a serverless invocation may freeze the
+// instant the response returns — the await IS the fire-and-forget here.)
+// Liquid staging never fires (liquid:pool:* does not match pool:*): a stage
+// is not a landed voice. The settings read is cached ~60s per origin so a hot
+// room costs no extra KV reads.
+const POOL_WEBHOOK_CACHE_TTL_MS = 60_000;
+const _poolWebhookCache = new Map(); // origin -> { url: string|null, at: ms }
+
+async function poolAppendWebhookUrl(origin) {
+  const c = _poolWebhookCache.get(origin);
+  if (c && Date.now() - c.at < POOL_WEBHOOK_CACHE_TTL_MS) return c.url;
+  let url = null;
+  try {
+    const settings = await loadBlock(origin, 'settings');
+    if (settings && typeof settings === 'object') {
+      for (const k of Object.keys(settings)) {
+        if (!/^[1-9]\d*$/.test(k)) continue;
+        const v = settings[k];
+        const s = typeof v === 'string' ? v
+          : (v && typeof v === 'object' && typeof v['_'] === 'string' ? v['_'] : '');
+        // Tolerant like parseConventionName: the URL ends at whitespace, and a
+        // block may carry explanatory prose after it — the line self-describes.
+        const m = s.match(/^\s*pool_append_webhook\s*=\s*(https?:\/\/\S+)(?:\s|$)/);
+        if (m) { url = m[1]; break; }
+      }
+    }
+  } catch { /* declaration unreadable — treat as undeclared */ }
+  _poolWebhookCache.set(origin, { url, at: Date.now() });
+  return url;
+}
+
+async function firePoolAppendWebhook(origin, blockName, slotAddress, entry) {
+  if (!blockName.startsWith('pool:')) return;
+  try {
+    const url = await poolAppendWebhookUrl(origin);
+    if (!url) return;
+    const agentId = entry && typeof entry === 'object' && typeof entry['1'] === 'string' ? entry['1'] : '';
+    const ts = entry && typeof entry === 'object' && typeof entry['3'] === 'string' ? entry['3'] : new Date().toISOString();
+    const secret = process.env.POOL_WEBHOOK_SECRET;
+    await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        ...(secret ? { 'x-pool-webhook-secret': secret } : {}),
+      },
+      body: JSON.stringify({ origin, pool: blockName, slot: slotAddress, agent_id: agentId, ts }),
+      signal: AbortSignal.timeout(3000),
+    });
+  } catch { /* fire-and-forget — a webhook fault never touches the append */ }
+}
+
 // ── Position-3 recency stamp (block-conventions:9, 4.22, 4.6) ──
 // Marks, pool contributions, and presence all reserve position 3 of each entry
 // for an ISO-8601 UTC timestamp. The append path stores exactly what the client
@@ -1133,6 +1197,7 @@ async function handleAppendAtSpindle(origin, blockName, spindle, content, secret
   // never multi-dot: node digits + the slot's digits, emitted by formatAddress
   // against the floor the walk actually ran at.
   const address = formatAddress(r.digits.concat(r.slot.split('')), r.floor);
+  await firePoolAppendWebhook(origin, blockName, address, entry);
   return { status: 200, body: { ok: true, slot: r.slot, address, node: formatAddress(r.digits, r.floor) } };
 }
 
@@ -1271,6 +1336,7 @@ async function handleStandardWrite(origin, blockName, body) {
     // blocked, because canon assigns payment to the requesting LLM as
     // service-payment and never to the writer. A keyless human simply carries on.
     const owed = owedSummaries(r.block);
+    await firePoolAppendWebhook(origin, blockName, String(r.slot), entry);
     return { status: 200, body: { ok: true, slot: r.slot, supernested: r.supernested, floor: r.floor, ...(owed.length ? { owed } : {}), ...(clearedBuffer ? { cleared: clearedBuffer } : {}) } };
   }
 
