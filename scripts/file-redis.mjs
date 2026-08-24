@@ -91,6 +91,27 @@ export class FileRedis {
     };
   }
 
+  // ── Hash ops — the touched map (one hash per surface). File-backed: the
+  // hash is one JSON object under its key; single-process rig, so the
+  // read-modify-write here needs no lock.
+  async hset(key, fields) {
+    const cur = (await this.get(key)) || {};
+    Object.assign(cur, fields);
+    await this.set(key, cur);
+    return Object.keys(fields).length;
+  }
+  async hgetall(key) {
+    return (await this.get(key)) || null;
+  }
+  async hdel(key, ...fields) {
+    const cur = await this.get(key);
+    if (!cur) return 0;
+    let n = 0;
+    for (const f of fields) if (f in cur) { delete cur[f]; n += 1; }
+    await this.set(key, cur);
+    return n;
+  }
+
   async del(...args) {
     const keys = args.flat();
     let n = 0;
