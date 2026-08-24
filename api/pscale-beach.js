@@ -143,6 +143,10 @@ const LEGACY_FALLBACK_READS = process.env.LEGACY_NAMESPACE_FALLBACK_READS === 't
 const keyNs = (origin) => `pscale-beach-v2:${origin}`;
 function blockKey(origin, name) { return `${keyNs(origin)}:block:${name}`; }
 function locksKey(origin, name) { return `${keyNs(origin)}:locks:${name}`; }
+// One hash per surface: block name → ISO of its last content write. The
+// beach remembers when it was touched (proposals/2026-08-20-the-beach-
+// remembers-when.md, bsp-mcp#294) — overwritten in place, no growth.
+function touchedKey(origin) { return `${keyNs(origin)}:touched`; }
 function legacyBlockKey(name) { return `${LEGACY_NS}:block:${name}`; }
 function legacyLocksKey(name) { return `${LEGACY_NS}:locks:${name}`; }
 // Window-resolution claim key — the single-resolution lock for the in-loop
@@ -338,6 +342,13 @@ async function saveBlock(origin, name, block) {
     }
   }
   await redis.set(blockKey(origin, name), block);
+  // The surface remembers the touch. saveBlock is the one persist path every
+  // write takes — position write, append, whole-block, sed, grain — so the
+  // stamp is physics, not client courtesy: every door is covered, none is
+  // asked. Best-effort by design: a write must never fail on its own stamp.
+  try {
+    await redis.hset(touchedKey(origin), { [name]: new Date().toISOString() });
+  } catch { /* the write stands; the stamp is refinement */ }
 }
 
 async function loadHashes(origin, name) {
@@ -1573,11 +1584,26 @@ export default async function handler(req, res) {
       // store supports STRLEN) maps each block to its stored-JSON size, so a
       // reader picks an aperture before paying for a read.
       const { names: blocks, bytes } = await listBlockNames(origin);
+      // `touched` rides beside `bytes` as a second additive sibling — block
+      // name → ISO of its last content write, so one GET answers "what
+      // changed since I last looked" and a reader refetches only what moved.
+      // Filtered to the blocks actually listed, so a legacy-stranded stamp
+      // never leaks a ghost. A reader that doesn't know the field ignores it.
+      let touched = null;
+      try {
+        const t = await redis.hgetall(touchedKey(origin));
+        if (t && typeof t === 'object') {
+          const present = new Set(blocks);
+          const kept = Object.fromEntries(Object.entries(t).filter(([k]) => present.has(k)));
+          if (Object.keys(kept).length) touched = kept;
+        }
+      } catch { /* the index stands without it */ }
       return res.status(200).json({
-        _: `URL surface at ${origin}. Named sibling blocks listed below; address each via ?block=<name>${bytes ? '; bytes maps each block to its stored size — pick an aperture before the read' : ''}. Substrate-wide conventions at bsp(agent_id='pscale', block='block-conventions').`,
+        _: `URL surface at ${origin}. Named sibling blocks listed below; address each via ?block=<name>${bytes ? '; bytes maps each block to its stored size — pick an aperture before the read' : ''}${touched ? '; touched maps each block to when it last changed — fetch only what moved' : ''}. Substrate-wide conventions at bsp(agent_id='pscale', block='block-conventions').`,
         origin,
         blocks,
-        ...(bytes ? { bytes } : {})
+        ...(bytes ? { bytes } : {}),
+        ...(touched ? { touched } : {})
       });
     }
     const block = await loadBlock(origin, blockName);
@@ -1696,6 +1722,7 @@ export default async function handler(req, res) {
     await redis.del(locksKey(origin, blockName));
     await redis.del(legacyBlockKey(blockName));
     await redis.del(legacyLocksKey(blockName));
+    try { await redis.hdel(touchedKey(origin), blockName); } catch { /* wiped regardless */ }
     return res.status(200).json({ ok: true, wiped: blockName });
   }
 
