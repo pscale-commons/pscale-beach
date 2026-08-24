@@ -1599,7 +1599,7 @@ export default async function handler(req, res) {
         }
       } catch { /* the index stands without it */ }
       return res.status(200).json({
-        _: `URL surface at ${origin}. Named sibling blocks listed below; address each via ?block=<name>${bytes ? '; bytes maps each block to its stored size — pick an aperture before the read' : ''}${touched ? '; touched maps each block to when it last changed — fetch only what moved' : ''}. Substrate-wide conventions at bsp(agent_id='pscale', block='block-conventions').`,
+        _: `URL surface at ${origin}. Named sibling blocks listed below; address each via ?block=<name>${bytes ? '; bytes maps each block to its stored size — pick an aperture before the read' : ''}${touched ? '; touched maps each block to when it last changed — fetch only what moved' : ''}.${blocks.includes('lighthouse') ? ' First visit: start at ?block=lighthouse — the compass for this surface.' : ''} Substrate-wide conventions at bsp(agent_id='pscale', block='block-conventions').`,
         origin,
         blocks,
         ...(bytes ? { bytes } : {}),
