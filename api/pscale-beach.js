@@ -620,6 +620,22 @@ function semanticOf(node) {
   return null;
 }
 
+// The arrival stamp an entry carries at field 3 (the mark shape's ts) —
+// surfaced as `stamp` on shaped wire entries so the router's formatRead
+// renders it beside the content and the grounding boundary ages it
+// (bsp-mcp #326, the temporal-comparison lane; underscore-only rendering hid
+// the stamp exactly where staleness needed reading). LEADING ISO token only:
+// the live board carries decorated stamps, and surfacing the tail re-renders
+// a stale age beside the fresh one. A container whose digit 3 holds a
+// subtree yields undefined, and JSON serialisation drops the key.
+const LEADING_ISO_STAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?/;
+function entryStampOf(node) {
+  const v = node && typeof node === 'object' ? node['3'] : undefined;
+  if (typeof v !== 'string') return undefined;
+  const m = LEADING_ISO_STAMP.exec(v);
+  return m ? m[0] : undefined;
+}
+
 function splitStarOnSpindle(spindle) {
   if (spindle == null) return { pre: null, post: null, hasStar: false };
   const s = String(spindle);
@@ -645,6 +661,7 @@ function buildPathWalkCanonical(block, digits, floor) {
       depth: i,
       pscale: pscaleAtCanonical(i, floor),
       content: semanticOf(node),
+      stamp: entryStampOf(node),
     });
   }
   return entries;
@@ -664,6 +681,7 @@ function collectDiscCanonical(block, targetDepth, floor) {
         results.push({
           address: formatAddress(walked, floor),
           content: semanticOf(node),
+          stamp: entryStampOf(node),
         });
       }
       return;
@@ -710,6 +728,7 @@ function collectDescentCanonical(terminus, walked, floor, layers) {
             depth: childDepth,
             pscale: pscaleAtCanonical(childDepth, floor),
             content: semanticOf(child),
+            stamp: entryStampOf(child),
           });
           if (child && typeof child === 'object') {
             next.push([child, path.concat([d])]);
@@ -792,6 +811,7 @@ function bspCanonical(block, spindle, pscale) {
       depth: target,
       address: formatAddress(prefix, floor),
       content: semanticOf(node),
+      stamp: entryStampOf(node),
     };
   }
 
