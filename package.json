@@ -16,7 +16,8 @@
     "smoke:subbeach": "node scripts/smoke-subbeach.mjs",
     "smoke:world-routes": "node scripts/smoke-world-routes.mjs",
     "smoke:voicing": "node scripts/smoke-voicing.js",
-    "smoke:grain-integrity": "node scripts/smoke-grain-integrity.js"
+    "smoke:grain-integrity": "node scripts/smoke-grain-integrity.js",
+    "smoke:temporal": "node scripts/smoke-temporal.js"
   },
   "dependencies": {
     "@upstash/redis": "^1.34.0"

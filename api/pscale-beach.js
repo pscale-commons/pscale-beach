@@ -1,6 +1,7 @@
 import { Redis } from '@upstash/redis';
 import { createHash } from 'node:crypto';
 import { hasFloor, defaultIdentity, repairFloor, appendWithSupernest, appendAtNode, owedSummaries } from './floor.js';
+import { NOW_HEADER, nowHeader, renderNow } from '../lib/temporal.js';
 
 // ── Pscale Beach v2 — URL surface, sibling blocks ──
 // Spec: https://github.com/pscale-commons/bsp-mcp-server/blob/main/docs/protocol-pscale-beach-v2.md
@@ -19,6 +20,13 @@ import { hasFloor, defaultIdentity, repairFloor, appendWithSupernest, appendAtNo
 //            grain: {action: "reach",    side, agent_id, partner_agent_id,
 //                                        description, my_side_content,
 //                                        my_passphrase}
+//
+// Every response served carries the sundial's now — X-Pscale-Now: <iso> |
+// <ten-digit address> | <voicing> (lib/temporal.js, ported from bsp-mcp's
+// src/temporal.ts) — and the derived index carries the same stamp as `now`.
+// A raw-fetch reader with no MCP connector is grounded at the point of
+// reading (sundial:5). Never stored, never inside a block: a block's keys
+// are `_` and digits only, so under ?block= the header is the carrier.
 //
 // Block-name prefix routes the substrate:
 //   "sed:<collective>"  → site-hosted sed: substrate; per-position locks
@@ -1581,6 +1589,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept');
+  res.setHeader('Access-Control-Expose-Headers', NOW_HEADER);
 
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
@@ -1597,6 +1606,16 @@ export default async function handler(req, res) {
   // flicker between "got data" and "browser blocked the response".
   try {
 
+  // The sundial's now rides every response served from here — grounding is
+  // a property of serving, so it lives at the boundary and no door is asked
+  // (sundial:5.3): one instant, taken once, carried as X-Pscale-Now on every
+  // GET, POST and DELETE — index, block, refusal alike — and exposed above so
+  // a browser fetch can read it. A block payload is the block itself and its
+  // keys are only `_` and digits, so the moment never enters a block; the
+  // index is an envelope and carries the same stamp as `now` (below).
+  const servedAt = new Date();
+  res.setHeader(NOW_HEADER, nowHeader(servedAt));
+
   const blockName = ((req.method === 'POST' || req.method === 'DELETE') && blockParamFromBody(req.body)) || blockParam(req.query);
   const origin = originFromRequest(req);
 
@@ -1612,6 +1631,10 @@ export default async function handler(req, res) {
       // changed since I last looked" and a reader refetches only what moved.
       // Filtered to the blocks actually listed, so a legacy-stranded stamp
       // never leaks a ghost. A reader that doesn't know the field ignores it.
+      // `now` is the third — the sundial's reading of the instant this index
+      // was served, {iso, address, voicing} (lib/temporal.js), so a raw-fetch
+      // reader with no grounding boundary of its own is oriented at the point
+      // of reading (sundial:5). Derived from the clock per GET, never stored.
       let touched = null;
       try {
         const t = await redis.hgetall(touchedKey(origin));
@@ -1622,11 +1645,12 @@ export default async function handler(req, res) {
         }
       } catch { /* the index stands without it */ }
       return res.status(200).json({
-        _: `URL surface at ${origin}. Named sibling blocks listed below; address each via ?block=<name>${bytes ? '; bytes maps each block to its stored size — pick an aperture before the read' : ''}${touched ? '; touched maps each block to when it last changed — fetch only what moved' : ''}.${blocks.includes('lighthouse') ? ' First visit: start at ?block=lighthouse — the compass for this surface.' : ''} Substrate-wide conventions at bsp(agent_id='pscale', block='block-conventions').`,
+        _: `URL surface at ${origin}. Named sibling blocks listed below; address each via ?block=<name>${bytes ? '; bytes maps each block to its stored size — pick an aperture before the read' : ''}${touched ? '; touched maps each block to when it last changed — fetch only what moved' : ''}; now is the moment this was served — ISO, its ten-digit sundial address (the year first), its voicing — the stamp every response also carries as X-Pscale-Now.${blocks.includes('lighthouse') ? ' First visit: start at ?block=lighthouse — the compass for this surface.' : ''} Substrate-wide conventions at bsp(agent_id='pscale', block='block-conventions').`,
         origin,
         blocks,
         ...(bytes ? { bytes } : {}),
-        ...(touched ? { touched } : {})
+        ...(touched ? { touched } : {}),
+        now: renderNow(servedAt)
       });
     }
     const block = await loadBlock(origin, blockName);
