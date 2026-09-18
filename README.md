@@ -264,6 +264,8 @@ A single beach can host many **worlds**: fully isolated block-and-lock namespace
 
 Federation clients address either by URL, so `agent_id='https://your-beach.com/w/thornwood'` is just another beach. This is what makes one Upstash and one Vercel project enough for a whole ecology.
 
+Which path-based worlds are being played is one read: `GET https://your-beach.com/.well-known/pscale-beach?tables` lists every `/w/<world>` with a room written (a `pool:` block), newest first, each with the room its latest voice landed in and when. It is derived from each world's own `touched` map as it is served, so nothing is kept for it — a world joins the list by being played. Who stands at a world is its own index.
+
 ## Cartridge packs
 
 `packs/` holds ready-made worlds as file bundles — `brackenfoot` (a resettable starter scenario), `thornwood`, `thousand-valleys`. Each has a `MANIFEST.md`, a `definition/` (the world's canon) and an `initial/` (the starting state), so a world can be seeded, reset, and re-seeded without touching the rest of the beach.
