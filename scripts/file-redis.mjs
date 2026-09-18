@@ -5,8 +5,9 @@
 // three-legged cartridge loop. See scripts/local-beach.mjs.
 //
 // Upstash semantics mirrored: get auto-deserialises (returns the parsed value
-// or null); set auto-serialises an object/string; keys(pattern) supports the
-// trailing-'*' globs the handler uses; del returns the count removed.
+// or null); set auto-serialises an object/string; keys(pattern) matches a '*'
+// anywhere, as Redis KEYS does ('<prefix>*' for an index, '<ns>/w/*:touched'
+// for the played tables); del returns the count removed.
 
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
@@ -57,11 +58,8 @@ export class FileRedis {
     const all = files
       .filter((f) => f.endsWith('.json'))
       .map((f) => decodeURIComponent(f.slice(0, -'.json'.length)));
-    if (pattern.endsWith('*')) {
-      const prefix = pattern.slice(0, -1);
-      return all.filter((k) => k.startsWith(prefix));
-    }
-    return all.filter((k) => k === pattern);
+    const glob = new RegExp('^' + pattern.split('*').map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$');
+    return all.filter((k) => glob.test(k));
   }
 
   // STRLEN — byte length of the stored serialised value (the raw file), 0 when
@@ -76,13 +74,15 @@ export class FileRedis {
     }
   }
 
-  // Minimal pipeline — the handler's index path batches STRLENs through it.
-  // Sequential here; one round trip on real Upstash.
+  // Minimal pipeline — the handler's index path batches STRLENs through it,
+  // and the played tables their touched maps. Sequential here; one round trip
+  // on real Upstash.
   pipeline() {
     const self = this;
     const cmds = [];
     return {
       strlen(key) { cmds.push(['strlen', key]); return this; },
+      hgetall(key) { cmds.push(['hgetall', key]); return this; },
       async exec() {
         const out = [];
         for (const [op, key] of cmds) out.push(await self[op](key));

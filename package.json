@@ -15,6 +15,7 @@
     "smoke:locks": "node scripts/smoke-locks.js",
     "smoke:subbeach": "node scripts/smoke-subbeach.mjs",
     "smoke:world-routes": "node scripts/smoke-world-routes.mjs",
+    "smoke:tables": "node scripts/smoke-tables.mjs",
     "smoke:voicing": "node scripts/smoke-voicing.js",
     "smoke:grain-integrity": "node scripts/smoke-grain-integrity.js",
     "smoke:temporal": "node scripts/smoke-temporal.js"

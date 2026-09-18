@@ -12,6 +12,7 @@ import { NOW_HEADER, nowHeader, renderNow } from '../lib/temporal.js';
 // a derived index listing the named blocks present at this surface.
 //
 //   GET  /.well-known/pscale-beach              → index of named blocks at this surface
+//   GET  /.well-known/pscale-beach?tables       → the /w/ worlds played here, newest room write first
 //   GET  /.well-known/pscale-beach?block=<name>[?spindle=<addr>]
 //   POST /.well-known/pscale-beach?block=<name>
 //        body: bsp-mcp standard {spindle, content, secret?, new_lock?, gray?, confirm?}
@@ -392,6 +393,45 @@ async function listBlockNames(origin) {
   const sorted = Array.from(new Set(names)).sort();
   const bytes = await blockBytes(usedPrefix, sorted);
   return { names: sorted, bytes };
+}
+
+// ── The tables played here ──
+//
+// Every /w/<name> world under this beach's own origin that has had a room
+// written — a pool: block — newest first, with the room its latest voice
+// landed in. Derived per GET from each world's touched map (block name → ISO
+// of its last content write), so nothing is kept for it: a table joins the
+// list by being played and sinks down it by being left. Only pool: blocks
+// count — never presence heartbeats or staged liquid — and a world last
+// written before touched existed stays off the list until one of its rooms is
+// written again. KEYS is fine at this scale, as for the index; if worlds grow
+// into the thousands the beach can keep each world's latest room write as it
+// writes, and this answer keeps its shape.
+async function listPlayedTables() {
+  const prefix = `${keyNs(BASE_ORIGIN)}/w/`;
+  const worlds = (await redis.keys(`${prefix}*:touched`))
+    .map(k => k.slice(prefix.length, -':touched'.length))
+    .filter(w => WORLD_RE.test(w));
+  if (worlds.length === 0) return [];
+  let maps;
+  if (typeof redis.pipeline === 'function') {
+    const p = redis.pipeline();
+    for (const w of worlds) p.hgetall(touchedKey(`${BASE_ORIGIN}/w/${w}`));
+    maps = await p.exec();
+  } else {
+    maps = await Promise.all(worlds.map(w => redis.hgetall(touchedKey(`${BASE_ORIGIN}/w/${w}`))));
+  }
+  const tables = [];
+  worlds.forEach((name, i) => {
+    const m = maps[i];
+    if (!m || typeof m !== 'object') return;
+    let room = null, touched = '';
+    for (const [block, iso] of Object.entries(m)) {
+      if (block.startsWith('pool:') && String(iso) > touched) { room = block; touched = String(iso); }
+    }
+    if (room) tables.push({ name, room, touched });
+  });
+  return tables.sort((a, b) => b.touched.localeCompare(a.touched));
 }
 
 // Per-block stored-JSON size via pipelined STRLEN — one extra round trip for
@@ -1620,6 +1660,21 @@ export default async function handler(req, res) {
   const origin = originFromRequest(req);
 
   if (req.method === 'GET') {
+    // ?tables — the worlds played here (listPlayedTables). Answered at the
+    // beach's own origin, where its /w/ worlds hang; a world or a sub-beach
+    // has no tables beneath it.
+    if (!blockName && req.query && 'tables' in req.query) {
+      if (origin !== BASE_ORIGIN) {
+        return res.status(404).json({ error: `tables are listed at ${BASE_ORIGIN}, the beach's own origin`, code: 'not_found' });
+      }
+      const tables = await listPlayedTables();
+      return res.status(200).json({
+        _: `Tables played at ${origin} — every /w/<name> world with a room written, newest first: its name, the room (pool:<address>) its latest voice landed in, and when (touched). Derived from each table's own touched map as this was served; nothing is kept for it. A table is its own surface at ${origin}/w/<name>/.well-known/pscale-beach, and its index says who stands there.`,
+        origin,
+        tables,
+        now: renderNow(servedAt)
+      });
+    }
     if (!blockName) {
       // Derived index: list named blocks at this surface. The surface is the
       // beach; the blocks listed are what's actually here. `bytes` (when the
