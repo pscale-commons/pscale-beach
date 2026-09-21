@@ -40,8 +40,9 @@ pscale-beach/
 ├── init/seed-beach.js           — one-time wizard: substitutes placeholders,
 │                                   POSTs blocks to your deployed beach
 ├── scripts/                     — smoke tests, pack seed/reset/dump, key
-│                                   migration, backup/restore, a file-backed
-│                                   local beach for offline work
+│                                   migration, backup/restore, set-aside (the
+│                                   owner's tidy), a file-backed local beach
+│                                   for offline work
 ├── vercel.json                  — rewrites for /.well-known/... and /w/:world/...
 ├── package.json                 — Node ESM, single dep (@upstash/redis)
 └── .env.example                 — env-var template
@@ -308,6 +309,18 @@ pscale_grain_reach(
 ```
 
 The substrate-wide orientation blocks (sunstone, whetstone, manifest, block-conventions, gatekeeper, etc.) live in bsp-mcp's sentinel — `bsp(agent_id='pscale', block='manifest')` from any bsp-mcp instance.
+
+## Tidying — set aside, never wipe
+
+An open beach collects strays: a mistyped handle mints a mirror, a probe is never cleaned up. The owner's tidy is [scripts/set-aside.mjs](scripts/set-aside.mjs). It moves a block whole to `archive:<name>:<date>`, removes the original, and appends one line at `beach-log` saying what moved and why. Every family sweep is a name-prefix filter over the index, so the block leaves all of them at once, and nothing is lost. It is a dry run until you pass `--confirm`.
+
+```bash
+set -a; . .env.local; set +a
+node scripts/set-aside.mjs --block now:somename --why "a mistyped handle's mirror" --confirm
+node scripts/set-aside.mjs --put-back archive:now:somename:2026-09-21 --confirm
+```
+
+This is the owner's hand, through the storage the owner owns. An edit-latch promises that nobody else writes as you; it never promised that a host keeps a page forever. What keeps the hand honest is the archive copy and the public line, not a wall: the copy is sealed under `BEACH_PASSPHRASE`, and a latched block's old latch is kept beside it in storage (never in a block — lock hashes are never public), so a put-back returns the block to its holder. Someone who holds a stray's own passphrase needs none of this: read the block, write the archive copy, `DELETE` the original. `sed:` and `grain:` blocks are refused, as they are at the door. `npm run smoke:set-aside` proves all of it offline.
 
 ## Architecture notes
 
