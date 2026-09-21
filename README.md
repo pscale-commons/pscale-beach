@@ -337,6 +337,8 @@ If the name was re-minted meanwhile — even under a stranger's latch — what s
 
 A `key=value` line in the `settings` block can send a secret somewhere (`pool_append_webhook=<url>` rides the shared secret in its header) or refuse a stranger's write (the caps below). So the handler hears those lines **only when the root of `settings` is latched**. A latch on the line's own position is not enough: a whole-block replace answers to the root latch alone, so while the root stands open any hand may rewrite a latched position's content and leave the latch entry standing over words its holder never wrote. With no root latch every line is ignored — the door falls back to its defaults and the webhook goes quiet rather than ringing for someone else.
 
+The lines are read from **the deploy's own `settings`** — the apex's — and from nowhere else. One deploy hosts many worlds (`/w/<world>`, `<sub>.<apex>`), and a world is free for any hand to mint, so a world's own `settings` is never heard: the shared secret is the deploy owner's, and it rides only to the bus the owner declared. Every world's pools still ring that one bus, and each event names the pool's true origin.
+
 ```bash
 # latch the root once; inheritance then binds every position beneath it
 curl -X POST "https://beach.example.com/.well-known/pscale-beach?block=settings" \

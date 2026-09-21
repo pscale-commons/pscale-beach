@@ -13,6 +13,7 @@
     "smoke:append": "node scripts/smoke-append.js",
     "smoke:append-spindle": "node scripts/smoke-append-spindle.js",
     "smoke:locks": "node scripts/smoke-locks.js",
+    "smoke:one-bus": "node scripts/smoke-one-bus.mjs",
     "smoke:subbeach": "node scripts/smoke-subbeach.mjs",
     "smoke:world-routes": "node scripts/smoke-world-routes.mjs",
     "smoke:tables": "node scripts/smoke-tables.mjs",
