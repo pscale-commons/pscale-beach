@@ -18,7 +18,8 @@
     "smoke:tables": "node scripts/smoke-tables.mjs",
     "smoke:voicing": "node scripts/smoke-voicing.js",
     "smoke:grain-integrity": "node scripts/smoke-grain-integrity.js",
-    "smoke:temporal": "node scripts/smoke-temporal.js"
+    "smoke:temporal": "node scripts/smoke-temporal.js",
+    "smoke:set-aside": "node scripts/smoke-set-aside.mjs"
   },
   "dependencies": {
     "@upstash/redis": "^1.34.0"
