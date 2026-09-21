@@ -156,6 +156,17 @@ function locksKey(origin, name) { return `${keyNs(origin)}:locks:${name}`; }
 // beach remembers when it was touched (proposals/2026-08-20-the-beach-
 // remembers-when.md, bsp-mcp#294) — overwritten in place, no growth.
 function touchedKey(origin) { return `${keyNs(origin)}:touched`; }
+// Its sibling: block name → ISO of the write that found no block there. Touched
+// says when a block last changed, which is not when it arrived — a busy old
+// block and a stray minted a minute ago look alike under touched alone. Written
+// once, at birth only, so ordinary writes pay nothing for it; a block born
+// before this stamp existed simply has none, which is honest (bsp-mcp
+// proposals/2026-09-21-tidying-and-spam.md).
+function bornKey(origin) { return `${keyNs(origin)}:born`; }
+// The last copy the door keeps before an UNLATCHED block is wiped or replaced
+// whole — once per block per day, first destruction wins, thirty days.
+function lastKey(origin, name, day) { return `${keyNs(origin)}:last:${name}:${day}`; }
+const LAST_COPY_TTL = 30 * 24 * 60 * 60; // seconds
 function legacyBlockKey(name) { return `${LEGACY_NS}:block:${name}`; }
 function legacyLocksKey(name) { return `${LEGACY_NS}:locks:${name}`; }
 // Window-resolution claim key — the single-resolution lock for the in-loop
@@ -338,7 +349,10 @@ async function loadBlock(origin, name) {
   return stored ?? null;
 }
 
-async function saveBlock(origin, name, block) {
+// `born` is the caller's knowledge, never a lookup here: each creation path has
+// already loaded the block and found nothing, so it says so and the birth is
+// stamped beside the touch — one extra field on births, nothing on any other write.
+async function saveBlock(origin, name, block, born = false) {
   // Floor invariant backstop (sunstone:1.51): a block is never persisted floor-0.
   // Every creation path seeds `_` (handleStandardWrite, sed, grain) and whole-block
   // writes are gated, so this only trips on a future regression — self-heal + log
@@ -351,13 +365,39 @@ async function saveBlock(origin, name, block) {
     }
   }
   await redis.set(blockKey(origin, name), block);
+  // What this instance had heard from `settings` is stale the moment settings is
+  // written; other warm instances catch up within the cache's minute.
+  if (name === 'settings') _settingsCache.delete(origin);
   // The surface remembers the touch. saveBlock is the one persist path every
   // write takes — position write, append, whole-block, sed, grain — so the
   // stamp is physics, not client courtesy: every door is covered, none is
   // asked. Best-effort by design: a write must never fail on its own stamp.
   try {
-    await redis.hset(touchedKey(origin), { [name]: new Date().toISOString() });
+    const iso = new Date().toISOString();
+    await redis.hset(touchedKey(origin), { [name]: iso });
+    if (born) await redis.hset(bornKey(origin), { [name]: iso });
   } catch { /* the write stands; the stamp is refinement */ }
+}
+
+// THE DOOR KEEPS THE LAST COPY. An accumulator's root latch also governs its
+// appends, so every board meant to take a stranger's word — marks, an open pool,
+// a log left open on purpose — stands with no latch at its root, and an unlatched
+// root is one any hand may wipe or replace whole. Where no latch stands behind an
+// act of removal, no author stands behind it either, so the beach keeps what was
+// removed: the prior value, once per block per day, for thirty days. SET NX means
+// the FIRST destruction of the day is the copy kept — a second wipe cannot launder
+// it — and the expiry means it never grows. A latch-holder's own wipe or replace
+// keeps nothing here: that is an author's act, and its archive is the author's.
+// The copy carries the block's lock set beside its content: an open root may
+// still stand over latched positions (a roster's homesteads), a wipe deletes
+// those latches with the block, and a restore that lost them would hand each
+// position to whoever arrived first. A storage key, never a block — lock hashes
+// are never public. Best-effort like the stamps: the way back is
+// scripts/set-aside.mjs --last.
+async function keepLastCopy(origin, name, prior, hashes, when) {
+  try {
+    await redis.set(lastKey(origin, name, when.toISOString().slice(0, 10)), { block: prior, locks: hashes || {} }, { nx: true, ex: LAST_COPY_TTL });
+  } catch { /* the act stands; the kept copy is refinement */ }
 }
 
 async function loadHashes(origin, name) {
@@ -368,6 +408,8 @@ async function loadHashes(origin, name) {
 
 async function saveHashes(origin, name, hashes) {
   await redis.set(locksKey(origin, name), hashes);
+  // Latching (or relinquishing) the root of `settings` changes whether it is heard at all.
+  if (name === 'settings') _settingsCache.delete(origin);
 }
 
 async function listBlockNames(origin) {
@@ -921,7 +963,10 @@ async function handleSedRegister(origin, collective, body) {
   }
   const blockName = `sed:${collective}`;
   let block = await loadBlock(origin, blockName);
-  if (!block) {
+  const born = !block;
+  if (born) {
+    const refused = await birthRefusal();
+    if (refused) return refused;
     block = { _: `sed: collective ${collective} hosted at ${origin}` };
   }
   const hashes = await loadHashes(origin, blockName);
@@ -933,14 +978,15 @@ async function handleSedRegister(origin, collective, body) {
   }
   writeAt(block, position, positionContent);
   hashes[position] = hashSed(passphrase, collective, position);
-  await saveBlock(origin, blockName, block);
+  await saveBlock(origin, blockName, block, born);
   await saveHashes(origin, blockName, hashes);
   return {
     status: 200,
     body: {
       ok: true,
       position,
-      address: `sed:${collective}:${position}`
+      address: `sed:${collective}:${position}`,
+      ...(born ? { born: true } : {})
     }
   };
 }
@@ -967,6 +1013,8 @@ async function handleGrainReach(origin, pairId, body) {
   const hashes = await loadHashes(origin, blockName);
 
   if (!existing) {
+    const refused = await birthRefusal();
+    if (refused) return refused;
     // Establish: write reaching side + reach hint at position 8.
     const block = {
       _: description || '',
@@ -989,9 +1037,9 @@ async function handleGrainReach(origin, pairId, body) {
       '9': { [side]: agent_id }
     };
     hashes[side] = hashGrain(my_passphrase, pairId, side);
-    await saveBlock(origin, blockName, block);
+    await saveBlock(origin, blockName, block, true);
     await saveHashes(origin, blockName, hashes);
-    return { status: 200, body: { ok: true, state: 'established', awaiting: partnerSide, pair_id: pairId } };
+    return { status: 200, body: { ok: true, state: 'established', awaiting: partnerSide, pair_id: pairId, born: true } };
   }
 
   // Block exists. Either: partner accept (other side empty) or rewrite of own side.
@@ -1053,9 +1101,11 @@ async function withAppendLock(origin, blockName, fn) {
 // ── The doorbell webhook — a landed voice at a pool rings services riding it ──
 // (design: bsp-mcp proposals/2026-08-12-doorbell-wake.md — the doorbell wake)
 //
-// When THIS origin's `settings` block carries a line "pool_append_webhook=<url>"
-// at any top-level digit position (first match wins; the line may sit at the
-// position directly or at its underscore), every SUCCESSFUL append to a block
+// When THIS origin's `settings` block stands behind a ROOT LATCH (latchedSettings,
+// below — an unlatched settings block steers nothing) and carries a line
+// "pool_append_webhook=<url>" at any top-level digit position (first match wins;
+// the line may sit at the position directly or at its underscore), every
+// SUCCESSFUL append to a block
 // named pool:* fires one POST {origin, pool, slot, agent_id, ts} at that url,
 // with the shared secret from env POOL_WEBHOOK_SECRET riding the
 // x-pool-webhook-secret header. The beach stays dumb: no dial reads, no
@@ -1068,30 +1118,124 @@ async function withAppendLock(origin, blockName, fn) {
 // Liquid staging never fires (liquid:pool:* does not match pool:*): a stage
 // is not a landed voice. The settings read is cached ~60s per origin so a hot
 // room costs no extra KV reads.
-const POOL_WEBHOOK_CACHE_TTL_MS = 60_000;
-const _poolWebhookCache = new Map(); // origin -> { url: string|null, at: ms }
+// SETTINGS THAT STEER THE DOOR ARE HONOURED ONLY FROM BEHIND A ROOT LATCH.
+// A `key=value` line in `settings` can send a secret somewhere (the webhook
+// below) or refuse a stranger's write (the caps further down), so it must be a
+// line only its owner can have written. A latch on the line's own position is
+// NOT enough: a whole-block replace answers to the root latch alone, so while
+// the root stands open any hand may rewrite a latched position's content and
+// leave its latch entry standing over words its holder never wrote. The shape
+// this closes: a settings block latched at one digit only, the webhook line at
+// that digit, the reader taking the first match in key order — so a keyless
+// write at a LOWER open position redirects every pool append, with the shared
+// secret riding the header, to a stranger.
+// So: no root latch, no steering — every line is ignored, the door falls back to
+// its defaults, and the bus goes quiet rather than ringing for someone else.
+// Latch the root (a write with new_lock and no spindle) and the lines are heard.
+const SETTINGS_CACHE_TTL_MS = 60_000;
+const _settingsCache = new Map(); // origin -> { lines: Map<string,string>, at: ms }
 
-async function poolAppendWebhookUrl(origin) {
-  const c = _poolWebhookCache.get(origin);
-  if (c && Date.now() - c.at < POOL_WEBHOOK_CACHE_TTL_MS) return c.url;
-  let url = null;
+async function latchedSettings(origin) {
+  const c = _settingsCache.get(origin);
+  if (c && Date.now() - c.at < SETTINGS_CACHE_TTL_MS) return c.lines;
+  const lines = new Map();
   try {
-    const settings = await loadBlock(origin, 'settings');
+    const hashes = await loadHashes(origin, 'settings');
+    const settings = hashes['_'] !== undefined ? await loadBlock(origin, 'settings') : null;
     if (settings && typeof settings === 'object') {
       for (const k of Object.keys(settings)) {
         if (!/^[1-9]\d*$/.test(k)) continue;
         const v = settings[k];
         const s = typeof v === 'string' ? v
           : (v && typeof v === 'object' && typeof v['_'] === 'string' ? v['_'] : '');
-        // Tolerant like parseConventionName: the URL ends at whitespace, and a
-        // block may carry explanatory prose after it — the line self-describes.
-        const m = s.match(/^\s*pool_append_webhook\s*=\s*(https?:\/\/\S+)(?:\s|$)/);
-        if (m) { url = m[1]; break; }
+        // Tolerant like parseConventionName: the value ends at whitespace, and a
+        // line may carry explanatory prose after it — the line self-describes.
+        // First declaration of a key wins.
+        const m = s.match(/^\s*([a-z][a-z0-9_]*)\s*=\s*(\S+)(?:\s|$)/);
+        if (m && !lines.has(m[1])) lines.set(m[1], m[2]);
       }
     }
-  } catch { /* declaration unreadable — treat as undeclared */ }
-  _poolWebhookCache.set(origin, { url, at: Date.now() });
-  return url;
+  } catch { /* unreadable — treat as undeclared */ }
+  _settingsCache.set(origin, { lines, at: Date.now() });
+  return lines;
+}
+
+async function poolAppendWebhookUrl(origin) {
+  const url = (await latchedSettings(origin)).get('pool_append_webhook');
+  return url && /^https?:\/\//.test(url) ? url : null;
+}
+
+// ── Three caps, OFF until a beach's owner writes them ──
+// (bsp-mcp proposals/2026-09-21-tidying-and-spam.md 2.5)
+//
+// open-commons 1: availability here is cheaply spammable and low-stakes — a
+// flood is a nuisance, not a wound, and clearing is the lever, never a wall. So
+// there are no accounts, no captchas and no address limits (every MCP caller
+// arrives from the router's one address, and addresses are free to rotate).
+// What a cap does is bound what ONE anonymous act can cost everyone else:
+//
+//   cap_births_per_hour=<n>     new blocks this DEPLOY accepts in a clock hour —
+//                               every block is a row in the index, and every
+//                               sweep by every visitor downloads the whole index,
+//                               so births are the dear thing. Per deploy, not per
+//                               world: worlds are free to mint.
+//   cap_appends_per_minute=<n>  appends ONE unlatched accumulator accepts in a
+//                               clock minute — each append rewrites the whole
+//                               block, so a flooded board slows until the store
+//                               refuses it.
+//   cap_write_bytes=<n>         the size of one write no latch stands behind.
+//
+// TWO SWITCHES, because "off" must cost nothing. The caps sit on the hottest
+// unlatched paths there are (a presence heartbeat is an unlatched write), and
+// merely ASKING whether a cap is set means reading `settings` — a storage
+// command or two per warm instance per minute, which on a small store is a real
+// share of the day's budget. So env BEACH_CAPS=on is the master switch: unset,
+// nothing here reads anything. Once on, the NUMBERS are lines in the APEX's
+// `settings`, behind its root latch like every line that steers the door — an
+// owner changes one with a single write in the middle of a flood, no redeploy,
+// heard within the cache's minute; absent or 0 leaves that cap off.
+//
+// The lever that needs neither switch, and is the first to reach for when ONE
+// board is flooding: LATCH THAT BOARD'S ROOT (a write with new_lock and no
+// spindle). Appends then need the key, the flood stops at once, and
+// relinquishing the latch reopens it.
+//
+// A latch-holder is an author and is never throttled; a birth has no latch
+// behind it by definition, so births are counted whoever makes them. The
+// accepted cost, said plainly: a vandal can hold a beach at its birth cap and
+// keep newcomers out for that hour — "the commons goes quiet a while" — and
+// cannot touch anyone already here.
+const CAPS_ON = process.env.BEACH_CAPS === 'on';
+async function capOf(key) {
+  if (!CAPS_ON) return 0;
+  const n = parseInt((await latchedSettings(BASE_ORIGIN)).get(key) ?? '', 10);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+async function overCap(counterKey, cap, ttlSeconds) {
+  try {
+    const n = await redis.incr(counterKey);
+    if (n === 1) await redis.expire(counterKey, ttlSeconds);
+    return n > cap;
+  } catch { return false; }   // a counter's fault never refuses a write
+}
+async function birthRefusal(when = new Date()) {
+  const cap = await capOf('cap_births_per_hour');
+  if (!cap) return null;
+  if (!(await overCap(`${keyNs(BASE_ORIGIN)}:births:${when.toISOString().slice(0, 13)}`, cap, 7200))) return null;
+  return { status: 429, body: { error: 'this beach is taking no new blocks for the rest of this hour — every block already here reads and writes as ever (cap_births_per_hour)', code: 'cap_births' } };
+}
+async function appendRefusal(origin, blockName, when = new Date()) {
+  const cap = await capOf('cap_appends_per_minute');
+  if (!cap) return null;
+  if (!(await overCap(`${keyNs(origin)}:appends:${blockName}:${when.toISOString().slice(0, 16)}`, cap, 120))) return null;
+  return { status: 429, body: { error: `"${blockName}" has taken its fill for this minute — try again in a moment (cap_appends_per_minute)`, code: 'cap_appends' } };
+}
+async function sizeRefusal(content) {
+  const cap = await capOf('cap_write_bytes');
+  if (!cap) return null;
+  const bytes = Buffer.byteLength(JSON.stringify(content ?? null));
+  if (bytes <= cap) return null;
+  return { status: 413, body: { error: `this write is ${bytes} bytes and no latch stands behind it — an unlatched write here may be ${cap} at most (cap_write_bytes)`, code: 'cap_write_bytes' } };
 }
 
 async function firePoolAppendWebhook(origin, blockName, slotAddress, entry) {
@@ -1314,6 +1458,14 @@ async function handleStandardWrite(origin, blockName, body) {
       if (!secret || hashByBlockName(origin, blockName, '_', secret) !== hashes['_']) {
         return { status: 403, body: { error: `append to "${blockName}" requires the accumulator secret`, code: 'lock_required' } };
       }
+    } else {
+      // No latch stands behind this append, so the caps (off unless the owner
+      // wrote them) apply: its size, this board's fill for the minute, and — when
+      // the append would mint the accumulator — the deploy's births for the hour.
+      const refused = !CAPS_ON ? null : (await sizeRefusal(content))
+        || (await appendRefusal(origin, blockName))
+        || ((await capOf('cap_births_per_hour')) && (await loadBlock(origin, blockName)) == null ? await birthRefusal() : null);
+      if (refused) return refused;
     }
     // ── Single-resolution claim (mutual exclusion the convention can't hold) ──
     // When this append IS a window's resolution (resolve_window = the window's
@@ -1405,8 +1557,8 @@ async function handleStandardWrite(origin, blockName, body) {
       const r = appendWithSupernest(blockName, origin, existing, entry);
       let block = r.block;
       if (blockName === 'presence') block = sweepStalePresence(block);
-      await saveBlock(origin, blockName, block);
-      return r;
+      await saveBlock(origin, blockName, block, existing == null);
+      return { ...r, born: existing == null };
     });
     if (!locked) {
       return { status: 503, body: { error: 'append contention — retry', code: 'append_contention' } };
@@ -1419,7 +1571,7 @@ async function handleStandardWrite(origin, blockName, body) {
     // service-payment and never to the writer. A keyless human simply carries on.
     const owed = owedSummaries(r.block);
     await firePoolAppendWebhook(origin, blockName, String(r.slot), entry);
-    return { status: 200, body: { ok: true, slot: r.slot, supernested: r.supernested, floor: r.floor, ...(owed.length ? { owed } : {}), ...(clearedBuffer ? { cleared: clearedBuffer } : {}) } };
+    return { status: 200, body: { ok: true, slot: r.slot, supernested: r.supernested, floor: r.floor, ...(r.born ? { born: true } : {}), ...(owed.length ? { owed } : {}), ...(clearedBuffer ? { cleared: clearedBuffer } : {}) } };
   }
 
   // Shape gate: reject _word keys and JSON-stringified sub-objects on writes.
@@ -1561,6 +1713,14 @@ async function handleStandardWrite(origin, blockName, body) {
     }
   }
 
+  // No latch stands behind this write, so the caps (off unless the owner wrote
+  // them) apply: its size, and — when it would mint the block — the deploy's
+  // births for the hour. A latch-holder is an author and is never throttled.
+  if (content !== undefined && stored === undefined) {
+    const refused = (await sizeRefusal(content)) || (existing == null ? await birthRefusal() : null);
+    if (refused) return refused;
+  }
+
   // Lock-rotation authority.
   if (new_lock !== undefined && stored) {
     if (!secret || hashByBlockName(origin, blockName, authKey, secret) !== stored) {
@@ -1588,7 +1748,10 @@ async function handleStandardWrite(origin, blockName, body) {
       }
     }
     if (blockName === 'presence') block = sweepStalePresence(block);
-    await saveBlock(origin, blockName, block);
+    // An unlatched whole-block replace is a wipe-and-rewrite by another name
+    // (the comment at the grain gate above says so): the door keeps the prior.
+    if (!spindle && existing != null && stored === undefined) await keepLastCopy(origin, blockName, existing, hashes, new Date());
+    await saveBlock(origin, blockName, block, existing == null);
   } else if (block == null) {
     // No content and no existing block — nothing to do unless we're locking.
     block = {};
@@ -1620,7 +1783,11 @@ async function handleStandardWrite(origin, blockName, body) {
     }
   }
 
-  return { status: 200, body: { ok: true } };
+  // born: this write found no block here and made one. Said in the ack so every
+  // surface learns of a birth at the moment it happens, at no extra read — a
+  // mistyped handle mints a block, and the hand that minted it is the one best
+  // placed to notice and undo it.
+  return { status: 200, body: { ok: true, ...(content !== undefined && existing == null ? { born: true } : {}) } };
 }
 
 // ── HTTP entry ──
@@ -1690,21 +1857,27 @@ export default async function handler(req, res) {
       // was served, {iso, address, voicing} (lib/temporal.js), so a raw-fetch
       // reader with no grounding boundary of its own is oriented at the point
       // of reading (sundial:5). Derived from the clock per GET, never stored.
-      let touched = null;
-      try {
-        const t = await redis.hgetall(touchedKey(origin));
-        if (t && typeof t === 'object') {
-          const present = new Set(blocks);
-          const kept = Object.fromEntries(Object.entries(t).filter(([k]) => present.has(k)));
-          if (Object.keys(kept).length) touched = kept;
-        }
-      } catch { /* the index stands without it */ }
+      // `born` is the fourth — block name → ISO of the write that found no
+      // block there, so the same GET answers "what ARRIVED since I last looked",
+      // which touched alone cannot: a stray minted a minute ago and a busy old
+      // block both read as lately touched. Stamped from 2026-09 on; a block born
+      // before that carries none, and a reader treats absence as "before".
+      let touched = null, born = null;
+      const present = new Set(blocks);
+      const listed = (t) => {
+        if (!t || typeof t !== 'object') return null;
+        const kept = Object.fromEntries(Object.entries(t).filter(([k]) => present.has(k)));
+        return Object.keys(kept).length ? kept : null;
+      };
+      try { touched = listed(await redis.hgetall(touchedKey(origin))); } catch { /* the index stands without it */ }
+      try { born = listed(await redis.hgetall(bornKey(origin))); } catch { /* the index stands without it */ }
       return res.status(200).json({
-        _: `URL surface at ${origin}. Named sibling blocks listed below; address each via ?block=<name>${bytes ? '; bytes maps each block to its stored size — pick an aperture before the read' : ''}${touched ? '; touched maps each block to when it last changed — fetch only what moved' : ''}; now is the moment this was served — ISO, its ten-digit sundial address (the year first), its voicing — the stamp every response also carries as X-Pscale-Now.${blocks.includes('lighthouse') ? ' First visit: start at ?block=lighthouse — the compass for this surface.' : ''} Substrate-wide conventions at bsp(agent_id='pscale', block='block-conventions').`,
+        _: `URL surface at ${origin}. Named sibling blocks listed below; address each via ?block=<name>${bytes ? '; bytes maps each block to its stored size — pick an aperture before the read' : ''}${touched ? '; touched maps each block to when it last changed — fetch only what moved' : ''}${born ? '; born maps each block to when it first arrived — absent means before the stamp existed' : ''}; now is the moment this was served — ISO, its ten-digit sundial address (the year first), its voicing — the stamp every response also carries as X-Pscale-Now.${blocks.includes('lighthouse') ? ' First visit: start at ?block=lighthouse — the compass for this surface.' : ''} Substrate-wide conventions at bsp(agent_id='pscale', block='block-conventions').`,
         origin,
         blocks,
         ...(bytes ? { bytes } : {}),
         ...(touched ? { touched } : {}),
+        ...(born ? { born } : {}),
         now: renderNow(servedAt)
       });
     }
@@ -1820,11 +1993,14 @@ export default async function handler(req, res) {
         });
       }
     }
+    // No latch stood behind this wipe, so no author did either: keep the last copy.
+    if (!stored) await keepLastCopy(origin, blockName, existing, hashes, servedAt);
     await redis.del(blockKey(origin, blockName));
     await redis.del(locksKey(origin, blockName));
     await redis.del(legacyBlockKey(blockName));
     await redis.del(legacyLocksKey(blockName));
     try { await redis.hdel(touchedKey(origin), blockName); } catch { /* wiped regardless */ }
+    try { await redis.hdel(bornKey(origin), blockName); } catch { /* wiped regardless */ }
     return res.status(200).json({ ok: true, wiped: blockName });
   }
 

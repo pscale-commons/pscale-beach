@@ -19,7 +19,9 @@
     "smoke:voicing": "node scripts/smoke-voicing.js",
     "smoke:grain-integrity": "node scripts/smoke-grain-integrity.js",
     "smoke:temporal": "node scripts/smoke-temporal.js",
-    "smoke:set-aside": "node scripts/smoke-set-aside.mjs"
+    "smoke:set-aside": "node scripts/smoke-set-aside.mjs",
+    "smoke:born": "node scripts/smoke-born.mjs",
+    "smoke:caps": "node scripts/smoke-caps.mjs && node scripts/smoke-caps.mjs --caps-off"
   },
   "dependencies": {
     "@upstash/redis": "^1.34.0"
