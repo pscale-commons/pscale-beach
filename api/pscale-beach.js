@@ -156,6 +156,17 @@ function locksKey(origin, name) { return `${keyNs(origin)}:locks:${name}`; }
 // beach remembers when it was touched (proposals/2026-08-20-the-beach-
 // remembers-when.md, bsp-mcp#294) — overwritten in place, no growth.
 function touchedKey(origin) { return `${keyNs(origin)}:touched`; }
+// Its sibling: block name → ISO of the write that found no block there. Touched
+// says when a block last changed, which is not when it arrived — a busy old
+// block and a stray minted a minute ago look alike under touched alone. Written
+// once, at birth only, so ordinary writes pay nothing for it; a block born
+// before this stamp existed simply has none, which is honest (bsp-mcp
+// proposals/2026-09-21-tidying-and-spam.md).
+function bornKey(origin) { return `${keyNs(origin)}:born`; }
+// The last copy the door keeps before an UNLATCHED block is wiped or replaced
+// whole — once per block per day, first destruction wins, thirty days.
+function lastKey(origin, name, day) { return `${keyNs(origin)}:last:${name}:${day}`; }
+const LAST_COPY_TTL = 30 * 24 * 60 * 60; // seconds
 function legacyBlockKey(name) { return `${LEGACY_NS}:block:${name}`; }
 function legacyLocksKey(name) { return `${LEGACY_NS}:locks:${name}`; }
 // Window-resolution claim key — the single-resolution lock for the in-loop
@@ -338,7 +349,10 @@ async function loadBlock(origin, name) {
   return stored ?? null;
 }
 
-async function saveBlock(origin, name, block) {
+// `born` is the caller's knowledge, never a lookup here: each creation path has
+// already loaded the block and found nothing, so it says so and the birth is
+// stamped beside the touch — one extra field on births, nothing on any other write.
+async function saveBlock(origin, name, block, born = false) {
   // Floor invariant backstop (sunstone:1.51): a block is never persisted floor-0.
   // Every creation path seeds `_` (handleStandardWrite, sed, grain) and whole-block
   // writes are gated, so this only trips on a future regression — self-heal + log
@@ -356,8 +370,31 @@ async function saveBlock(origin, name, block) {
   // stamp is physics, not client courtesy: every door is covered, none is
   // asked. Best-effort by design: a write must never fail on its own stamp.
   try {
-    await redis.hset(touchedKey(origin), { [name]: new Date().toISOString() });
+    const iso = new Date().toISOString();
+    await redis.hset(touchedKey(origin), { [name]: iso });
+    if (born) await redis.hset(bornKey(origin), { [name]: iso });
   } catch { /* the write stands; the stamp is refinement */ }
+}
+
+// THE DOOR KEEPS THE LAST COPY. An accumulator's root latch also governs its
+// appends, so every board meant to take a stranger's word — marks, an open pool,
+// a log left open on purpose — stands with no latch at its root, and an unlatched
+// root is one any hand may wipe or replace whole. Where no latch stands behind an
+// act of removal, no author stands behind it either, so the beach keeps what was
+// removed: the prior value, once per block per day, for thirty days. SET NX means
+// the FIRST destruction of the day is the copy kept — a second wipe cannot launder
+// it — and the expiry means it never grows. A latch-holder's own wipe or replace
+// keeps nothing here: that is an author's act, and its archive is the author's.
+// The copy carries the block's lock set beside its content: an open root may
+// still stand over latched positions (a roster's homesteads), a wipe deletes
+// those latches with the block, and a restore that lost them would hand each
+// position to whoever arrived first. A storage key, never a block — lock hashes
+// are never public. Best-effort like the stamps: the way back is
+// scripts/set-aside.mjs --last.
+async function keepLastCopy(origin, name, prior, hashes, when) {
+  try {
+    await redis.set(lastKey(origin, name, when.toISOString().slice(0, 10)), { block: prior, locks: hashes || {} }, { nx: true, ex: LAST_COPY_TTL });
+  } catch { /* the act stands; the kept copy is refinement */ }
 }
 
 async function loadHashes(origin, name) {
@@ -921,7 +958,8 @@ async function handleSedRegister(origin, collective, body) {
   }
   const blockName = `sed:${collective}`;
   let block = await loadBlock(origin, blockName);
-  if (!block) {
+  const born = !block;
+  if (born) {
     block = { _: `sed: collective ${collective} hosted at ${origin}` };
   }
   const hashes = await loadHashes(origin, blockName);
@@ -933,14 +971,15 @@ async function handleSedRegister(origin, collective, body) {
   }
   writeAt(block, position, positionContent);
   hashes[position] = hashSed(passphrase, collective, position);
-  await saveBlock(origin, blockName, block);
+  await saveBlock(origin, blockName, block, born);
   await saveHashes(origin, blockName, hashes);
   return {
     status: 200,
     body: {
       ok: true,
       position,
-      address: `sed:${collective}:${position}`
+      address: `sed:${collective}:${position}`,
+      ...(born ? { born: true } : {})
     }
   };
 }
@@ -989,9 +1028,9 @@ async function handleGrainReach(origin, pairId, body) {
       '9': { [side]: agent_id }
     };
     hashes[side] = hashGrain(my_passphrase, pairId, side);
-    await saveBlock(origin, blockName, block);
+    await saveBlock(origin, blockName, block, true);
     await saveHashes(origin, blockName, hashes);
-    return { status: 200, body: { ok: true, state: 'established', awaiting: partnerSide, pair_id: pairId } };
+    return { status: 200, body: { ok: true, state: 'established', awaiting: partnerSide, pair_id: pairId, born: true } };
   }
 
   // Block exists. Either: partner accept (other side empty) or rewrite of own side.
@@ -1405,8 +1444,8 @@ async function handleStandardWrite(origin, blockName, body) {
       const r = appendWithSupernest(blockName, origin, existing, entry);
       let block = r.block;
       if (blockName === 'presence') block = sweepStalePresence(block);
-      await saveBlock(origin, blockName, block);
-      return r;
+      await saveBlock(origin, blockName, block, existing == null);
+      return { ...r, born: existing == null };
     });
     if (!locked) {
       return { status: 503, body: { error: 'append contention — retry', code: 'append_contention' } };
@@ -1419,7 +1458,7 @@ async function handleStandardWrite(origin, blockName, body) {
     // service-payment and never to the writer. A keyless human simply carries on.
     const owed = owedSummaries(r.block);
     await firePoolAppendWebhook(origin, blockName, String(r.slot), entry);
-    return { status: 200, body: { ok: true, slot: r.slot, supernested: r.supernested, floor: r.floor, ...(owed.length ? { owed } : {}), ...(clearedBuffer ? { cleared: clearedBuffer } : {}) } };
+    return { status: 200, body: { ok: true, slot: r.slot, supernested: r.supernested, floor: r.floor, ...(r.born ? { born: true } : {}), ...(owed.length ? { owed } : {}), ...(clearedBuffer ? { cleared: clearedBuffer } : {}) } };
   }
 
   // Shape gate: reject _word keys and JSON-stringified sub-objects on writes.
@@ -1588,7 +1627,10 @@ async function handleStandardWrite(origin, blockName, body) {
       }
     }
     if (blockName === 'presence') block = sweepStalePresence(block);
-    await saveBlock(origin, blockName, block);
+    // An unlatched whole-block replace is a wipe-and-rewrite by another name
+    // (the comment at the grain gate above says so): the door keeps the prior.
+    if (!spindle && existing != null && stored === undefined) await keepLastCopy(origin, blockName, existing, hashes, new Date());
+    await saveBlock(origin, blockName, block, existing == null);
   } else if (block == null) {
     // No content and no existing block — nothing to do unless we're locking.
     block = {};
@@ -1620,7 +1662,11 @@ async function handleStandardWrite(origin, blockName, body) {
     }
   }
 
-  return { status: 200, body: { ok: true } };
+  // born: this write found no block here and made one. Said in the ack so every
+  // surface learns of a birth at the moment it happens, at no extra read — a
+  // mistyped handle mints a block, and the hand that minted it is the one best
+  // placed to notice and undo it.
+  return { status: 200, body: { ok: true, ...(content !== undefined && existing == null ? { born: true } : {}) } };
 }
 
 // ── HTTP entry ──
@@ -1690,21 +1736,27 @@ export default async function handler(req, res) {
       // was served, {iso, address, voicing} (lib/temporal.js), so a raw-fetch
       // reader with no grounding boundary of its own is oriented at the point
       // of reading (sundial:5). Derived from the clock per GET, never stored.
-      let touched = null;
-      try {
-        const t = await redis.hgetall(touchedKey(origin));
-        if (t && typeof t === 'object') {
-          const present = new Set(blocks);
-          const kept = Object.fromEntries(Object.entries(t).filter(([k]) => present.has(k)));
-          if (Object.keys(kept).length) touched = kept;
-        }
-      } catch { /* the index stands without it */ }
+      // `born` is the fourth — block name → ISO of the write that found no
+      // block there, so the same GET answers "what ARRIVED since I last looked",
+      // which touched alone cannot: a stray minted a minute ago and a busy old
+      // block both read as lately touched. Stamped from 2026-09 on; a block born
+      // before that carries none, and a reader treats absence as "before".
+      let touched = null, born = null;
+      const present = new Set(blocks);
+      const listed = (t) => {
+        if (!t || typeof t !== 'object') return null;
+        const kept = Object.fromEntries(Object.entries(t).filter(([k]) => present.has(k)));
+        return Object.keys(kept).length ? kept : null;
+      };
+      try { touched = listed(await redis.hgetall(touchedKey(origin))); } catch { /* the index stands without it */ }
+      try { born = listed(await redis.hgetall(bornKey(origin))); } catch { /* the index stands without it */ }
       return res.status(200).json({
-        _: `URL surface at ${origin}. Named sibling blocks listed below; address each via ?block=<name>${bytes ? '; bytes maps each block to its stored size — pick an aperture before the read' : ''}${touched ? '; touched maps each block to when it last changed — fetch only what moved' : ''}; now is the moment this was served — ISO, its ten-digit sundial address (the year first), its voicing — the stamp every response also carries as X-Pscale-Now.${blocks.includes('lighthouse') ? ' First visit: start at ?block=lighthouse — the compass for this surface.' : ''} Substrate-wide conventions at bsp(agent_id='pscale', block='block-conventions').`,
+        _: `URL surface at ${origin}. Named sibling blocks listed below; address each via ?block=<name>${bytes ? '; bytes maps each block to its stored size — pick an aperture before the read' : ''}${touched ? '; touched maps each block to when it last changed — fetch only what moved' : ''}${born ? '; born maps each block to when it first arrived — absent means before the stamp existed' : ''}; now is the moment this was served — ISO, its ten-digit sundial address (the year first), its voicing — the stamp every response also carries as X-Pscale-Now.${blocks.includes('lighthouse') ? ' First visit: start at ?block=lighthouse — the compass for this surface.' : ''} Substrate-wide conventions at bsp(agent_id='pscale', block='block-conventions').`,
         origin,
         blocks,
         ...(bytes ? { bytes } : {}),
         ...(touched ? { touched } : {}),
+        ...(born ? { born } : {}),
         now: renderNow(servedAt)
       });
     }
@@ -1820,11 +1872,14 @@ export default async function handler(req, res) {
         });
       }
     }
+    // No latch stood behind this wipe, so no author did either: keep the last copy.
+    if (!stored) await keepLastCopy(origin, blockName, existing, hashes, servedAt);
     await redis.del(blockKey(origin, blockName));
     await redis.del(locksKey(origin, blockName));
     await redis.del(legacyBlockKey(blockName));
     await redis.del(legacyLocksKey(blockName));
     try { await redis.hdel(touchedKey(origin), blockName); } catch { /* wiped regardless */ }
+    try { await redis.hdel(bornKey(origin), blockName); } catch { /* wiped regardless */ }
     return res.status(200).json({ ok: true, wiped: blockName });
   }
 

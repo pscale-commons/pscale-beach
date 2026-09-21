@@ -11,11 +11,19 @@
 //   set -a; . <clone>/.env.local; set +a
 //   node scripts/set-aside.mjs --block now:somename --why "a mistyped handle's mirror" [--confirm]
 //   node scripts/set-aside.mjs --put-back archive:now:somename:2026-09-21 [--confirm]
+//   node scripts/set-aside.mjs --last marks [--day 2026-09-21] [--confirm]
+//
+// --last brings back the copy THE DOOR kept: before an unlatched block is wiped or replaced
+// whole, the handler keeps the prior value once per block per day, for thirty days. If the name
+// stands again meanwhile — a board wiped and then re-minted, perhaps under a stranger's latch —
+// what stands is set aside first, so that is not lost either, and the kept copy returns with the
+// per-position latches it had.
 //
 //   --origin <surface>  which surface (default: the apex). A sub-beach host, or <apex>/w/<world>.
 //   --apex <host>       the deploy's bare domain (default: BEACH_ORIGIN, else BEACH_URL's host).
 //   --by <handle>       who the beach-log line names (default: BEACH_HANDLE).
 //   --to <name>         put-back only: the name to restore under, when no record stands beside the copy.
+//   --day <YYYY-MM-DD>  --last only: which day's kept copy (default: today, UTC).
 //   --dir <folder>      run against a local-beach folder instead of Upstash (scripts/local-beach.mjs).
 //   --confirm           act. WITHOUT it, dry-run: says exactly what would move.
 //
@@ -44,7 +52,9 @@ const NS = 'pscale-beach-v2';
 const blockKey = (o, n) => `${NS}:${o}:block:${n}`;
 const locksKey = (o, n) => `${NS}:${o}:locks:${n}`;
 const touchedKey = (o) => `${NS}:${o}:touched`;
+const bornKey = (o) => `${NS}:${o}:born`;
 const asideKey = (o, n) => `${NS}:${o}:aside:${n}`;
+const lastKey = (o, n, day) => `${NS}:${o}:last:${n}:${day}`;
 
 // The voice a beach-log is born with when a beach has none — the apex's own, which says what an
 // entry is: one per change, dated, naming what moved.
@@ -141,12 +151,15 @@ export async function setAside({ redis, door, origin, name, why, by, passphrase,
   if (back.status !== 200 || stable(back.body) !== stable(block)) {
     throw new Error(`the archive copy at "${archive}" does not read back identical — nothing was removed; the copy stands for inspection`);
   }
-  // 3. The record beside the copy: where it came from, and the latch it had.
-  await redis.set(asideKey(origin, archive), { from: name, at: iso, by, locks: latched ? locks : null });
+  // 3. The record beside the copy: where it came from, the latch it had, when it was born.
+  let born = null;
+  try { born = (await redis.hgetall(bornKey(origin)))?.[name] ?? null; } catch { /* the stamp is refinement */ }
+  await redis.set(asideKey(origin, archive), { from: name, at: iso, by, locks: latched ? locks : null, born });
   // 4. The original leaves — the one act the door refuses a hand that does not hold the latch.
   await redis.del(blockKey(origin, name));
   await redis.del(locksKey(origin, name));
   try { await redis.hdel(touchedKey(origin), name); } catch { /* the stamp is refinement */ }
+  try { await redis.hdel(bornKey(origin), name); } catch { /* the stamp is refinement */ }
   // 5. The public record.
   const logged = await logLine(door, line, by, passphrase);
   return { dry: false, ...plan, logged };
@@ -173,12 +186,48 @@ export async function putBack({ redis, door, origin, archive, to, by, passphrase
   const made = await door('POST', name, { content: block });
   if (made.status !== 200) throw new Error(`the door refused "${name}" (${made.status}: ${made.body?.error ?? 'no reason given'}) — the archive copy is untouched`);
   if (relatch) await redis.set(locksKey(origin, name), rec.locks);
+  // A return is not a birth: the door stamped one just now, so put the true one back (or none).
+  try {
+    if (rec?.born) await redis.hset(bornKey(origin), { [name]: rec.born });
+    else await redis.hdel(bornKey(origin), name);
+  } catch { /* refinement */ }
   await redis.del(blockKey(origin, archive));
   await redis.del(locksKey(origin, archive));
   await redis.del(asideKey(origin, archive));
   try { await redis.hdel(touchedKey(origin), archive); } catch { /* refinement */ }
+  try { await redis.hdel(bornKey(origin), archive); } catch { /* refinement */ }
   const logged = await logLine(door, line, by, passphrase);
   return { dry: false, ...plan, logged };
+}
+
+/** Bring back the last copy the door kept before an unlatched wipe or whole-block replace. */
+export async function restoreLast({ redis, door, origin, name, day, by, passphrase, confirm, now = new Date() }) {
+  const today = now.toISOString().slice(0, 10);
+  const theDay = day || today;
+  const kept = await redis.get(lastKey(origin, name, theDay));
+  if (kept == null || kept.block == null) {
+    throw new Error(`the door kept no copy of "${name}" on ${theDay} at ${origin} — it keeps one only before an UNLATCHED wipe or whole-block replace, once a day, for thirty days`);
+  }
+  const standing = (await redis.get(blockKey(origin, name))) != null;
+  const hadLatches = !!(kept.locks && Object.keys(kept.locks).length);
+  const line =
+    `${today} — RESTORED: ${name} brought back from the copy the door kept on ${theDay}, by ${by} with the owner's hand ` +
+    `(scripts/set-aside.mjs)${hadLatches ? ', with the per-position latches it had' : ''}. ` +
+    `${standing ? 'What stood in its place was set aside first, by the entry above, so that is not lost either.' : 'The name stood empty.'}`;
+  const plan = { name, origin, day: theDay, standing, hadLatches, line };
+  if (!confirm) return { dry: true, ...plan };
+
+  let aside = null;
+  if (standing) {
+    aside = await setAside({ redis, door, origin, name, by, passphrase, confirm: true, now,
+      why: `it stood where a wiped or replaced block had been; the copy the door kept on ${theDay} returns in its place` });
+  }
+  const made = await door('POST', name, { content: kept.block });
+  if (made.status !== 200) throw new Error(`the door refused "${name}" (${made.status}: ${made.body?.error ?? 'no reason given'}) — the kept copy is untouched`);
+  if (hadLatches) await redis.set(locksKey(origin, name), kept.locks);
+  try { await redis.hdel(bornKey(origin), name); } catch { /* a return is not a birth */ }
+  const logged = await logLine(door, line, by, passphrase);
+  return { dry: false, ...plan, archive: aside?.archive ?? null, logged };
 }
 
 // ── CLI ──
@@ -186,9 +235,9 @@ export async function putBack({ redis, door, origin, archive, to, by, passphrase
 async function main() {
   const arg = (n, d) => { const i = process.argv.indexOf(`--${n}`); return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : d; };
   const has = (n) => process.argv.includes(`--${n}`);
-  const BLOCK = arg('block'), PUTBACK = arg('put-back'), DIR = arg('dir');
-  if (!BLOCK === !PUTBACK) {
-    console.error('usage: --block <name> --why "<reason>" [--confirm]   OR   --put-back <archive:name:date> [--to <name>] [--confirm]');
+  const BLOCK = arg('block'), PUTBACK = arg('put-back'), LAST = arg('last'), DIR = arg('dir');
+  if ([BLOCK, PUTBACK, LAST].filter(Boolean).length !== 1) {
+    console.error('usage: --block <name> --why "<reason>" [--confirm]   OR   --put-back <archive:name:date> [--to <name>] [--confirm]   OR   --last <name> [--day <YYYY-MM-DD>] [--confirm]');
     process.exit(2);
   }
   let apex = arg('apex', process.env.BEACH_ORIGIN);
@@ -217,11 +266,14 @@ async function main() {
   const door = makeDoor(handler, surf);
 
   const common = { redis, door, origin: surf.origin, by, passphrase: process.env.BEACH_PASSPHRASE, confirm: has('confirm') };
-  const r = BLOCK
-    ? await setAside({ ...common, name: BLOCK, why: arg('why') })
-    : await putBack({ ...common, archive: PUTBACK, to: arg('to') });
+  const r = BLOCK ? await setAside({ ...common, name: BLOCK, why: arg('why') })
+    : PUTBACK ? await putBack({ ...common, archive: PUTBACK, to: arg('to') })
+    : await restoreLast({ ...common, name: LAST, day: arg('day') });
 
-  console.error(`${r.dry ? 'DRY RUN — would move' : '✓ moved'}  ${BLOCK ? `${r.name} → ${r.archive}` : `${r.archive} → ${r.name}`}  @ ${r.origin}`);
+  const what = BLOCK ? `${r.name} → ${r.archive}`
+    : PUTBACK ? `${r.archive} → ${r.name}`
+    : `the door's copy of ${r.day} → ${r.name}${r.standing ? ' (what stands there is set aside first)' : ''}`;
+  console.error(`${r.dry ? 'DRY RUN — would move' : '✓ moved'}  ${what}  @ ${r.origin}`);
   console.error(`beach-log: ${r.line}`);
   if (r.dry) console.error('Re-run with --confirm to act.');
   else if (!r.logged) console.error('! the beach-log line did NOT land — append it by hand; the move itself is done.');

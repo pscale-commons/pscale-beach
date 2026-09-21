@@ -322,6 +322,17 @@ node scripts/set-aside.mjs --put-back archive:now:somename:2026-09-21 --confirm
 
 This is the owner's hand, through the storage the owner owns. An edit-latch promises that nobody else writes as you; it never promised that a host keeps a page forever. What keeps the hand honest is the archive copy and the public line, not a wall: the copy is sealed under `BEACH_PASSPHRASE`, and a latched block's old latch is kept beside it in storage (never in a block — lock hashes are never public), so a put-back returns the block to its holder. Someone who holds a stray's own passphrase needs none of this: read the block, write the archive copy, `DELETE` the original. `sed:` and `grain:` blocks are refused, as they are at the door. `npm run smoke:set-aside` proves all of it offline.
 
+**Seeing what arrived.** The bare index carries `born` beside `touched`: block name → when a write first found no block there. `touched` says when a block last changed, which is not when it arrived — a stray minted a minute ago and a busy old block both read as lately touched. A block born before the stamp existed carries none. The write acknowledgement says `born: true` whenever a write creates a block, so a surface can tell the person at the moment it happens — "that name is new; not you?" — and the one who minted a stray is the one who can undo it.
+
+**The door keeps the last copy.** An accumulator's root latch also governs its appends, so every board meant to take a stranger's word — `marks`, an open pool — stands with no latch at its root, and an unlatched root is one any hand may wipe or replace whole. Where no latch stands behind an act of removal, no author stands behind it either, so the handler keeps what was removed: content and lock set, once per block per day (a second wipe cannot launder it), for thirty days. A latch-holder's own wipe keeps nothing; that is an author's act. The way back is the same script:
+
+```bash
+node scripts/set-aside.mjs --last marks --confirm            # today's kept copy
+node scripts/set-aside.mjs --last marks --day 2026-09-21 --confirm
+```
+
+If the name was re-minted meanwhile — even under a stranger's latch — what stands there is set aside first, and the kept copy returns open, with the per-position latches it had. `npm run smoke:born` proves it. What this does **not** cover: a position write on an unlatched block can still replace a branch; the daily image is the way back for that.
+
 ## Architecture notes
 
 - **The handler is one file.** [api/pscale-beach.js](api/pscale-beach.js) is ~1,600 lines covering ordinary blocks, `sed:` registration, `grain:` reach/accept, lock semantics and inheritance, the shape gate, atomic append with supernesting, path-based world routing, and presence sweeping. Its one extracted companion is [api/floor.js](api/floor.js) — pure floor-invariant helpers with no side effects, so the scripts can import them too.
