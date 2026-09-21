@@ -112,6 +112,15 @@ export class FileRedis {
     return n;
   }
 
+  // INCR / EXPIRE — the caps' counters. Single-process rig, so read-modify-write
+  // needs no lock; EXPIRE is a no-op in the file shim, as EX is on set().
+  async incr(key) {
+    const n = (Number(await this.get(key)) || 0) + 1;
+    await this.set(key, n);
+    return n;
+  }
+  async expire() { return 1; }
+
   async del(...args) {
     const keys = args.flat();
     let n = 0;

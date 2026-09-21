@@ -333,6 +333,30 @@ node scripts/set-aside.mjs --last marks --day 2026-09-21 --confirm
 
 If the name was re-minted meanwhile — even under a stranger's latch — what stands there is set aside first, and the kept copy returns open, with the per-position latches it had. `npm run smoke:born` proves it. What this does **not** cover: a position write on an unlatched block can still replace a branch; the daily image is the way back for that.
 
+## Settings that steer the door — only from behind a root latch
+
+A `key=value` line in the `settings` block can send a secret somewhere (`pool_append_webhook=<url>` rides the shared secret in its header) or refuse a stranger's write (the caps below). So the handler hears those lines **only when the root of `settings` is latched**. A latch on the line's own position is not enough: a whole-block replace answers to the root latch alone, so while the root stands open any hand may rewrite a latched position's content and leave the latch entry standing over words its holder never wrote. With no root latch every line is ignored — the door falls back to its defaults and the webhook goes quiet rather than ringing for someone else.
+
+```bash
+# latch the root once; inheritance then binds every position beneath it
+curl -X POST "https://beach.example.com/.well-known/pscale-beach?block=settings" \
+  -H "Content-Type: application/json" -d '{"new_lock": "<your passphrase>"}'
+```
+
+**If you already run a webhook, latch the root of `settings` BEFORE deploying this, or the bus goes quiet until you do.**
+
+### The caps — built, and left off
+
+A flood is a nuisance here, not a wound, and clearing is the lever, never a wall: no accounts, no captchas, no address limits. A cap only bounds what one anonymous act can cost everyone else. `BEACH_CAPS=on` (env) is the master switch — unset, nothing is read and nothing is counted, so off costs nothing. Once on, the numbers are lines in the apex's latched `settings`, so you change one with a single write in the middle of a flood, no redeploy:
+
+| line | what it bounds |
+|---|---|
+| `cap_births_per_hour=<n>` | new blocks the whole deploy accepts in a clock hour — every block is a row in the index every sweep downloads |
+| `cap_appends_per_minute=<n>` | appends one **unlatched** accumulator accepts in a clock minute |
+| `cap_write_bytes=<n>` | the size of one write no latch stands behind |
+
+A latch-holder is an author and is never throttled. The accepted cost: a vandal can hold a beach at its birth cap and keep newcomers out for that hour, and cannot touch anyone already here. **The lever that needs no switch at all**, and the first to reach for when one board is flooding: latch that board's root. Appends then need the key, the flood stops at once, and relinquishing the latch reopens it. `npm run smoke:caps` proves all of this, including the webhook attack itself.
+
 ## Architecture notes
 
 - **The handler is one file.** [api/pscale-beach.js](api/pscale-beach.js) is ~1,600 lines covering ordinary blocks, `sed:` registration, `grain:` reach/accept, lock semantics and inheritance, the shape gate, atomic append with supernesting, path-based world routing, and presence sweeping. Its one extracted companion is [api/floor.js](api/floor.js) — pure floor-invariant helpers with no side effects, so the scripts can import them too.

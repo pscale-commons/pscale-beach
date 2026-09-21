@@ -365,6 +365,9 @@ async function saveBlock(origin, name, block, born = false) {
     }
   }
   await redis.set(blockKey(origin, name), block);
+  // What this instance had heard from `settings` is stale the moment settings is
+  // written; other warm instances catch up within the cache's minute.
+  if (name === 'settings') _settingsCache.delete(origin);
   // The surface remembers the touch. saveBlock is the one persist path every
   // write takes — position write, append, whole-block, sed, grain — so the
   // stamp is physics, not client courtesy: every door is covered, none is
@@ -405,6 +408,8 @@ async function loadHashes(origin, name) {
 
 async function saveHashes(origin, name, hashes) {
   await redis.set(locksKey(origin, name), hashes);
+  // Latching (or relinquishing) the root of `settings` changes whether it is heard at all.
+  if (name === 'settings') _settingsCache.delete(origin);
 }
 
 async function listBlockNames(origin) {
@@ -960,6 +965,8 @@ async function handleSedRegister(origin, collective, body) {
   let block = await loadBlock(origin, blockName);
   const born = !block;
   if (born) {
+    const refused = await birthRefusal();
+    if (refused) return refused;
     block = { _: `sed: collective ${collective} hosted at ${origin}` };
   }
   const hashes = await loadHashes(origin, blockName);
@@ -1006,6 +1013,8 @@ async function handleGrainReach(origin, pairId, body) {
   const hashes = await loadHashes(origin, blockName);
 
   if (!existing) {
+    const refused = await birthRefusal();
+    if (refused) return refused;
     // Establish: write reaching side + reach hint at position 8.
     const block = {
       _: description || '',
@@ -1092,9 +1101,11 @@ async function withAppendLock(origin, blockName, fn) {
 // ── The doorbell webhook — a landed voice at a pool rings services riding it ──
 // (design: bsp-mcp proposals/2026-08-12-doorbell-wake.md — the doorbell wake)
 //
-// When THIS origin's `settings` block carries a line "pool_append_webhook=<url>"
-// at any top-level digit position (first match wins; the line may sit at the
-// position directly or at its underscore), every SUCCESSFUL append to a block
+// When THIS origin's `settings` block stands behind a ROOT LATCH (latchedSettings,
+// below — an unlatched settings block steers nothing) and carries a line
+// "pool_append_webhook=<url>" at any top-level digit position (first match wins;
+// the line may sit at the position directly or at its underscore), every
+// SUCCESSFUL append to a block
 // named pool:* fires one POST {origin, pool, slot, agent_id, ts} at that url,
 // with the shared secret from env POOL_WEBHOOK_SECRET riding the
 // x-pool-webhook-secret header. The beach stays dumb: no dial reads, no
@@ -1107,30 +1118,124 @@ async function withAppendLock(origin, blockName, fn) {
 // Liquid staging never fires (liquid:pool:* does not match pool:*): a stage
 // is not a landed voice. The settings read is cached ~60s per origin so a hot
 // room costs no extra KV reads.
-const POOL_WEBHOOK_CACHE_TTL_MS = 60_000;
-const _poolWebhookCache = new Map(); // origin -> { url: string|null, at: ms }
+// SETTINGS THAT STEER THE DOOR ARE HONOURED ONLY FROM BEHIND A ROOT LATCH.
+// A `key=value` line in `settings` can send a secret somewhere (the webhook
+// below) or refuse a stranger's write (the caps further down), so it must be a
+// line only its owner can have written. A latch on the line's own position is
+// NOT enough: a whole-block replace answers to the root latch alone, so while
+// the root stands open any hand may rewrite a latched position's content and
+// leave its latch entry standing over words its holder never wrote. The shape
+// this closes: a settings block latched at one digit only, the webhook line at
+// that digit, the reader taking the first match in key order — so a keyless
+// write at a LOWER open position redirects every pool append, with the shared
+// secret riding the header, to a stranger.
+// So: no root latch, no steering — every line is ignored, the door falls back to
+// its defaults, and the bus goes quiet rather than ringing for someone else.
+// Latch the root (a write with new_lock and no spindle) and the lines are heard.
+const SETTINGS_CACHE_TTL_MS = 60_000;
+const _settingsCache = new Map(); // origin -> { lines: Map<string,string>, at: ms }
 
-async function poolAppendWebhookUrl(origin) {
-  const c = _poolWebhookCache.get(origin);
-  if (c && Date.now() - c.at < POOL_WEBHOOK_CACHE_TTL_MS) return c.url;
-  let url = null;
+async function latchedSettings(origin) {
+  const c = _settingsCache.get(origin);
+  if (c && Date.now() - c.at < SETTINGS_CACHE_TTL_MS) return c.lines;
+  const lines = new Map();
   try {
-    const settings = await loadBlock(origin, 'settings');
+    const hashes = await loadHashes(origin, 'settings');
+    const settings = hashes['_'] !== undefined ? await loadBlock(origin, 'settings') : null;
     if (settings && typeof settings === 'object') {
       for (const k of Object.keys(settings)) {
         if (!/^[1-9]\d*$/.test(k)) continue;
         const v = settings[k];
         const s = typeof v === 'string' ? v
           : (v && typeof v === 'object' && typeof v['_'] === 'string' ? v['_'] : '');
-        // Tolerant like parseConventionName: the URL ends at whitespace, and a
-        // block may carry explanatory prose after it — the line self-describes.
-        const m = s.match(/^\s*pool_append_webhook\s*=\s*(https?:\/\/\S+)(?:\s|$)/);
-        if (m) { url = m[1]; break; }
+        // Tolerant like parseConventionName: the value ends at whitespace, and a
+        // line may carry explanatory prose after it — the line self-describes.
+        // First declaration of a key wins.
+        const m = s.match(/^\s*([a-z][a-z0-9_]*)\s*=\s*(\S+)(?:\s|$)/);
+        if (m && !lines.has(m[1])) lines.set(m[1], m[2]);
       }
     }
-  } catch { /* declaration unreadable — treat as undeclared */ }
-  _poolWebhookCache.set(origin, { url, at: Date.now() });
-  return url;
+  } catch { /* unreadable — treat as undeclared */ }
+  _settingsCache.set(origin, { lines, at: Date.now() });
+  return lines;
+}
+
+async function poolAppendWebhookUrl(origin) {
+  const url = (await latchedSettings(origin)).get('pool_append_webhook');
+  return url && /^https?:\/\//.test(url) ? url : null;
+}
+
+// ── Three caps, OFF until a beach's owner writes them ──
+// (bsp-mcp proposals/2026-09-21-tidying-and-spam.md 2.5)
+//
+// open-commons 1: availability here is cheaply spammable and low-stakes — a
+// flood is a nuisance, not a wound, and clearing is the lever, never a wall. So
+// there are no accounts, no captchas and no address limits (every MCP caller
+// arrives from the router's one address, and addresses are free to rotate).
+// What a cap does is bound what ONE anonymous act can cost everyone else:
+//
+//   cap_births_per_hour=<n>     new blocks this DEPLOY accepts in a clock hour —
+//                               every block is a row in the index, and every
+//                               sweep by every visitor downloads the whole index,
+//                               so births are the dear thing. Per deploy, not per
+//                               world: worlds are free to mint.
+//   cap_appends_per_minute=<n>  appends ONE unlatched accumulator accepts in a
+//                               clock minute — each append rewrites the whole
+//                               block, so a flooded board slows until the store
+//                               refuses it.
+//   cap_write_bytes=<n>         the size of one write no latch stands behind.
+//
+// TWO SWITCHES, because "off" must cost nothing. The caps sit on the hottest
+// unlatched paths there are (a presence heartbeat is an unlatched write), and
+// merely ASKING whether a cap is set means reading `settings` — a storage
+// command or two per warm instance per minute, which on a small store is a real
+// share of the day's budget. So env BEACH_CAPS=on is the master switch: unset,
+// nothing here reads anything. Once on, the NUMBERS are lines in the APEX's
+// `settings`, behind its root latch like every line that steers the door — an
+// owner changes one with a single write in the middle of a flood, no redeploy,
+// heard within the cache's minute; absent or 0 leaves that cap off.
+//
+// The lever that needs neither switch, and is the first to reach for when ONE
+// board is flooding: LATCH THAT BOARD'S ROOT (a write with new_lock and no
+// spindle). Appends then need the key, the flood stops at once, and
+// relinquishing the latch reopens it.
+//
+// A latch-holder is an author and is never throttled; a birth has no latch
+// behind it by definition, so births are counted whoever makes them. The
+// accepted cost, said plainly: a vandal can hold a beach at its birth cap and
+// keep newcomers out for that hour — "the commons goes quiet a while" — and
+// cannot touch anyone already here.
+const CAPS_ON = process.env.BEACH_CAPS === 'on';
+async function capOf(key) {
+  if (!CAPS_ON) return 0;
+  const n = parseInt((await latchedSettings(BASE_ORIGIN)).get(key) ?? '', 10);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+async function overCap(counterKey, cap, ttlSeconds) {
+  try {
+    const n = await redis.incr(counterKey);
+    if (n === 1) await redis.expire(counterKey, ttlSeconds);
+    return n > cap;
+  } catch { return false; }   // a counter's fault never refuses a write
+}
+async function birthRefusal(when = new Date()) {
+  const cap = await capOf('cap_births_per_hour');
+  if (!cap) return null;
+  if (!(await overCap(`${keyNs(BASE_ORIGIN)}:births:${when.toISOString().slice(0, 13)}`, cap, 7200))) return null;
+  return { status: 429, body: { error: 'this beach is taking no new blocks for the rest of this hour — every block already here reads and writes as ever (cap_births_per_hour)', code: 'cap_births' } };
+}
+async function appendRefusal(origin, blockName, when = new Date()) {
+  const cap = await capOf('cap_appends_per_minute');
+  if (!cap) return null;
+  if (!(await overCap(`${keyNs(origin)}:appends:${blockName}:${when.toISOString().slice(0, 16)}`, cap, 120))) return null;
+  return { status: 429, body: { error: `"${blockName}" has taken its fill for this minute — try again in a moment (cap_appends_per_minute)`, code: 'cap_appends' } };
+}
+async function sizeRefusal(content) {
+  const cap = await capOf('cap_write_bytes');
+  if (!cap) return null;
+  const bytes = Buffer.byteLength(JSON.stringify(content ?? null));
+  if (bytes <= cap) return null;
+  return { status: 413, body: { error: `this write is ${bytes} bytes and no latch stands behind it — an unlatched write here may be ${cap} at most (cap_write_bytes)`, code: 'cap_write_bytes' } };
 }
 
 async function firePoolAppendWebhook(origin, blockName, slotAddress, entry) {
@@ -1353,6 +1458,14 @@ async function handleStandardWrite(origin, blockName, body) {
       if (!secret || hashByBlockName(origin, blockName, '_', secret) !== hashes['_']) {
         return { status: 403, body: { error: `append to "${blockName}" requires the accumulator secret`, code: 'lock_required' } };
       }
+    } else {
+      // No latch stands behind this append, so the caps (off unless the owner
+      // wrote them) apply: its size, this board's fill for the minute, and — when
+      // the append would mint the accumulator — the deploy's births for the hour.
+      const refused = !CAPS_ON ? null : (await sizeRefusal(content))
+        || (await appendRefusal(origin, blockName))
+        || ((await capOf('cap_births_per_hour')) && (await loadBlock(origin, blockName)) == null ? await birthRefusal() : null);
+      if (refused) return refused;
     }
     // ── Single-resolution claim (mutual exclusion the convention can't hold) ──
     // When this append IS a window's resolution (resolve_window = the window's
@@ -1598,6 +1711,14 @@ async function handleStandardWrite(origin, blockName, body) {
     if (hashByBlockName(origin, blockName, authKey, secret) !== stored) {
       return { status: 403, body: { error: 'secret does not match', code: 'lock_required' } };
     }
+  }
+
+  // No latch stands behind this write, so the caps (off unless the owner wrote
+  // them) apply: its size, and — when it would mint the block — the deploy's
+  // births for the hour. A latch-holder is an author and is never throttled.
+  if (content !== undefined && stored === undefined) {
+    const refused = (await sizeRefusal(content)) || (existing == null ? await birthRefusal() : null);
+    if (refused) return refused;
   }
 
   // Lock-rotation authority.
