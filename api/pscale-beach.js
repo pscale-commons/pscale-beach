@@ -1101,12 +1101,22 @@ async function withAppendLock(origin, blockName, fn) {
 // ── The doorbell webhook — a landed voice at a pool rings services riding it ──
 // (design: bsp-mcp proposals/2026-08-12-doorbell-wake.md — the doorbell wake)
 //
-// When THIS origin's `settings` block stands behind a ROOT LATCH (latchedSettings,
-// below — an unlatched settings block steers nothing) and carries a line
+// ONE BUS PER DEPLOY, DECLARED BY ITS OWNER. The declaration is read from the
+// DEPLOY'S OWN `settings` (BASE_ORIGIN) and from nowhere else — never from the
+// settings of the origin a pool happens to live in. The shared secret below
+// rides to whatever URL the declaration names, and a /w/<world> is free for any
+// hand to mint: heard from the request's origin, a stranger's world could
+// declare a bus of its own and be sent the secret. A world is a tenant of the
+// deploy; the secret is the deploy owner's; so only the owner's line is heard.
+// Every world's pools still ring the one bus, and the event carries the pool's
+// true origin.
+//
+// When that block stands behind a ROOT LATCH (latchedSettings, below — an
+// unlatched settings block steers nothing) and carries a line
 // "pool_append_webhook=<url>" at any top-level digit position (first match wins;
 // the line may sit at the position directly or at its underscore), every
-// SUCCESSFUL append to a block
-// named pool:* fires one POST {origin, pool, slot, agent_id, ts} at that url,
+// SUCCESSFUL append to a block named pool:* — at the apex or in any world —
+// fires one POST {origin, pool, slot, agent_id, ts} at that url,
 // with the shared secret from env POOL_WEBHOOK_SECRET riding the
 // x-pool-webhook-secret header. The beach stays dumb: no dial reads, no
 // per-agent filtering, no retries — whatever rides the declaration (a waker
@@ -1160,8 +1170,8 @@ async function latchedSettings(origin) {
   return lines;
 }
 
-async function poolAppendWebhookUrl(origin) {
-  const url = (await latchedSettings(origin)).get('pool_append_webhook');
+async function poolAppendWebhookUrl() {
+  const url = (await latchedSettings(BASE_ORIGIN)).get('pool_append_webhook');
   return url && /^https?:\/\//.test(url) ? url : null;
 }
 
@@ -1241,7 +1251,7 @@ async function sizeRefusal(content) {
 async function firePoolAppendWebhook(origin, blockName, slotAddress, entry) {
   if (!blockName.startsWith('pool:')) return;
   try {
-    const url = await poolAppendWebhookUrl(origin);
+    const url = await poolAppendWebhookUrl();
     if (!url) return;
     const agentId = entry && typeof entry === 'object' && typeof entry['1'] === 'string' ? entry['1'] : '';
     const ts = entry && typeof entry === 'object' && typeof entry['3'] === 'string' ? entry['3'] : new Date().toISOString();
