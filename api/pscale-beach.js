@@ -701,6 +701,22 @@ function collectUnderscoreCanonical(node) {
   return typeof node === 'string' ? node : null;
 }
 
+// THE MUSCLE AHEAD — the ring beneath a terminus, as full-width addresses the
+// caller fires verbatim, so the next throw is composed by the ack rather than
+// foreseen by the reader (bsp-mcp proposals/2026-09-23-the-bolus-envelope.md;
+// symmetric with bsp-fn.ts at the router end of the wire). The arrival stamp
+// at field 3 is a field of the entry, never a position beneath it.
+function fullWidthAddressOf(digits, floor) {
+  if (digits.length <= floor) return digits.join('').padEnd(floor, '0');
+  return digits.slice(0, floor).join('') + '.' + digits.slice(floor).join('');
+}
+function ringBeneath(node, digits, floor) {
+  if (!node || typeof node !== 'object') return [];
+  const keys = Object.keys(node).filter((k) => /^[1-9]$/.test(k)).sort();
+  const stamped = Boolean(entryStampOf(node));
+  return keys.filter((k) => !(stamped && k === '3')).map((k) => fullWidthAddressOf(digits.concat([k]), floor));
+}
+
 function semanticOf(node) {
   if (typeof node === 'string') return node;
   // Numeric and boolean leaves are legal wire values (e.g. evaluation scores
@@ -871,11 +887,13 @@ function bspCanonical(block, spindle, pscale) {
   const pEnd = floor - digits.length;
 
   if (pscale === null || pscale === undefined) {
+    const ring = ringBeneath(walkDigits(block, digits), digits, floor);
     return {
       floor,
       shape: 'path-walk',
       spindle: spindle ?? null,
       entries: buildPathWalkCanonical(block, digits, floor),
+      ...(ring.length ? { beneath: ring, beneath_pscale: floor - digits.length - 1 } : {}),
     };
   }
 
@@ -893,6 +911,7 @@ function bspCanonical(block, spindle, pscale) {
     }
     const prefix = digits.slice(0, target);
     const node = walkDigits(block, prefix);
+    const ring = ringBeneath(node, prefix, floor);
     return {
       floor,
       shape: 'point',
@@ -902,6 +921,7 @@ function bspCanonical(block, spindle, pscale) {
       address: formatAddress(prefix, floor),
       content: semanticOf(node),
       stamp: entryStampOf(node),
+      ...(ring.length ? { beneath: ring, beneath_pscale: pscale - 1 } : {})
     };
   }
 
