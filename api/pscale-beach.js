@@ -788,6 +788,7 @@ function collectDiscCanonical(block, targetDepth, floor) {
           address: formatAddress(walked, floor),
           content: semanticOf(node),
           stamp: entryStampOf(node),
+          ...(ringBeneath(node, walked, floor).length ? { beneath: ringBeneath(node, walked, floor).length } : {}),
         });
       }
       return;
