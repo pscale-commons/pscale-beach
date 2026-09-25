@@ -4,6 +4,7 @@
 //
 //   set -a; . <clone>/.env.local; set +a
 //   node scripts/beach-restore.mjs --in <beach-*.json[.gz]> [--only <substr>] [--confirm]
+//   node scripts/beach-restore.mjs --block-file <f> --origin <domain> --name <block> [--confirm]   (Mode B, below)
 //
 //   --only <substr>  restore only keys containing <substr> (e.g. an origin, or a block name) —
 //                    surgical recovery of one corrupted block without touching the rest.
@@ -23,22 +24,32 @@ const BLOCKFILE = arg('block-file'), ORIGIN = arg('origin'), NAME = arg('name');
 
 // Mode B — restore ONE block's content from a per-block file (e.g. a version checked out of the
 // git mirror: `git checkout <commit> -- <origin>/<block>.json`). Content only (the mirror carries
-// no lock hashes); the block's existing lock is left untouched.
+// no lock hashes); the block's existing lock is left untouched. The beach keys by the BARE origin —
+// BEACH_ORIGIN carries no scheme, a path world is <domain>/w/<world>, and the mirror names its
+// directories the same way — so a scheme or trailing slash on --origin is stripped. The dry run GETs
+// the key (so it needs the KV creds too) and says whether the beach holds anything there: a wrong
+// key shows before --confirm, instead of a write the beach never reads.
 if (BLOCKFILE) {
-  if (!ORIGIN || !NAME) { console.error('block-file mode needs --origin <url> and --name <block>'); process.exit(1); }
-  const originFull = ORIGIN.startsWith('http') ? ORIGIN : `https://${ORIGIN}`;
-  const k = `pscale-beach-v2:${originFull}:block:${NAME}`;
+  if (!ORIGIN || !NAME) { console.error('block-file mode needs --origin <domain> and --name <block>'); process.exit(1); }
+  const origin = ORIGIN.replace(/^[a-z]+:\/\//i, '').replace(/\/+$/, '');
+  const k = `pscale-beach-v2:${origin}:block:${NAME}`;
   const content = JSON.parse(await fs.readFile(BLOCKFILE, 'utf8'));
   console.error(`block-file → ${k}`);
-  if (!CONFIRM) { console.error('DRY RUN — re-run with --confirm to set this block content.'); process.exit(0); }
   const url = process.env.KV_REST_API_URL, token = process.env.KV_REST_API_TOKEN;
   if (!url || !token) { console.error('missing KV creds — source your beach clone .env.local first'); process.exit(1); }
-  await new Redis({ url, token }).set(k, content);
-  console.error(`✓ restored block content ${NAME} @ ${originFull} (lock untouched)`);
+  const redis = new Redis({ url, token });
+  const current = await redis.get(k);
+  const bytes = (v) => Buffer.byteLength(JSON.stringify(v));
+  console.error(current == null
+    ? '  ABSENT — nothing at this key. Unless the block is gone, the key is wrong: --origin is the bare domain (as the mirror names its directory), --name the decoded block name (history:weft, not history%3Aweft).'
+    : `  exists — ${bytes(current)} bytes now, ${bytes(content)} from the file; --confirm overwrites.`);
+  if (!CONFIRM) { console.error('DRY RUN — re-run with --confirm to set this block content.'); process.exit(0); }
+  await redis.set(k, content);
+  console.error(`✓ restored block content ${NAME} @ ${origin} (lock untouched)`);
   process.exit(0);
 }
 
-if (!IN) { console.error('usage: --in <beach-*.json|.gz> [--only <substr>] [--confirm]  OR  --block-file <f> --origin <url> --name <block> [--confirm]'); process.exit(1); }
+if (!IN) { console.error('usage: --in <beach-*.json|.gz> [--only <substr>] [--confirm]  OR  --block-file <f> --origin <domain> --name <block> [--confirm]'); process.exit(1); }
 
 const raw = await fs.readFile(IN);
 const text = IN.endsWith('.gz') ? gunzipSync(raw).toString() : raw.toString();
