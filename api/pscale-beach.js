@@ -341,6 +341,39 @@ function hashByBlockName(origin, blockName, position, secret) {
   return hashOrdinary(origin, secret, blockName, position);
 }
 
+// A HANDLE FOUNDS UNDER ITS OWN KEY (bsp-mcp proposals/2026-09-28-a-handle-founds-
+// under-its-own-key). A block named <something>:<handle> is that handle's by the
+// role-with-handle convention (block-conventions:1), but until now any key could win
+// it: the first hand to latch lero-nnh-recovery-capital:happyseaurchin would have held
+// that name in that family for good, and its owner could no longer write there. So
+// SETTING a lock where none stands — founding a block locked, or claiming an open one
+// — on a block named for a handle whose passport is locked needs that passport's key:
+// as the secret (a delegation: the new lock may then be any key), or as the new lock
+// itself. Founding open, with no lock, is untouched; so is every write under a lock
+// that already stands, and every rotation, since the holder already governs. The
+// passport itself is the claim and binds nothing; sed: and grain: keep their own
+// lifecycles; archive: and probe: are the steward's copies and fixtures. A handle
+// with no passport here, or an open one, binds nothing.
+const HANDLE_BOUND_EXEMPT = ['passport:', 'sed:', 'grain:', 'archive:', 'probe:'];
+async function handleBoundRefusal(origin, blockName, secret, newLock) {
+  const cut = blockName.lastIndexOf(':');
+  if (cut <= 0 || cut === blockName.length - 1) return null;
+  if (HANDLE_BOUND_EXEMPT.some((prefix) => blockName.startsWith(prefix))) return null;
+  const handle = blockName.slice(cut + 1);
+  const passport = `passport:${handle}`;
+  const held = (await loadHashes(origin, passport))['_'];
+  if (held === undefined) return null;
+  const proves = (key) => typeof key === 'string' && key !== '' && hashOrdinary(origin, key, passport, '_') === held;
+  if (proves(secret) || proves(newLock)) return null;
+  return {
+    status: 403,
+    body: {
+      error: `"${blockName}" is named for ${handle}, whose passport is locked — a lock here can only be set with ${handle}'s own key, the one that locks ${passport} (as the secret, or as the new lock itself). Founding it open, with no lock, is still allowed.`,
+      code: 'handle_bound',
+    },
+  };
+}
+
 // ── Storage helpers ──
 
 async function loadBlock(origin, name) {
@@ -1730,6 +1763,13 @@ async function handleStandardWrite(origin, blockName, body) {
         code: 'invalid_shape'
       }
     };
+  }
+
+  // A handle founds under its own key — setting a lock where none stands, on a block
+  // named for a handle whose passport is locked, needs that passport's key.
+  if (new_lock !== undefined && !relinquish && stored === undefined && inherits) {
+    const refused = await handleBoundRefusal(origin, blockName, secret, new_lock);
+    if (refused) return refused;
   }
 
   // Lock check for content writes.
