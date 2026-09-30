@@ -361,15 +361,49 @@ async function handleBoundRefusal(origin, blockName, secret, newLock) {
   if (HANDLE_BOUND_EXEMPT.some((prefix) => blockName.startsWith(prefix))) return null;
   const handle = blockName.slice(cut + 1);
   const passport = `passport:${handle}`;
-  const held = (await loadHashes(origin, passport))['_'];
-  if (held === undefined) return null;
-  const proves = (key) => typeof key === 'string' && key !== '' && hashOrdinary(origin, key, passport, '_') === held;
+  // The passport's latch is its root latch; where the root is open, any latch it carries
+  // holds the whole (a passport is one whole, below).
+  const latches = await loadHashes(origin, passport);
+  const held = latches['_'] !== undefined ? { _: latches['_'] } : latches;
+  if (Object.keys(held).length === 0) return null;
+  const proves = (key) => passportKeyAmong(origin, passport, held, [key]) !== null;
   if (proves(secret) || proves(newLock)) return null;
   return {
     status: 403,
     body: {
       error: `"${blockName}" is named for ${handle}, whose passport is locked — a lock here can only be set with ${handle}'s own key, the one that locks ${passport} (as the secret, or as the new lock itself). Founding it open, with no lock, is still allowed.`,
       code: 'handle_bound',
+    },
+  };
+}
+
+// A PASSPORT IS ONE WHOLE (bsp-mcp proposals/2026-09-30-a-passport-is-one-whole). A latch
+// lands where the write lands, so a passport founded by a write at one position — its
+// Location line, as the welcome had assistants do — was latched at that line and open at
+// its top: any hand could latch the root and take the name, and the rule above bound
+// nothing for it. A passport is the claim on a name, so it is held whole. While its root
+// is open, whoever holds a latch on any part of it holds all of it: every write, latch
+// and wipe needs a key that proves one of its latches. And the top latches itself: the
+// key that holds a part, that first latches a part, or that rides the passport's
+// founding takes the root, so the irregular state ends at its holder's next keyed write
+// and nobody is asked to do anything. A passport founded with no key stays open, and one
+// whose root is latched is governed by that latch exactly as before.
+const isPassport = (name) => name === 'passport' || name.startsWith('passport:');
+function passportKeyAmong(origin, blockName, hashes, keys) {
+  for (const key of keys) {
+    if (typeof key !== 'string' || key === '') continue;
+    for (const [position, held] of Object.entries(hashes)) {
+      if (hashOrdinary(origin, key, blockName, position) === held) return key;
+    }
+  }
+  return null;
+}
+function passportHeldRefusal(blockName) {
+  return {
+    status: 403,
+    body: {
+      error: `"${blockName}" is held: part of it is latched, and a passport is one whole — this needs the key that latched it (send it as the secret).`,
+      code: 'lock_required',
     },
   };
 }
@@ -1494,6 +1528,16 @@ async function handleAppendAtSpindle(origin, blockName, spindle, content, secret
 async function handleStandardWrite(origin, blockName, body) {
   const { spindle = '', content, secret, new_lock, confirm, append, resolve_window, resolve_seen } = body || {};
 
+  // A passport is one whole: while its root is open, a latch on any part holds all of it.
+  let passportKey = null;
+  if (isPassport(blockName)) {
+    const held = await loadHashes(origin, blockName);
+    if (held['_'] === undefined && Object.keys(held).length > 0) {
+      passportKey = passportKeyAmong(origin, blockName, held, [secret, new_lock]);
+      if (passportKey === null) return passportHeldRefusal(blockName);
+    }
+  }
+
   // APPEND mode — atomic next-slot allocation with supernest-on-rollover
   // (sunstone:1.63). THE accumulator write: marks, history, pools. The handler
   // picks the next free zero-free slot and wraps the whole block {_: old} when
@@ -1854,6 +1898,19 @@ async function handleStandardWrite(origin, blockName, body) {
     }
   }
 
+  // …and a passport's top latches itself, under the key that holds a part of it, that has
+  // just latched a part of it, or that rode its founding. A relinquish at the root is the
+  // holder's own word to leave it open.
+  if (isPassport(blockName) && hashes['_'] === undefined && !(relinquish && lockKey === '_')) {
+    const key = passportKey
+      ?? (!relinquish && typeof new_lock === 'string' && hashes[lockKey] !== undefined ? new_lock : null)
+      ?? (existing == null && content !== undefined && typeof secret === 'string' && secret !== '' ? secret : null);
+    if (key) {
+      hashes['_'] = hashOrdinary(origin, key, blockName, '_');
+      await saveHashes(origin, blockName, hashes);
+    }
+  }
+
   // born: this write found no block here and made one. Said in the ack so every
   // surface learns of a birth at the moment it happens, at no extra read — a
   // mistyped handle mints a block, and the hand that minted it is the one best
@@ -2063,6 +2120,13 @@ export default async function handler(req, res) {
           code: 'lock_required'
         });
       }
+    }
+    // A passport is one whole: with its root open and a part latched, a wipe needs the
+    // key that holds that part.
+    if (!stored && isPassport(blockName) && Object.keys(hashes).length > 0
+        && passportKeyAmong(origin, blockName, hashes, [body.secret]) === null) {
+      const held = passportHeldRefusal(blockName);
+      return res.status(held.status).json(held.body);
     }
     // No latch stood behind this wipe, so no author did either: keep the last copy.
     if (!stored) await keepLastCopy(origin, blockName, existing, hashes, servedAt);
