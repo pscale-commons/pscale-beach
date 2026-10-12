@@ -366,8 +366,12 @@ async function handleBoundRefusal(origin, blockName, secret, newLock) {
   const latches = await loadHashes(origin, passport);
   const held = latches['_'] !== undefined ? { _: latches['_'] } : latches;
   if (Object.keys(held).length === 0) return null;
+  // The passport's key is tried here, so the passport's wrong-key cap stands here too.
+  const capped = await wrongKeysRefusal(origin, passport);
+  if (capped) return capped;
   const proves = (key) => passportKeyAmong(origin, passport, held, [key]) !== null;
   if (proves(secret) || proves(newLock)) return null;
+  await noteWrongKey(origin, passport);
   return {
     status: 403,
     body: {
@@ -1134,7 +1138,10 @@ async function handleGrainReach(origin, pairId, body) {
   if (existing[side] !== undefined) {
     // Own-side rewrite: requires the existing side's secret as my_passphrase.
     const stored = hashes[side];
+    const capped = stored ? await wrongKeysRefusal(origin, blockName) : null;
+    if (capped) return capped;
     if (!stored || hashGrain(my_passphrase, pairId, side) !== stored) {
+      if (stored) await noteWrongKey(origin, blockName);
       return { status: 403, body: { error: `side ${side} is locked`, code: 'lock_required' } };
     }
     existing[side] = { _: my_side_content };
@@ -1202,8 +1209,8 @@ async function withAppendLock(origin, blockName, fn) {
 // When that block stands behind a ROOT LATCH (latchedSettings, below — an
 // unlatched settings block steers nothing) and carries a line
 // "pool_append_webhook=<url>" at any top-level digit position (first match wins;
-// the line may sit at the position directly or at its underscore), every
-// SUCCESSFUL append to a block named pool:* — at the apex or in any world —
+// the line may sit at the position directly, at its underscore, or one rung
+// beneath it), every SUCCESSFUL append to a block named pool:* — at the apex or in any world —
 // fires one POST {origin, pool, slot, agent_id, ts} at that url,
 // with the shared secret from env POOL_WEBHOOK_SECRET riding the
 // x-pool-webhook-secret header. The beach stays dumb: no dial reads, no
@@ -1241,16 +1248,26 @@ async function latchedSettings(origin) {
     const hashes = await loadHashes(origin, 'settings');
     const settings = hashes['_'] !== undefined ? await loadBlock(origin, 'settings') : null;
     if (settings && typeof settings === 'object') {
+      const lineOf = (v) => typeof v === 'string' ? v
+        : (v && typeof v === 'object' && typeof v['_'] === 'string' ? v['_'] : '');
+      // Tolerant like parseConventionName: the value ends at whitespace, and a
+      // line may carry explanatory prose after it — the line self-describes.
+      // First declaration of a key wins.
+      const hear = (s) => {
+        const m = s.match(/^\s*([a-z][a-z0-9_]*)\s*=\s*(\S+)(?:\s|$)/);
+        if (m && !lines.has(m[1])) lines.set(m[1], m[2]);
+      };
+      // A line stands at a top-level digit or one rung beneath it, so a family of
+      // lines nests under the branch that names it (the caps under one digit)
+      // instead of fanning across the root. The root latch binds that rung exactly
+      // as it binds the digit above it.
       for (const k of Object.keys(settings)) {
         if (!/^[1-9]\d*$/.test(k)) continue;
         const v = settings[k];
-        const s = typeof v === 'string' ? v
-          : (v && typeof v === 'object' && typeof v['_'] === 'string' ? v['_'] : '');
-        // Tolerant like parseConventionName: the value ends at whitespace, and a
-        // line may carry explanatory prose after it — the line self-describes.
-        // First declaration of a key wins.
-        const m = s.match(/^\s*([a-z][a-z0-9_]*)\s*=\s*(\S+)(?:\s|$)/);
-        if (m && !lines.has(m[1])) lines.set(m[1], m[2]);
+        hear(lineOf(v));
+        if (v && typeof v === 'object') {
+          for (const c of Object.keys(v)) if (/^[1-9]$/.test(c)) hear(lineOf(v[c]));
+        }
       }
     }
   } catch { /* unreadable — treat as undeclared */ }
@@ -1263,8 +1280,8 @@ async function poolAppendWebhookUrl() {
   return url && /^https?:\/\//.test(url) ? url : null;
 }
 
-// ── Three caps, OFF until a beach's owner writes them ──
-// (bsp-mcp proposals/2026-09-21-tidying-and-spam.md 2.5)
+// ── Four caps, OFF until a beach's owner writes them ──
+// (bsp-mcp proposals/2026-09-21-tidying-and-spam.md 2.5; the fourth, security.1)
 //
 // open-commons 1: availability here is cheaply spammable and low-stakes — a
 // flood is a nuisance, not a wound, and clearing is the lever, never a wall. So
@@ -1278,10 +1295,17 @@ async function poolAppendWebhookUrl() {
 //                               so births are the dear thing. Per deploy, not per
 //                               world: worlds are free to mint.
 //   cap_appends_per_minute=<n>  appends ONE unlatched accumulator accepts in a
-//                               clock minute — each append rewrites the whole
-//                               block, so a flooded board slows until the store
-//                               refuses it.
+//                               clock minute, at its root or beneath any node —
+//                               each append rewrites the whole block, so a
+//                               flooded board slows until the store refuses it.
 //   cap_write_bytes=<n>         the size of one write no latch stands behind.
+//   cap_wrong_keys_per_hour=<n> wrong keys ONE block hears in a clock hour. A
+//                               latch is one fast hash and nothing else slows a
+//                               guess, so a script could try a dictionary
+//                               against any latch at the speed of the door.
+//                               Past the cap no key is TRIED on that block until
+//                               the hour turns — the right one included, or the
+//                               cap would slow a guesser without stopping them.
 //
 // TWO SWITCHES, because "off" must cost nothing. The caps sit on the hottest
 // unlatched paths there are (a presence heartbeat is an unlatched write), and
@@ -1298,11 +1322,18 @@ async function poolAppendWebhookUrl() {
 // spindle). Appends then need the key, the flood stops at once, and
 // relinquishing the latch reopens it.
 //
-// A latch-holder is an author and is never throttled; a birth has no latch
-// behind it by definition, so births are counted whoever makes them. The
-// accepted cost, said plainly: a vandal can hold a beach at its birth cap and
-// keep newcomers out for that hour — "the commons goes quiet a while" — and
-// cannot touch anyone already here.
+// A latch-holder is an author and is never throttled by the first three; a birth
+// has no latch behind it by definition, so births are counted whoever makes
+// them — a latch set on a name that holds no block among them, since it takes
+// the name as surely as a block would. The accepted cost, said plainly: a vandal
+// can hold a beach at its birth cap and keep newcomers out for that hour — "the
+// commons goes quiet a while" — and cannot touch anyone already here.
+//
+// The fourth is the one cap that can reach a keyholder, and its cost is said as
+// plainly: a stranger who spends it on one block holds that block's keyholder out
+// until the hour turns. Nothing written there changes, and a wrong key still never
+// opens it. A keyless act is not a guess and is never counted; a key tried for a
+// passport through a block named for its handle counts against the passport.
 const CAPS_ON = process.env.BEACH_CAPS === 'on';
 async function capOf(key) {
   if (!CAPS_ON) return 0;
@@ -1334,6 +1365,26 @@ async function sizeRefusal(content) {
   const bytes = Buffer.byteLength(JSON.stringify(content ?? null));
   if (bytes <= cap) return null;
   return { status: 413, body: { error: `this write is ${bytes} bytes and no latch stands behind it — an unlatched write here may be ${cap} at most (cap_write_bytes)`, code: 'cap_write_bytes' } };
+}
+// Asked at every door BEFORE a key is tried; told AFTER one fails.
+function wrongKeysKey(origin, blockName, when) {
+  return `${keyNs(origin)}:wrongkeys:${blockName}:${when.toISOString().slice(0, 13)}`;
+}
+async function wrongKeysRefusal(origin, blockName, when = new Date()) {
+  const cap = await capOf('cap_wrong_keys_per_hour');
+  if (!cap) return null;
+  try {
+    const n = parseInt(String((await redis.get(wrongKeysKey(origin, blockName, when))) ?? 0), 10);
+    if (!(n >= cap)) return null;
+  } catch { return null; }   // a counter's fault never refuses a write
+  return { status: 429, body: { error: `"${blockName}" has heard ${cap} wrong keys this hour — no key is tried on it until the hour turns, and nothing written there has changed (cap_wrong_keys_per_hour)`, code: 'cap_wrong_keys' } };
+}
+async function noteWrongKey(origin, blockName, when = new Date()) {
+  if (!(await capOf('cap_wrong_keys_per_hour'))) return;
+  try {
+    const k = wrongKeysKey(origin, blockName, when);
+    if ((await redis.incr(k)) === 1) await redis.expire(k, 7200);
+  } catch { /* the refusal stands; the count is refinement */ }
 }
 
 async function firePoolAppendWebhook(origin, blockName, slotAddress, entry) {
@@ -1447,9 +1498,19 @@ async function handleAppendAtSpindle(origin, blockName, spindle, content, secret
         ? `position "${lockKey}" of "${blockName}" is locked, secret required`
         : `position "${lockKey}" of "${blockName}" inherits the lock at its root, secret required`, code: 'lock_required' } };
     }
+    const capped = await wrongKeysRefusal(origin, blockName);
+    if (capped) return capped;
     if (hashByBlockName(origin, blockName, authKey, secret) !== stored) {
+      await noteWrongKey(origin, blockName);
       return { status: 403, body: { error: 'secret does not match', code: 'lock_required' } };
     }
+  } else {
+    // No latch stands behind this append, so the caps (off unless the owner wrote
+    // them) apply as at the root: its size, and this board's fill for the minute —
+    // the same count, since the whole block is the unit an append rewrites. An
+    // append beneath a node never mints a block, so births are not asked.
+    const refused = (await sizeRefusal(content)) || (await appendRefusal(origin, blockName));
+    if (refused) return refused;
   }
   // Same recency law as the root append (block-conventions:9) — object entries
   // that haven't dated themselves get position 3 stamped; strings ride through.
@@ -1533,8 +1594,14 @@ async function handleStandardWrite(origin, blockName, body) {
   if (isPassport(blockName)) {
     const held = await loadHashes(origin, blockName);
     if (held['_'] === undefined && Object.keys(held).length > 0) {
+      const offered = [secret, new_lock].some((k) => typeof k === 'string' && k !== '');
+      const capped = offered ? await wrongKeysRefusal(origin, blockName) : null;
+      if (capped) return capped;
       passportKey = passportKeyAmong(origin, blockName, held, [secret, new_lock]);
-      if (passportKey === null) return passportHeldRefusal(blockName);
+      if (passportKey === null) {
+        if (offered) await noteWrongKey(origin, blockName);
+        return passportHeldRefusal(blockName);
+      }
     }
   }
 
@@ -1563,7 +1630,10 @@ async function handleStandardWrite(origin, blockName, body) {
     // is locked or open as a unit; per-slot locks don't fit an append stream).
     const hashes = await loadHashes(origin, blockName);
     if (hashes['_']) {
+      const capped = secret ? await wrongKeysRefusal(origin, blockName) : null;
+      if (capped) return capped;
       if (!secret || hashByBlockName(origin, blockName, '_', secret) !== hashes['_']) {
+        if (secret) await noteWrongKey(origin, blockName);
         return { status: 403, body: { error: `append to "${blockName}" requires the accumulator secret`, code: 'lock_required' } };
       }
     } else {
@@ -1823,7 +1893,10 @@ async function handleStandardWrite(origin, blockName, body) {
         ? `position "${lockKey}" of "${blockName}" is locked, secret required`
         : `position "${lockKey}" of "${blockName}" inherits the lock at its root, secret required`, code: 'lock_required' } };
     }
+    const capped = await wrongKeysRefusal(origin, blockName);
+    if (capped) return capped;
     if (hashByBlockName(origin, blockName, authKey, secret) !== stored) {
+      await noteWrongKey(origin, blockName);
       return { status: 403, body: { error: 'secret does not match', code: 'lock_required' } };
     }
   }
@@ -1835,10 +1908,19 @@ async function handleStandardWrite(origin, blockName, body) {
     const refused = (await sizeRefusal(content)) || (existing == null ? await birthRefusal() : null);
     if (refused) return refused;
   }
+  // A latch set on a name that holds no block stores a lock with nothing beside
+  // it — absent from the index, yet the name is taken — so it is a birth too.
+  if (content === undefined && existing == null && stored === undefined && new_lock !== undefined && !relinquish) {
+    const refused = await birthRefusal();
+    if (refused) return refused;
+  }
 
-  // Lock-rotation authority.
+  // Lock-rotation authority. (With content, the key was already tried above.)
   if (new_lock !== undefined && stored) {
+    const capped = secret && content === undefined ? await wrongKeysRefusal(origin, blockName) : null;
+    if (capped) return capped;
     if (!secret || hashByBlockName(origin, blockName, authKey, secret) !== stored) {
+      if (secret) await noteWrongKey(origin, blockName);
       return { status: 403, body: { error: 'lock rotation requires current secret', code: 'lock_required' } };
     }
   }
@@ -2114,7 +2196,10 @@ export default async function handler(req, res) {
           code: 'lock_required'
         });
       }
+      const capped = await wrongKeysRefusal(origin, blockName);
+      if (capped) return res.status(capped.status).json(capped.body);
       if (hashByBlockName(origin, blockName, '_', secret) !== stored) {
+        await noteWrongKey(origin, blockName);
         return res.status(403).json({
           error: 'secret does not match',
           code: 'lock_required'
@@ -2123,10 +2208,15 @@ export default async function handler(req, res) {
     }
     // A passport is one whole: with its root open and a part latched, a wipe needs the
     // key that holds that part.
-    if (!stored && isPassport(blockName) && Object.keys(hashes).length > 0
-        && passportKeyAmong(origin, blockName, hashes, [body.secret]) === null) {
-      const held = passportHeldRefusal(blockName);
-      return res.status(held.status).json(held.body);
+    if (!stored && isPassport(blockName) && Object.keys(hashes).length > 0) {
+      const offered = typeof body.secret === 'string' && body.secret !== '';
+      const capped = offered ? await wrongKeysRefusal(origin, blockName) : null;
+      if (capped) return res.status(capped.status).json(capped.body);
+      if (passportKeyAmong(origin, blockName, hashes, [body.secret]) === null) {
+        if (offered) await noteWrongKey(origin, blockName);
+        const held = passportHeldRefusal(blockName);
+        return res.status(held.status).json(held.body);
+      }
     }
     // No latch stood behind this wipe, so no author did either: keep the last copy.
     if (!stored) await keepLastCopy(origin, blockName, existing, hashes, servedAt);
