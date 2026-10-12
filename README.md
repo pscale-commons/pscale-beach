@@ -349,15 +349,16 @@ curl -X POST "https://beach.example.com/.well-known/pscale-beach?block=settings"
 
 ### The caps — built, and left off
 
-A flood is a nuisance here, not a wound, and clearing is the lever, never a wall: no accounts, no captchas, no address limits. A cap only bounds what one anonymous act can cost everyone else. `BEACH_CAPS=on` (env) is the master switch — unset, nothing is read and nothing is counted, so off costs nothing. Once on, the numbers are lines in the apex's latched `settings`, so you change one with a single write in the middle of a flood, no redeploy:
+A flood is a nuisance here, not a wound, and clearing is the lever, never a wall: no accounts, no captchas, no address limits. A cap only bounds what one anonymous act can cost everyone else. `BEACH_CAPS=on` (env) is the master switch — unset, nothing is read and nothing is counted, so off costs nothing. Once on, the numbers are lines in the apex's latched `settings` — at a top-level digit or one rung beneath it, so the four can nest under one branch — and you change one with a single write in the middle of a flood, no redeploy:
 
 | line | what it bounds |
 |---|---|
-| `cap_births_per_hour=<n>` | new blocks the whole deploy accepts in a clock hour — every block is a row in the index every sweep downloads |
-| `cap_appends_per_minute=<n>` | appends one **unlatched** accumulator accepts in a clock minute |
+| `cap_births_per_hour=<n>` | new blocks the whole deploy accepts in a clock hour — every block is a row in the index every sweep downloads; a latch set on a name that holds no block counts too |
+| `cap_appends_per_minute=<n>` | appends one **unlatched** accumulator accepts in a clock minute, at its root or beneath any node |
 | `cap_write_bytes=<n>` | the size of one write no latch stands behind |
+| `cap_wrong_keys_per_hour=<n>` | wrong keys one block hears in a clock hour — past it, no key is tried there until the hour turns, the right one included |
 
-A latch-holder is an author and is never throttled. The accepted cost: a vandal can hold a beach at its birth cap and keep newcomers out for that hour, and cannot touch anyone already here. **The lever that needs no switch at all**, and the first to reach for when one board is flooding: latch that board's root. Appends then need the key, the flood stops at once, and relinquishing the latch reopens it. `npm run smoke:caps` proves all of this, including the webhook attack itself.
+A latch-holder is an author and is never throttled by the first three. The accepted cost: a vandal can hold a beach at its birth cap and keep newcomers out for that hour, and cannot touch anyone already here. The fourth is the one that can reach a keyholder: a latch is a single fast hash, so without it a script could try a dictionary against any latch at the speed of the door; with it, a stranger who spends the cap on one block holds its keyholder out of it until the hour turns, and nothing written there changes. Every door that tries a key counts — a write, a rotation, a wipe, an append, a grain side, a passport held whole, and a block named for a handle (counted against that handle's passport). A keyless act is never counted. **The lever that needs no switch at all**, and the first to reach for when one board is flooding: latch that board's root. Appends then need the key, the flood stops at once, and relinquishing the latch reopens it. `npm run smoke:caps` proves all of this, including the webhook attack itself.
 
 ## Architecture notes
 
