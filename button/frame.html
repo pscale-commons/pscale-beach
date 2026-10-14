@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The inside of the beach button, served by the beach itself. It loads nothing it did not
+     bring: its own script and style, and it talks to two places only — the beach that serves it
+     ('self'), and Anthropic with the person's own key. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' https://api.anthropic.com; img-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>beach button</title>
+<link rel="stylesheet" href="frame.css">
+</head>
+<body>
+<button id="dot" type="button" aria-label="open the beach button" title="the beach"><span id="glyph">~</span></button>
+<section id="panel" hidden>
+  <header id="hdr">
+    <span id="who">the beach</span>
+    <button id="shut" type="button" title="fold it away" aria-label="fold it away">⌄</button>
+    <button id="away" type="button" title="put it away until this page reloads" aria-label="put it away">×</button>
+  </header>
+  <div id="asks"></div>
+  <div id="said" aria-live="polite"></div>
+  <div id="askbox" hidden>
+    <textarea id="q" rows="3" placeholder="ask the beach…" aria-label="ask the beach"></textarea>
+    <div class="row">
+      <button id="mic" type="button" hidden title="speak instead of typing" aria-label="dictate">●</button>
+      <button id="go" type="button">Ask</button>
+    </div>
+  </div>
+  <footer>
+    <button id="unlock" type="button">unlock</button>
+    <button id="forget" type="button" hidden>let go</button>
+    <label><input id="tell" type="checkbox"> this page may know my name</label>
+  </footer>
+</section>
+<script src="frame.js"></script>
+</body>
+</html>
