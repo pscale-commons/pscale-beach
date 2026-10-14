@@ -1,0 +1,71 @@
+/* The button's own register — the site's palette, and no web fonts (the frame fetches nothing it
+ * did not bring). No color-scheme is declared on purpose: an iframe whose scheme differs from its
+ * host's is painted opaque, and the corners around the round button must stay see-through. */
+:root{
+  --abyss:#06171E; --deep:#0A2129; --card:#123742; --foam:#EFF6F5;
+  --vapour:#C4DBDF; --dim:#82A0A8; --liquid:#33C2D2; --solid:#E7B24C; --warn:#E58A6B;
+  --line:rgba(196,219,223,.18);
+  --body:system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --abyss:#FBF8F2; --deep:#F3EEE3; --card:#FFFFFF; --foam:#12333C;
+    --vapour:#3C5A63; --dim:#6B848D; --liquid:#0D6B79; --solid:#8E6210; --warn:#A8432A;
+    --line:rgba(60,90,99,.24);
+  }
+}
+html,body{margin:0;height:100%;background:transparent;color:var(--foam);font:14px/1.45 var(--body)}
+button{font:inherit;color:inherit;cursor:pointer}
+button:disabled{opacity:.45;cursor:default}
+[hidden]{display:none !important}
+
+#dot{position:fixed;right:4px;bottom:4px;width:56px;height:56px;padding:0;border-radius:50%;
+  border:1px solid var(--line);background:var(--deep);color:var(--liquid);
+  font:600 22px/1 var(--mono);cursor:grab;touch-action:none;box-shadow:0 2px 12px rgba(0,0,0,.35)}
+
+#panel{position:fixed;inset:0;display:flex;flex-direction:column;background:var(--abyss);
+  border:1px solid var(--line);border-radius:14px;overflow:hidden}
+header{display:flex;align-items:center;gap:4px;padding:8px 8px 8px 14px;border-bottom:1px solid var(--line);cursor:grab;touch-action:none}
+#who{flex:1;min-width:0;font:12px var(--mono);color:var(--vapour);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header button{width:30px;height:30px;border:0;border-radius:8px;background:transparent;color:var(--dim)}
+header button:hover{background:var(--deep);color:var(--foam)}
+
+#asks:empty{display:none}
+.card{margin:10px 12px 0;padding:10px 12px;border:1px solid var(--solid);border-radius:10px;background:var(--card)}
+.card p{margin:0 0 8px}
+.card pre{margin:0 0 8px;max-height:140px;overflow:auto;white-space:pre-wrap;word-break:break-word;
+  font:12px/1.4 var(--mono);color:var(--vapour);background:var(--deep);padding:8px;border-radius:6px}
+
+#said{flex:1;overflow:auto;padding:6px 14px}
+#said p{margin:8px 0;white-space:pre-wrap;word-break:break-word}
+#said .q{color:var(--dim)}
+#said .note{font-size:13px;color:var(--vapour)}
+#said .wait{color:var(--dim);font-style:italic}
+
+#askbox{padding:8px 12px;border-top:1px solid var(--line)}
+textarea{box-sizing:border-box;width:100%;resize:none;padding:8px;border:1px solid var(--line);border-radius:8px;
+  background:var(--deep);color:var(--foam);font:14px/1.4 var(--body)}
+.row{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}
+.row button{padding:5px 12px;border:1px solid var(--line);border-radius:8px;background:var(--deep)}
+.row button:last-child{border-color:var(--liquid);color:var(--liquid)}
+#mic{color:var(--dim)}
+#mic.on{color:var(--warn);border-color:var(--warn)}
+
+footer{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:8px 12px;border-top:1px solid var(--line);font-size:12px;color:var(--dim)}
+footer button{padding:3px 10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--liquid)}
+footer label{display:flex;align-items:center;gap:5px}
+
+/* the beach's own window, where words are typed */
+body.window{background:var(--abyss);height:auto;min-height:100%}
+body.window main{max-width:380px;margin:0 auto;padding:22px 20px}
+body.window h1{margin:0 0 6px;font:600 18px var(--mono);color:var(--liquid)}
+body.window form,body.window section{margin-top:14px}
+body.window label{display:block;margin:12px 0 0;color:var(--vapour);font-size:13px}
+body.window label small{color:var(--dim)}
+body.window input[type=text],body.window input[type=password]{box-sizing:border-box;width:100%;margin-top:4px;padding:8px;
+  border:1px solid var(--line);border-radius:8px;background:var(--deep);color:var(--foam);font:14px var(--body)}
+body.window label.tick{display:flex;align-items:center;gap:6px}
+body.window #msg{min-height:1.4em;color:var(--warn)}
+body.window .small{font-size:12px;color:var(--dim)}
+button.link{border:0;background:none;padding:0;color:var(--liquid);text-decoration:underline}

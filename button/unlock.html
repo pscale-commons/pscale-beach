@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The only place the beach button ever asks for a passphrase: a window of its own, whose
+     address bar the person can read. The server refuses to let any page frame it. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>Unlock the beach button</title>
+<link rel="stylesheet" href="frame.css">
+</head>
+<body class="window">
+<main>
+  <h1>the beach</h1>
+  <p id="asker">This window opens from the beach button on a page, and only from there.</p>
+  <section id="known" hidden>
+    <p>This device remembers <b id="kname"></b>.</p>
+    <div class="row">
+      <button id="other" type="button">Someone else</button>
+      <button id="useknown" type="button">Unlock as <span id="kname2"></span></button>
+    </div>
+  </section>
+  <form id="f" hidden>
+    <label>your handle
+      <input id="h" type="text" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" required>
+    </label>
+    <label>passphrase <small>— leave it empty to read without writing</small>
+      <input id="s" type="password" name="password" autocomplete="current-password">
+    </label>
+    <label>Anthropic API key <small>— optional; it lets you ask the beach</small>
+      <input id="k" type="password" autocomplete="off" spellcheck="false">
+    </label>
+    <label class="tick"><input id="rem" type="checkbox"> remember on this device</label>
+    <div class="row">
+      <button id="no" type="button">Not now</button>
+      <button id="yes" type="submit">Unlock</button>
+    </div>
+  </form>
+  <p id="msg" aria-live="polite"></p>
+  <p class="small">Your passphrase goes only to the beach, which checks it when you first write; your key goes only to Anthropic. The page you came from sees neither.
+    <button id="wipe" type="button" class="link" hidden>Forget this device</button></p>
+</main>
+<script src="unlock.js"></script>
+</body>
+</html>
