@@ -138,6 +138,11 @@ const within = (p, ms, label) => Promise.race([p, sleep(ms).then(() => ({ ok: fa
 async function armed(locator) { await locator.waitFor(); for (let i = 0; i < 60 && !(await locator.isEnabled()); i++) await sleep(50); }
 const spy = (page) => page.evaluate(() => window.__spy);
 const leaks = (s, words) => s.messages.filter((m) => words.some((w) => m.includes(w)));
+// The unlock window closes itself the moment it hands over (unlock.js hand()), so a click that
+// lands can see its page close before Playwright has finished with it. That close is the
+// success being tested, not a fault.
+const clickThatCloses = (p, sel) => Promise.all([p.waitForEvent('close'),
+  p.click(sel).catch((e) => { if (!/closed/i.test(String(e && e.message))) throw e; })]);
 
 // Playwright turns off Chromium's third-party storage partitioning (playwright#32230), which
 // shipping Chrome, Firefox and Safari all have on. The run is made twice: once as browsers ship,
@@ -194,7 +199,7 @@ async function run(partitioned) {
   await popup.locator('#s').pressSequentially(SECRET);
   await popup.locator('#k').fill(KEY);
   await popup.check('#rem');
-  await Promise.all([popup.waitForEvent('close'), popup.click('#yes')]);
+  await clickThatCloses(popup, '#yes');
   await frame.locator('#who', { hasText: 'tester' }).waitFor();
   let s = await spy(page);
   check('the page heard no keystroke', s.keys.length === 0, s.keys);
@@ -273,7 +278,7 @@ async function run(partitioned) {
   await popupB.waitForLoadState();
   check('the beach\'s window remembers the person (its own storage, one tap)', await popupB.locator('#known').isVisible() && (await popupB.locator('#kname').textContent()) === 'tester');
   check('…and names the new site that asks', (await popupB.locator('#asker').textContent()).includes(`127.0.0.2:${SITE}`));
-  await Promise.all([popupB.waitForEvent('close'), popupB.click('#useknown')]);
+  await clickThatCloses(popupB, '#useknown');
   await frameB.locator('#who', { hasText: 'tester' }).waitFor();
   check('the draft left on the first site is not on this one', (await frameB.locator('#q').inputValue()) === '');
   const pageA2 = await context.newPage();
