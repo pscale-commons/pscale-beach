@@ -4,8 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- The only place the beach button ever asks for a passphrase: a window of its own, whose
-     address bar the person can read. The server refuses to let any page frame it. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'">
+     address bar the person can read. The server refuses to let any page frame it. It reads one
+     block from its own beach (the person's vault) and compiles the vault's cipher (wasm). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex">
 <title>Unlock the beach button</title>
@@ -29,8 +30,11 @@
     <label>passphrase <small>— leave it empty to read without writing</small>
       <input id="s" type="password" name="password" autocomplete="current-password">
     </label>
-    <label>Anthropic API key <small>— optional; it lets you ask the beach</small>
+    <label>Anthropic API key <small>— optional; it lets you ask the beach. Leave it empty and your vault is opened for it</small>
       <input id="k" type="password" autocomplete="off" spellcheck="false">
+    </label>
+    <label id="vrow" hidden>your vault's own key <small>— your vault answers to a key of its own; leave it empty to unlock without a key</small>
+      <input id="v" type="password" autocomplete="off" spellcheck="false">
     </label>
     <label class="tick"><input id="rem" type="checkbox"> remember on this device</label>
     <div class="row">
@@ -39,9 +43,12 @@
     </div>
   </form>
   <p id="msg" aria-live="polite"></p>
-  <p class="small">Your passphrase goes only to the beach, which checks it when you first write; your key goes only to Anthropic. The page you came from sees neither.
+  <p class="small">Your passphrase goes only to the beach, which checks it when you first write; your key goes only to Anthropic. Your vault is opened here, in this window, and the key that opens it goes nowhere. The page you came from sees none of it.
     <button id="wipe" type="button" class="link" hidden>Forget this device</button></p>
 </main>
+<script src="vendor/nacl-fast.min.js"></script>
+<script src="vendor/argon2.umd.min.js"></script>
+<script src="vault.js"></script>
 <script src="unlock.js"></script>
 </body>
 </html>

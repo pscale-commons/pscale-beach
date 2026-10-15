@@ -20,6 +20,7 @@ Every beach that deploys this package serves its own button at `<its address>/bu
 
 - **A round button**, bottom right, with a grip beside it. Drag the grip (⠿) to move it, as xstream's construction button moves; a tap on the circle only opens it. With the grip in focus the arrow keys move it too. It stays where it was left, on that site. **⌄** folds it back to the dot. **×** puts it away until the page is reloaded; a plain refresh brings it back. A page can also offer its own "show the button" link with `beachButton.show()`.
 - **Unlock** opens *the beach's own window*: handle, passphrase (optional: without one you read but never write), Anthropic key (optional), and "remember on this device". The passphrase is never typed into the page or into the button.
+- **A key from your vault.** Leave the key empty and the beach's window opens your vault for it (`vault:<handle>`, the recipe at `ways:vault`). It opens the canary at 9 to prove the key, then **only** the entry labelled `llm key — anthropic, …`, never anything else the vault holds. The passphrase opens a vault a page founded (it answers to the passport key); a vault that answers to a key of its own asks for it, there in the beach's window. Opening writes nothing, the key that opens it goes nowhere, and a remembered device keeps the passphrase, never the key, so the vault is opened again at each unlock.
 - **Ask the beach.** With a key held, a question box appears (dictation, and it keeps its draft). Claude is called straight from the button with the person's own key (the model is set in `frame.js`) and reads the beach with a read-only tool. The answer appears inside the button, in plain text. Server-side refusal fallbacks are on.
 - **This page.** The page tells the button where it stands: its own address and title, believed only within its own origin, with the query and fragment dropped. "This page" in a question then means something.
 - **A card, or a line in a room, on a yes.** Asked for one, the button *proposes*:
@@ -43,7 +44,7 @@ The button is an iframe whose page comes from the beach's own origin, never the 
 
 **Passphrases are typed only in a top-level window** from the beach's own origin, whose address bar the person can read. That window answers only the button that opened it: a page that opens it itself, or frames it, is shown nothing to type into, and the server forbids framing it (`frame-ancestors 'none'`).
 
-**Where things travel:** the passphrase goes only to the beach (which hashes it to check the latch, exactly as every client does today), and only with writes to the person's own blocks, never with a line in someone's room. The API key goes only to Anthropic; the question and answer go only to Anthropic and the person's screen. **None of it reaches the page's server.** The page's address goes to Anthropic with a question, and reaches the beach only inside a card the person said yes to. Otherwise the beach is never told which page asked (no referrer on the button's own requests).
+**Where things travel:** the passphrase goes only to the beach (which hashes it to check the latch, exactly as every client does today), and only with writes to the person's own blocks, never with a line in someone's room. Opening a vault sends nothing: the block is read as anyone reads it, and opened in the beach's own window. The API key goes only to Anthropic; the question and answer go only to Anthropic and the person's screen. **None of it reaches the page's server.** The page's address goes to Anthropic with a question, and reaches the beach only inside a card the person said yes to. Otherwise the beach is never told which page asked (no referrer on the button's own requests).
 
 ### Proven, not claimed
 
@@ -53,7 +54,7 @@ The button is an iframe whose page comes from the beach's own origin, never the 
 - claim another site's address as its own;
 - open the unlock window itself, and frame it.
 
-A mock beach and a mock Anthropic record where every secret actually went. The test also checks that a card is founded and lands only on a yes, that a line reaches only a room that stands and carries no passphrase, that a no writes nothing, that answers show as plain text, that a phone's repeated revisions are spoken once, and that the grip moves the button exactly with a mouse or a finger and never lies over it. **69 checks, run twice** (with the browser's storage partitioning on, as browsers ship it, and off): all hold. It also runs the old way for contrast: a widget drawn *inside* the page, in a closed shadow root as the Chrome extension drew its `#` button. The page logs every key typed into it.
+A mock beach and a mock Anthropic record where every secret actually went. The test also checks that a card is founded and lands only on a yes, that a line reaches only a room that stands and carries no passphrase, that a no writes nothing, that answers show as plain text, that a phone's repeated revisions are spoken once, that the grip moves the button exactly with a mouse or a finger and never lies over it, and that a key comes from a vault only as the person unlocks: two vaults sealed with the button's own cipher, the right entry opened and no other, nothing written, a vault's own key asked for where the vault needs one and sent nowhere. **82 checks, run twice** (with the browser's storage partitioning on, as browsers ship it, and off): all hold. It also runs the old way for contrast: a widget drawn *inside* the page, in a closed shadow root as the Chrome extension drew its `#` button. The page logs every key typed into it.
 
 ```bash
 NODE_PATH=$(npm root -g) npm run smoke:button     # needs playwright + chromium
@@ -69,7 +70,8 @@ NODE_PATH=$(npm root -g) npm run smoke:button     # needs playwright + chromium
 6. **A line in a room is attributed, not proven.** Rooms are open, so a line carries the person's handle but no proof. Where a word must be shown to be theirs, a card in their own latched hand is the proof, and a line can point to it.
 7. **What the model reads can try to steer it.** Blocks, and the page's own title, are given to the model as data. Even if one talks it into proposing something, nothing is written until the person reads the proposal, shown whole, and taps yes.
 8. **What can still be learned:** the page sees the button exists, when it opens, and where it is dragged. The beach sees which *site* loaded the button (not which page), its reads, and the handle on writes, as it always has. Memory is kept per site, both in the browser's per-site storage and by the button's own keying, so one site's "yes, know my name" is never read as another's. "Remember on this device" lives only in the beach window's own storage, unreachable from any page.
-9. **Browser notes:** Chrome and Safari name the asking site from `ancestorOrigins`, which a page can't forge. Firefox falls back to the referrer, or "this page". Safari may clear a frame's storage when the session ends; that only means unlocking again, one tap if remembered. A malicious browser *extension* can read everything; no page-level design can stop that.
+9. **A vault is only as strong as the key that opens it.** It is ciphertext on a public beach, so anyone can copy it and guess offline. The cipher is bsp-mcp's own, and its salt is the beach's address, the same for every vault on that beach, so one guess is tried against all of them at once. A key that spends money belongs under a long passphrase, with a spend limit set at Anthropic.
+10. **Browser notes:** Chrome and Safari name the asking site from `ancestorOrigins`, which a page can't forge. Firefox falls back to the referrer, or "this page". Safari may clear a frame's storage when the session ends; that only means unlocking again, one tap if remembered. A malicious browser *extension* can read everything; no page-level design can stop that.
 
 ## Why not the Chrome extension
 
@@ -127,7 +129,8 @@ NODE_PATH=$(npm root -g) npm run smoke:button-next
 |---|---|---|
 | `button.js` | the host page | nothing sensitive: makes the frame and its grip, places them, relays layout and requests |
 | `frame.html` · `frame.js` · `frame.css` | the iframe (the beach's origin) | the handle, passphrase and key for this tab; the ask; the approvals |
-| `unlock.html` · `unlock.js` | a top-level window (the beach's origin) | where words are typed; "remember on this device" |
+| `unlock.html` · `unlock.js` | a top-level window (the beach's origin) | where words are typed; "remember on this device"; where a vault is opened |
+| `vault.js` · `vendor/` | the unlock window | the vault cipher, byte for byte happyseaurchin.com's `vault.js` (bsp-mcp's `src/keys.ts`), on tweetnacl 1.0.3 (public domain) and hash-wasm 4.12.0 (MIT) |
 | `next/button.js` | the host page | the trial's circle, grip and widening edge: where it stands, how wide, which view is open |
 | `next/frame.html` · `next/frame.js` · `next/frame.css` | the iframe (the beach's origin) | the trial's window: the same holdings and guards as `frame.*`, laid out as xstream's panel |
 

@@ -27,6 +27,12 @@ const QUESTION = 'what does my passport say about me';
 const ANSWER = 'Your passport says you are a tester of buttons.';
 const CARD = 'Ask weft to pass the dictation fix to whoever keeps this page';
 const LINE = 'Thank you, weft: the button works from my own pages.';
+// keys kept in vaults on the mock beach, sealed with the button's own cipher (vault.js)
+const VAULT_KEY = 'sk-test-from-the-vault-456';           // tester's vault answers to the passphrase
+const IMAGE_KEY = 'image-key-that-must-stay-shut';
+const KEEPER_SECRET = 'keeper words';
+const KEEPER_VAULT = 'a vault of its own words';            // keeper's vault answers to its own key
+const KEEPER_KEY = 'sk-test-keeper-vault-789';
 // the page's own address carries a query and a fragment, which never leave the frame
 const HOST_URL = (host) => `http://${host}:${SITE}/__test/host.html?token=page-secret#frag`;
 const PAGE_SAID = `http://localhost:${SITE}/__test/host.html`;
@@ -74,11 +80,16 @@ const TYPES = { '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/htm
 function site(req, res) {
   const url = new URL(req.url, 'http://x');
   if (url.pathname === '/__test/host.html') { res.writeHead(200, { 'content-type': 'text/html' }); return res.end(HOST_PAGE); }
+  if (url.pathname === '/__test/seal.html') {   // seals the test vaults with the button's own files
+    res.writeHead(200, { 'content-type': 'text/html' });
+    return res.end('<!doctype html><meta charset="utf-8">' + ['vendor/nacl-fast.min.js', 'vendor/argon2.umd.min.js', 'vault.js'].map((f) => `<script src="/button/${f}"></script>`).join(''));
+  }
   const file = path.join(ROOT, url.pathname);
   if (!url.pathname.startsWith('/button/') || !file.startsWith(path.join(ROOT, 'button')) || !fs.existsSync(file)) { res.writeHead(404); return res.end(); }
   let body = fs.readFileSync(file, 'utf8');
   // test only: let the frame reach the two mocks (the published CSP names only the real ones)
   if (url.pathname.endsWith('frame.html')) body = body.replace('https://api.anthropic.com;', `https://api.anthropic.com http://127.0.0.1:${BEACH} http://127.0.0.1:${LLM};`);
+  if (url.pathname.endsWith('unlock.html')) body = body.replace("connect-src 'self';", `connect-src 'self' http://127.0.0.1:${BEACH};`);
   res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream' });
   res.end(body);
 }
@@ -90,6 +101,7 @@ const BLOCKS = {
   'pool:weft': { _: "Weft's room — say the thing itself." }
 };
 const HANDS = {};   // ahead:now:tester, once founded
+let FIX = {};       // the opening bytes of each sealed vault entry, to see which ones were opened
 function beach(req, res) {
   res.setHeader('access-control-allow-origin', '*');
   res.setHeader('access-control-allow-methods', 'GET, POST, DELETE, OPTIONS');
@@ -226,6 +238,25 @@ async function run(partitioned) {
   const context = await browser.newContext({ viewport: { width: 1100, height: 800 } });
   context.setDefaultTimeout(15000);
   await context.addInitScript(fakePhoneSpeech);
+
+  // the vaults the mock beach holds, sealed with the button's own cipher under the beach's salt:
+  // tester's answers to the passport key; keeper's to a key of its own
+  const sealer = await context.newPage();
+  await sealer.goto(`http://127.0.0.1:${SITE}/__test/seal.html`);
+  const sealed = await sealer.evaluate(async ([items, salt]) => {
+    const out = [];
+    for (const [text, key] of items) out.push(await window.vault.seal(text, key, salt));
+    return out;
+  }, [[['canary — if this reads, the key opens the vault', SECRET], [IMAGE_KEY, SECRET], [VAULT_KEY, SECRET],
+       ['canary — keeper', KEEPER_VAULT], [KEEPER_KEY, KEEPER_VAULT]], `http://127.0.0.1:${BEACH}`]);
+  await sealer.close();
+  BLOCKS['vault:tester'] = { _: 'vault:tester — the test vault; it answers to the passport key',
+    1: { _: 'image key — google, kept 2026-10-15 for the test', 1: sealed[1] },
+    2: { _: 'llm key — anthropic, kept 2026-10-15 for the test', 1: sealed[2] }, 9: sealed[0] };
+  BLOCKS['vault:keeper'] = { _: 'vault:keeper — the test vault; it answers to a key of its own',
+    3: { _: 'llm key — anthropic, kept 2026-10-15 for the test', 1: sealed[4] }, 9: sealed[3] };
+  FIX = { canary: sealed[0]['1'].slice(0, 16), image: sealed[1]['1'].slice(0, 16), llm: sealed[2]['1'].slice(0, 16) };
+
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -420,6 +451,89 @@ async function run(partitioned) {
   await pageA2.goto(`http://localhost:${SITE}/__test/host.html`);
   check('…and is still on the first site', (await pageA2.frameLocator('iframe[title="beach button"]').locator('#q').inputValue()) === 'a draft left on this site');
   check('the second site was never told the name', (await spy(pageB)).hello.every((h) => h === null));
+
+  console.log('\na key kept in the person\'s vault, opened in the beach\'s own window:');
+  const pageV = await context.newPage();
+  pageV.on('pageerror', (e) => errors.push(e.message));
+  await pageV.goto(HOST_URL('127.0.0.3'));
+  const frameV = pageV.frameLocator('iframe[title="beach button"]');
+  await frameV.locator('#dot').waitFor();
+  await settle();
+  await frameV.locator('#dot').click();
+  await frameV.locator('#panel').waitFor();
+  await settle();
+  const opened = [];
+  const unlockV = async () => {
+    const [p] = await Promise.all([context.waitForEvent('page'), frameV.locator('#unlock').click()]);
+    await p.waitForLoadState();
+    await p.exposeFunction('__opened', (c) => { opened.push(c); });
+    await p.evaluate(() => { const o = vault.open; vault.open = function (env) { window.__opened(String(env && env['1']).slice(0, 16)); return o.apply(this, arguments); }; });
+    if (await p.locator('#known').isVisible()) await p.locator('#other').click();
+    return p;
+  };
+  const fromVault = frameV.locator('#said p', { hasText: 'Your key came from your vault' });
+  const answered = async (n) => { for (let i = 0; i < 100 && llmLog.length < n; i++) await sleep(50); };
+  let w1 = posts(), b1 = beachLog.length;
+  let pv = await unlockV();
+  await pv.locator('#h').fill('tester');
+  await pv.locator('#s').fill(SECRET);
+  await pv.check('#rem');
+  await clickThatCloses(pv, '#yes');
+  await fromVault.first().waitFor();
+  const vaultReads = beachLog.slice(b1);
+  check('with no key typed, the button takes its key from the person\'s vault', (await frameV.locator('#who').textContent()).includes('tester') && await frameV.locator('#askbox').isVisible());
+  check('…the vault only read: nothing was written to open it', posts() === w1, vaultReads);
+  check('…the beach asked for the vault alone, and told nothing secret', vaultReads.length > 0 && vaultReads.every((r) => r.method === 'GET' && r.query.block === 'vault:tester') && ![SECRET, VAULT_KEY].some((x) => JSON.stringify(vaultReads).includes(x)), vaultReads);
+  check('…the canary and the beach\'s key opened, the image key left shut', opened.length === 2 && opened.includes(FIX.canary) && opened.includes(FIX.llm) && !opened.includes(FIX.image), opened);
+  let nL = llmLog.length;
+  await askIt(frameV, QUESTION);
+  await answered(nL + 2);
+  check('…and Anthropic got exactly the key the vault held', !!llmLog[nL] && llmLog[nL].headers['x-api-key'] === VAULT_KEY, llmLog[nL] && llmLog[nL].headers['x-api-key']);
+  s = await spy(pageV);
+  check('…the page heard none of it', leaks(s, [SECRET, VAULT_KEY, IMAGE_KEY]).length === 0 && s.keys.length === 0 && s.fetches.length === 0, leaks(s, [SECRET, VAULT_KEY]));
+  const store = await context.newPage();
+  await store.goto(`http://127.0.0.1:${SITE}/__test/seal.html`);
+  const kept = await store.evaluate(() => localStorage.getItem('beach-button:remembered') || '');
+  await store.close();
+  check('a remembered device keeps the passphrase, never the key', kept.includes('"vault":true') && !kept.includes(VAULT_KEY), kept);
+  const [pr] = await Promise.all([context.waitForEvent('page'), frameV.locator('#unlock').click()]);
+  await pr.waitForLoadState();
+  const oneTap = await pr.locator('#known').isVisible();
+  await clickThatCloses(pr, '#useknown');
+  await fromVault.nth(1).waitFor();
+  check('…and opens the vault again at the next unlock, one tap', oneTap);
+
+  w1 = posts(); b1 = beachLog.length;
+  pv = await unlockV();
+  await pv.locator('#h').fill('keeper');
+  await pv.locator('#s').fill(KEEPER_SECRET);
+  await pv.locator('#yes').click();
+  await pv.locator('#vrow').waitFor({ state: 'visible' });
+  check('a vault that answers to a key of its own asks for it, there in the beach\'s window', /does not open with that passphrase/.test(await pv.locator('#msg').textContent()));
+  await pv.locator('#v').fill('not the vault key');
+  await pv.locator('#yes').click();
+  await pv.locator('#msg', { hasText: 'That key does not open your vault' }).waitFor();
+  check('…a wrong one opens nothing, and the window stays', !pv.isClosed());
+  await pv.locator('#v').fill(KEEPER_VAULT);
+  await clickThatCloses(pv, '#yes');
+  await frameV.locator('#who', { hasText: 'keeper' }).waitFor();
+  await fromVault.nth(2).waitFor();
+  nL = llmLog.length;
+  await askIt(frameV, QUESTION);
+  await answered(nL + 2);
+  check('…the right one gives the button its key', !!llmLog[nL] && llmLog[nL].headers['x-api-key'] === KEEPER_KEY, llmLog[nL] && llmLog[nL].headers['x-api-key']);
+  check('…and the vault\'s own key reached no one: not the beach, not Anthropic, not the page',
+    ![...beachLog, ...llmLog].some((r) => JSON.stringify(r).includes(KEEPER_VAULT)) && leaks(await spy(pageV), [KEEPER_VAULT, KEEPER_SECRET, KEEPER_KEY]).length === 0 && posts() === w1);
+
+  pv = await unlockV();
+  await pv.locator('#h').fill('tester');
+  await pv.locator('#s').fill('not the words');
+  await pv.locator('#yes').click();
+  await pv.locator('#vrow').waitFor({ state: 'visible' });
+  await clickThatCloses(pv, '#yes');   // the vault's own key left empty
+  await frameV.locator('#said p', { hasText: 'Add a key to ask the beach' }).waitFor();
+  check('words that open nothing, the vault key left empty: unlocked without a key', await frameV.locator('#askbox').isHidden());
+  await pageV.close();
 
   console.log('\nthe unlock window answers only the button:');
   const [evil] = await Promise.all([context.waitForEvent('page'),

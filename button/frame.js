@@ -6,8 +6,9 @@
  * were reading it — because a hostile page is.
  *
  * Held here, for this tab only: the person's handle, their passphrase (the latch on their own
- * blocks) and their Anthropic key. They arrive from the beach's own window (unlock.html), never
- * typed into this frame, so a look-alike button drawn by a page has nothing true to imitate:
+ * blocks) and their Anthropic key. They arrive from the beach's own window (unlock.html) — the key
+ * typed there, or taken there from the person's own vault — never typed into this frame, so a
+ * look-alike button drawn by a page has nothing true to imitate:
  * the real one always sends a person to a window whose address bar they can read.
  *
  * Asked something, the button may PROPOSE two writes and never makes either by itself: a card
@@ -116,6 +117,7 @@
     var u = new URL('unlock.html', location.href);
     u.searchParams.set('for', HOST);
     u.searchParams.set('n', nonce);
+    if (LOCAL && BEACH !== location.origin) u.searchParams.set('beach', BEACH);   // a builder's test only
     popup = window.open(u.href, 'beach-unlock-' + nonce, 'popup,width=440,height=640');
     if (!popup) note('Your browser held the beach window back. Allow pop-ups for this button and tap unlock again.');
   }
@@ -130,6 +132,7 @@
       render(); hello();
       note('Holding ' + me.handle + ' for this tab on ' + HOST + '.' +
         (me.secret ? ' Your words are not tried until the first write, which will say if they are wrong.' : ' No passphrase, so nothing can be written as you.') +
+        (m.vault === 'key' ? ' Your key came from your vault.' : m.vault === 'empty' ? ' Your vault holds no key for the beach.' : '') +
         (me.key ? '' : ' Add a key to ask the beach.'));
       return;
     }
