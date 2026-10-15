@@ -431,17 +431,61 @@ async function run(partitioned) {
   await framedUnlock.locator('#asker').waitFor();
   check('framed inside a page, it shows nothing either', await framedUnlock.locator('#f').isHidden() && await framedUnlock.locator('#known').isHidden());
 
-  console.log('\nmoving it and putting it away:');
-  const at0 = await page.evaluate(() => { const f = document.querySelector('iframe[title="beach button"]'); return [parseInt(f.style.right, 10), parseInt(f.style.bottom, 10)]; });
+  console.log('\nmoving it by its grip, as xstream moves its construction button:');
+  const where_ = () => page.evaluate(() => {
+    const f = document.querySelector('iframe[title="beach button"]'), g = document.querySelector('[data-beach-button-grip]');
+    const fr = f.getBoundingClientRect(), gr = g.getBoundingClientRect();
+    return { r: parseFloat(f.style.right), b: parseFloat(f.style.bottom), shown: getComputedStyle(g).display !== 'none',
+             overlap: !(gr.right <= fr.left || gr.left >= fr.right || gr.bottom <= fr.top || gr.top >= fr.bottom), grip: [gr.x, gr.y, gr.width, gr.height] };
+  });
   await frame.locator('#shut').click();
   await settle();
-  const box = await page.locator('iframe[title="beach button"]').boundingBox();
-  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  let m0 = await where_();
+  check('a grip stands beside the circle, never over the frame', m0.shown && !m0.overlap, m0);
+  await frame.locator('#dot').click();
+  await frame.locator('#panel').waitFor();
+  let mOpen = await where_();
+  check('…a tap on the circle opens it and moves nothing', mOpen.r === m0.r && mOpen.b === m0.b, { before: m0, after: mOpen });
+  check('…and the open panel keeps a grip beside it, not over it', mOpen.shown && !mOpen.overlap, mOpen);
+  await frame.locator('#shut').click();
+  await settle();
+  m0 = await where_();
+  const gx = m0.grip[0] + m0.grip[2] / 2, gy = m0.grip[1] + m0.grip[3] / 2;
+  await page.mouse.move(gx, gy);
   await page.mouse.down();
-  await page.mouse.move(box.x + box.width / 2 - 60, box.y + box.height / 2 - 40, { steps: 8 });
+  await page.mouse.move(gx - 120, gy - 80, { steps: 12 });
   await page.mouse.up();
-  const at1 = await page.evaluate(() => { const f = document.querySelector('iframe[title="beach button"]'); return [parseInt(f.style.right, 10), parseInt(f.style.bottom, 10)]; });
-  check('dragging moves it with the pointer', at1[0] - at0[0] >= 50 && at1[1] - at0[1] >= 30, { before: at0, after: at1 });
+  await sleep(100);
+  const m1 = await where_();
+  check('a mouse dragging the grip moves it exactly with the pointer', Math.abs(m1.r - m0.r - 120) <= 1 && Math.abs(m1.b - m0.b - 80) <= 1, { before: m0, after: m1 });
+  const cdp = await context.newCDPSession(page);
+  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+  const tx = m1.grip[0] + m1.grip[2] / 2, ty = m1.grip[1] + m1.grip[3] / 2;
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: tx, y: ty }] });
+  for (let i = 1; i <= 10; i++) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: tx + 9 * i, y: ty + 4 * i }] }); await sleep(20); }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+  await sleep(150);
+  const m2 = await where_();
+  check('a finger dragging the grip moves it too, as on a phone', Math.abs(m1.r - m2.r - 90) <= 1 && Math.abs(m1.b - m2.b - 40) <= 1, { before: m1, after: m2 });
+  await page.evaluate(() => {
+    const g = document.querySelector('[data-beach-button-grip]');
+    ['ArrowLeft', 'ArrowLeft', 'ArrowUp'].forEach((key) => g.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true })));
+  });
+  const m3 = await where_();
+  check('the arrow keys move it too, a step at a time', m3.r - m2.r === 32 && m3.b - m2.b === 16, { before: m2, after: m3 });
+  await page.evaluate(() => {
+    const g = document.querySelector('[data-beach-button-grip]');
+    for (let i = 0; i < 400; i++) g.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  });
+  const m4 = await where_();
+  check('…and it stops at the edge of the screen, never off it', m4.r === 0, m4);
+  await page.reload();
+  await page.frameLocator('iframe[title="beach button"]').locator('#dot').waitFor();
+  const m5 = await where_();
+  check('it stays where it was left when the page reloads', m5.r === m4.r && m5.b === m4.b, { left: m4, after: m5 });
+
+  console.log('\nputting it away:');
   await settle();
   await frame.locator('#dot').click();
   await frame.locator('#panel').waitFor();
@@ -449,7 +493,7 @@ async function run(partitioned) {
   await frame.locator('#away').click();
   // the frame asks the page to remove it by postMessage, one async hop after the click lands
   await page.locator('iframe[title="beach button"]').waitFor({ state: 'detached', timeout: 3000 }).catch(() => {});
-  check('put away, it is gone from the page', (await page.locator('iframe[title="beach button"]').count()) === 0);
+  check('put away, it is gone from the page, its grip with it', (await page.locator('iframe[title="beach button"]').count()) === 0 && (await page.locator('[data-beach-button-grip]').count()) === 0);
   await page.reload();
   await page.frameLocator('iframe[title="beach button"]').locator('#dot').waitFor();
   check('…until the page reloads', (await page.locator('iframe[title="beach button"]').count()) === 1);

@@ -22,11 +22,11 @@ button:disabled{opacity:.45;cursor:default}
 
 #dot{position:fixed;right:4px;bottom:4px;width:56px;height:56px;padding:0;border-radius:50%;
   border:1px solid var(--line);background:var(--deep);color:var(--liquid);
-  font:600 22px/1 var(--mono);cursor:grab;touch-action:none;box-shadow:0 2px 12px rgba(0,0,0,.35)}
+  font:600 22px/1 var(--mono);cursor:pointer;touch-action:manipulation;box-shadow:0 2px 12px rgba(0,0,0,.35)}
 
 #panel{position:fixed;inset:0;display:flex;flex-direction:column;background:var(--abyss);
   border:1px solid var(--line);border-radius:14px;overflow:hidden}
-header{display:flex;align-items:center;gap:4px;padding:8px 8px 8px 14px;border-bottom:1px solid var(--line);cursor:grab;touch-action:none}
+header{display:flex;align-items:center;gap:4px;padding:8px 8px 8px 14px;border-bottom:1px solid var(--line)}
 #who{flex:1;min-width:0;font:12px/1.35 var(--mono);color:var(--vapour);overflow-wrap:anywhere}
 header button{width:30px;height:30px;border:0;border-radius:8px;background:transparent;color:var(--dim)}
 header button:hover{background:var(--deep);color:var(--foam)}
