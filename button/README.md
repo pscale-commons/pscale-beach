@@ -18,7 +18,14 @@ Every beach that deploys this package serves its own button at `<its address>/bu
 
 - **A round button**, bottom right. Drag it anywhere, and it stays put on that site. **⌄** folds it back to the dot. **×** puts it away until the page is reloaded; a plain refresh brings it back. A page can also offer its own "show the button" link with `beachButton.show()`.
 - **Unlock** opens *the beach's own window*: handle, passphrase (optional: without one you read but never write), Anthropic key (optional), and "remember on this device". The passphrase is never typed into the page or into the button.
-- **Ask the beach.** With a key held, a question box appears (dictation, and it keeps its draft). Claude is called straight from the button with the person's own key (the model is set in `frame.js`) and reads the beach with one read-only tool. The answer appears inside the button. Server-side refusal fallbacks are on.
+- **Ask the beach.** With a key held, a question box appears (dictation, and it keeps its draft). Claude is called straight from the button with the person's own key (the model is set in `frame.js`) and reads the beach with a read-only tool. The answer appears inside the button, in plain text. Server-side refusal fallbacks are on.
+- **This page.** The page tells the button where it stands: its own address and title, believed only within its own origin, with the query and fragment dropped. "This page" in a question then means something.
+- **A card, or a line in a room, on a yes.** Asked for one, the button *proposes*:
+  - a **card** for the person's own hand (`ahead:now:<handle>`, today, as happyseaurchin.com's ＋card lands one, with the page it came from);
+  - a **line** in a room (`pool:<name>`, the open parlour where a person or agent is found), signed with their handle.
+
+  Each is shown whole, with where it will land, and is sent only when the person taps yes inside the button. A line goes only into a room that already stands, so a misspelt name never founds one. A line in an agent's room rings its doorbell where its keeper has one on (`ways:doorbell`).
+- **Dictation without echo.** A phone sends each revision of a phrase back again; the button rebuilds the spoken words from all of them every time instead of appending them (the fix written at `ways:dictation`).
 - **The page can ask; the person answers.** `beachButton.request({kind:'who'})` gets the handle only if the person says yes. `beachButton.request({kind:'write', block, spindle, content})` writes *as the person*, only to a block named for them (`…:<handle>`), at the page's place. The person sees exactly what will be written, and where, before saying yes.
 
 ## Why the page can't see in
@@ -34,11 +41,17 @@ The button is an iframe whose page comes from the beach's own origin, never the 
 
 **Passphrases are typed only in a top-level window** from the beach's own origin, whose address bar the person can read. That window answers only the button that opened it: a page that opens it itself, or frames it, is shown nothing to type into, and the server forbids framing it (`frame-ancestors 'none'`).
 
-**Where things travel:** the passphrase goes only to the beach (which hashes it to check the latch, exactly as every client does today); the API key goes only to Anthropic; the question and answer go only to Anthropic and the person's screen. **None of it reaches the page's server.** The beach is never told which page asked (no referrer on the button's own requests).
+**Where things travel:** the passphrase goes only to the beach (which hashes it to check the latch, exactly as every client does today), and only with writes to the person's own blocks, never with a line in someone's room. The API key goes only to Anthropic; the question and answer go only to Anthropic and the person's screen. **None of it reaches the page's server.** The page's address goes to Anthropic with a question, and reaches the beach only inside a card the person said yes to. Otherwise the beach is never told which page asked (no referrer on the button's own requests).
 
 ### Proven, not claimed
 
-`scripts/smoke-button.cjs` puts the button on a hostile page in headless Chromium and attacks it. The page tries to read the frame, log keystrokes, sniff every message, wrap `fetch`, fade or cover the button while asking it to write, open the unlock window itself, and frame it. A mock beach and a mock Anthropic record where every secret actually went. **42 checks, run twice** (with the browser's storage partitioning on, as browsers ship it, and off): all hold. It also runs the old way for contrast: a widget drawn *inside* the page, in a closed shadow root as the Chrome extension drew its `#` button. The page logs every key typed into it.
+`scripts/smoke-button.cjs` puts the button on a hostile page in headless Chromium and attacks it. The page tries to:
+- read the frame, log keystrokes, sniff every message and wrap `fetch`;
+- fade or cover the button while asking it to write, or while it proposes a card;
+- claim another site's address as its own;
+- open the unlock window itself, and frame it.
+
+A mock beach and a mock Anthropic record where every secret actually went. The test also checks that a card is founded and lands only on a yes, that a line reaches only a room that stands and carries no passphrase, that a no writes nothing, that answers show as plain text, and that a phone's repeated revisions are spoken once. **62 checks, run twice** (with the browser's storage partitioning on, as browsers ship it, and off): all hold. It also runs the old way for contrast: a widget drawn *inside* the page, in a closed shadow root as the Chrome extension drew its `#` button. The page logs every key typed into it.
 
 ```bash
 NODE_PATH=$(npm root -g) npm run smoke:button     # needs playwright + chromium
@@ -51,8 +64,10 @@ NODE_PATH=$(npm root -g) npm run smoke:button     # needs playwright + chromium
 3. **The beach sees the passphrase in transit**, as it does from every client today; that is how the latch is checked. Privacy even from the beach is gray sealing with a separate vault key, which the button doesn't do yet.
 4. **The beach can't check a passphrase without writing.** Its only proof, re-latching the passport with the same words, would *claim* a passport that stands open. So the button holds the words untried, and the first real write proves them (a 403 says they were wrong). A side-effect-free `prove` act on the beach would fix this; the handler is wire-frozen, so that's David's call.
 5. **Whoever serves the button's code holds the trust.** That is why the beach serves it: the parties who could ever see a passphrase stay exactly the person and the beach, and no one new is added. An operator who deploys this package serves their own button, to their own beach.
-6. **What can still be learned:** the page sees the button exists, when it opens, and where it is dragged. The beach sees which *site* loaded the button (not which page), its reads, and the handle on writes, as it always has. Memory is kept per site, both in the browser's per-site storage and by the button's own keying, so one site's "yes, know my name" is never read as another's. "Remember on this device" lives only in the beach window's own storage, unreachable from any page.
-7. **Browser notes:** Chrome and Safari name the asking site from `ancestorOrigins`, which a page can't forge. Firefox falls back to the referrer, or "this page". Safari may clear a frame's storage when the session ends; that only means unlocking again, one tap if remembered. A malicious browser *extension* can read everything; no page-level design can stop that.
+6. **A line in a room is attributed, not proven.** Rooms are open, so a line carries the person's handle but no proof. Where a word must be shown to be theirs, a card in their own latched hand is the proof, and a line can point to it.
+7. **What the model reads can try to steer it.** Blocks, and the page's own title, are given to the model as data. Even if one talks it into proposing something, nothing is written until the person reads the proposal, shown whole, and taps yes.
+8. **What can still be learned:** the page sees the button exists, when it opens, and where it is dragged. The beach sees which *site* loaded the button (not which page), its reads, and the handle on writes, as it always has. Memory is kept per site, both in the browser's per-site storage and by the button's own keying, so one site's "yes, know my name" is never read as another's. "Remember on this device" lives only in the beach window's own storage, unreachable from any page.
+9. **Browser notes:** Chrome and Safari name the asking site from `ancestorOrigins`, which a page can't forge. Firefox falls back to the referrer, or "this page". Safari may clear a frame's storage when the session ends; that only means unlocking again, one tap if remembered. A malicious browser *extension* can read everything; no page-level design can stop that.
 
 ## Why not the Chrome extension
 

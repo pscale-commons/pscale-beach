@@ -25,6 +25,11 @@ const SECRET = 'correct horse battery';
 const KEY = 'sk-test-not-a-real-key-123';
 const QUESTION = 'what does my passport say about me';
 const ANSWER = 'Your passport says you are a tester of buttons.';
+const CARD = 'Ask weft to pass the dictation fix to whoever keeps this page';
+const LINE = 'Thank you, weft: the button works from my own pages.';
+// the page's own address carries a query and a fragment, which never leave the frame
+const HOST_URL = (host) => `http://${host}:${SITE}/__test/host.html?token=page-secret#frag`;
+const PAGE_SAID = `http://localhost:${SITE}/__test/host.html`;
 
 let pass = true;
 const check = (label, ok, detail) => {
@@ -81,8 +86,10 @@ function site(req, res) {
 const beachLog = [];
 const BLOCKS = {
   'passport:tester': { _: 'tester — a person testing the beach button', 1: 'offers: patience', 2: 'needs: a button that keeps a secret' },
-  'lighthouse': { _: 'the test place' }
+  'lighthouse': { _: 'the test place' },
+  'pool:weft': { _: "Weft's room — say the thing itself." }
 };
+const HANDS = {};   // ahead:now:tester, once founded
 function beach(req, res) {
   res.setHeader('access-control-allow-origin', '*');
   res.setHeader('access-control-allow-methods', 'GET, POST, DELETE, OPTIONS');
@@ -96,8 +103,25 @@ function beach(req, res) {
     beachLog.push({ method: req.method, path: url.pathname, query: Object.fromEntries(url.searchParams), body, origin: req.headers.origin || null, referer: req.headers.referer || null });
     res.setHeader('content-type', 'application/json');
     if (req.method === 'GET') {
-      const b = BLOCKS[url.searchParams.get('block')];
+      const name = url.searchParams.get('block');
+      const b = HANDS[name] || BLOCKS[name];
+      if (b && url.searchParams.has('pscale')) { res.writeHead(200); return res.end(JSON.stringify({ floor: 1, shape: 'disc', entries: [] })); }
       res.writeHead(b ? 200 : 404); return res.end(JSON.stringify(b || { error: 'not found', code: 'not_found' }));
+    }
+    if (req.method === 'POST' && body.block === 'ahead:now:tester') {
+      // a hand: founded once under the person's own words, then written at its slots under them
+      if (body.new_lock) {
+        if (HANDS[body.block] || body.new_lock !== SECRET) { res.writeHead(403); return res.end(JSON.stringify({ error: 'refused', code: 'lock_required' })); }
+        HANDS[body.block] = body.content; res.writeHead(200); return res.end(JSON.stringify({ ok: true }));
+      }
+      const hand = HANDS[body.block];
+      if (!hand || body.secret !== SECRET) { res.writeHead(403); return res.end(JSON.stringify({ error: 'secret does not match', code: 'lock_required' })); }
+      if (body.spindle === '2') hand['2'] = body.content;
+      else if (/^2[1-9]$/.test(body.spindle)) { hand['2'] = hand['2'] || {}; hand['2'][body.spindle[1]] = body.content; }
+      res.writeHead(200); return res.end(JSON.stringify({ ok: true }));
+    }
+    if (req.method === 'POST' && /^pool:/.test(body.block) && body.append) {
+      res.writeHead(200); return res.end(JSON.stringify({ ok: true, slot: '7' }));
     }
     if (req.method === 'POST') {
       const named = /:tester$/.test(body.block);
@@ -108,6 +132,17 @@ function beach(req, res) {
   });
 }
 
+// the mock Anthropic plays a script per question: one tool to use, then an answer — by default
+// the tool's result, given back word for word, so the test reads what the model was told
+const SCRIPTS = {
+  [QUESTION]: { use: { name: 'read_block', input: { block: 'passport:tester', where: 'here' } }, answer: ANSWER },
+  'make me a card': { use: { name: 'propose_card', input: { sentence: CARD } } },
+  'say thanks to weft': { use: { name: 'propose_line', input: { room: 'pool:weft', text: LINE } } },
+  'post in a room that is not there': { use: { name: 'propose_line', input: { room: 'pool:nowhere', text: 'hello?' } } },
+  'a card I will refuse': { use: { name: 'propose_card', input: { sentence: 'never this one' } } },
+  'a card under a fade': { use: { name: 'propose_card', input: { sentence: 'a sneaky card' } } },
+  'answer with marks': { answer: 'Your **room** is `pool:tester`.\n## Where\nPlain words.' }
+};
 const llmLog = [];
 function llm(req, res) {
   res.setHeader('access-control-allow-origin', '*');
@@ -119,13 +154,15 @@ function llm(req, res) {
   req.on('end', () => {
     const body = JSON.parse(raw);
     llmLog.push({ headers: req.headers, body });
+    const script = SCRIPTS[body.messages[0].content] || { answer: 'no script for this question' };
     const last = body.messages[body.messages.length - 1];
-    const answered = Array.isArray(last.content) && last.content.some((b) => b.type === 'tool_result');
+    const result = Array.isArray(last.content) && last.content.find((b) => b.type === 'tool_result');
     res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify(answered
-      ? { id: 'msg_2', type: 'message', role: 'assistant', model: body.model, stop_reason: 'end_turn', content: [{ type: 'text', text: ANSWER }] }
-      : { id: 'msg_1', type: 'message', role: 'assistant', model: body.model, stop_reason: 'tool_use',
-          content: [{ type: 'tool_use', id: 'toolu_1', name: 'read_block', input: { block: 'passport:tester', where: 'here' } }] }));
+    res.end(JSON.stringify(script.use && !result
+      ? { id: 'msg_1', type: 'message', role: 'assistant', model: body.model, stop_reason: 'tool_use',
+          content: [{ type: 'tool_use', id: 'toolu_' + llmLog.length, name: script.use.name, input: script.use.input }] }
+      : { id: 'msg_2', type: 'message', role: 'assistant', model: body.model, stop_reason: 'end_turn',
+          content: [{ type: 'text', text: script.answer || 'RESULT: ' + (result ? result.content : '') }] }));
   });
 }
 
@@ -143,6 +180,28 @@ const leaks = (s, words) => s.messages.filter((m) => words.some((w) => m.include
 // success being tested, not a fault.
 const clickThatCloses = (p, sel) => Promise.all([p.waitForEvent('close'),
   p.click(sel).catch((e) => { if (!/closed/i.test(String(e && e.message))) throw e; })]);
+const askIt = async (frame, q) => { await frame.locator('#q').fill(q); await frame.locator('#go').click(); };
+const posts = () => beachLog.filter((r) => r.method === 'POST').length;
+
+// A phone's speech engine, as Chrome on Android behaves: each revision of a phrase comes back as a
+// further final result repeating the words before it, and every event carries all of them again.
+// Installed in the button's frame only (an init script reaches every frame Playwright opens).
+function fakePhoneSpeech() {
+  if (!/\/button\/frame(\.html)?$/.test(location.pathname)) return;
+  function Phone() {}
+  Phone.prototype.start = function () {
+    var self = this, i = 0, seq = [['hello'], ['hello', 'hello world'], ['hello', 'hello world', 'hello world how are you'],
+      ['hello', 'hello world', 'hello world how are you', 'second thing']];
+    (function tick() {
+      if (i >= seq.length) { if (self.onend) self.onend(); return; }
+      var results = seq[i++].map(function (t) { var r = [{ transcript: t }]; r.isFinal = true; return r; });
+      if (self.onresult) self.onresult({ resultIndex: 0, results: results });
+      setTimeout(tick, 40);
+    })();
+  };
+  Phone.prototype.stop = function () {};
+  window.SpeechRecognition = window.webkitSpeechRecognition = Phone;
+}
 
 // Playwright turns off Chromium's third-party storage partitioning (playwright#32230), which
 // shipping Chrome, Firefox and Safari all have on. The run is made twice: once as browsers ship,
@@ -162,13 +221,15 @@ async function run(partitioned) {
   if (!opts) { console.log('\n(could not restore storage partitioning in this Playwright; skipping that run)'); return; }
   console.log(`\n━━ storage partitioning ${partitioned ? 'ON — as browsers ship' : 'OFF — Playwright\'s default'} ━━`);
   beachLog.length = 0; llmLog.length = 0;
+  Object.keys(HANDS).forEach((k) => { delete HANDS[k]; });
   const browser = await chromium.launch(Object.assign({ executablePath: process.env.CHROMIUM_PATH || undefined }, opts));
   const context = await browser.newContext({ viewport: { width: 1100, height: 800 } });
   context.setDefaultTimeout(15000);
+  await context.addInitScript(fakePhoneSpeech);
   const page = await context.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto(`http://localhost:${SITE}/__test/host.html`);
+  await page.goto(HOST_URL('localhost'));
   const frame = page.frameLocator('iframe[title="beach button"]');
   await frame.locator('#dot').waitFor();
   await settle();
@@ -262,6 +323,80 @@ async function run(partitioned) {
   check('…on the default model, with fallbacks on', llmLog[0] && llmLog[0].body.model === 'claude-opus-5-5' && llmLog[0].body.fallbacks === 'default');
   check('…and the beach was read for it', beachLog.some((r) => r.method === 'GET' && r.query.block === 'passport:tester'));
   check('…the reads returned in one message, the assistant turn echoed unchanged', llmLog[1] && llmLog[1].body.messages.length === 3 && llmLog[1].body.messages[1].content[0].type === 'tool_use');
+
+  console.log('\nthe page it stands on, as the page says it:');
+  check('the question went to Anthropic with the page\'s address, its query and fragment dropped',
+    llmLog[0].body.system.includes(PAGE_SAID) && !/page-secret|#frag/.test(llmLog[0].body.system), llmLog[0].body.system.slice(0, 300));
+  check('…and the beach was told nothing of it', !beachLog.some((r) => JSON.stringify(r).includes('__test/host.html')));
+  check('…a person holding a passphrase is offered the two proposals', ['read_block', 'propose_card', 'propose_line'].every((t) => llmLog[0].body.tools.some((x) => x.name === t)));
+  // a page may say where it stands only within its own origin
+  await page.evaluate(() => { document.querySelector('iframe[title="beach button"]').contentWindow.postMessage({ type: 'page', href: 'https://bank.example/account', title: 'Your bank' }, '*'); });
+  await sleep(200);
+
+  console.log('\na card and a line, proposed when asked, sent only on a yes:');
+  const n0 = llmLog.length;
+  await askIt(frame, 'make me a card');
+  const addIt = frame.locator('.card button', { hasText: 'Add it' });
+  await armed(addIt);
+  check('the card is shown to the person before anything is written', !beachLog.some((r) => r.method === 'POST' && /^ahead:/.test(r.body.block)));
+  await addIt.click();
+  await frame.locator('#said p', { hasText: 'RESULT: Written' }).waitFor();
+  const founded = beachLog.find((r) => r.method === 'POST' && r.body.block === 'ahead:now:tester' && r.body.new_lock);
+  const card = beachLog.find((r) => r.method === 'POST' && r.body.block === 'ahead:now:tester' && r.body.spindle === '2');
+  check('a hand not yet started is founded, latched to the person\'s own words', !!founded && founded.body.new_lock === SECRET && /^AHEAD — tester's hand/.test(founded.body.content._), founded);
+  check('…the card lands in it for today, carrying the passphrase there and only there', !!card && card.body.secret === SECRET && card.body.content['1']._ === CARD && card.path === '/.well-known/pscale-beach', card);
+  check('…saying the page it came from, its query and fragment dropped', !!card && card.body.content['1']['5'] === PAGE_SAID, card && card.body.content);
+  check('…never the address another origin\'s message claimed', !beachLog.some((r) => JSON.stringify(r).includes('bank.example')) && !llmLog.slice(n0).some((l) => l.body.system.includes('bank.example')));
+  check('…and the model is told what happened', llmLog.slice(n0).some((l) => JSON.stringify(l.body.messages).includes('Written: the card stands in ahead:now:tester at 21')));
+  await askIt(frame, 'make me a card');
+  await armed(addIt);
+  await addIt.click();
+  await frame.locator('#said p', { hasText: 'at 22, for today' }).last().waitFor();
+  check('a second card takes the next free slot of today', beachLog.some((r) => r.method === 'POST' && r.body.block === 'ahead:now:tester' && r.body.spindle === '22' && !r.body.new_lock));
+
+  await askIt(frame, 'say thanks to weft');
+  const postIt = frame.locator('.card button', { hasText: 'Post it' });
+  await armed(postIt);
+  await postIt.click();
+  await frame.locator('#said p', { hasText: 'RESULT: Posted in pool:weft at 7' }).waitFor();
+  const line = beachLog.find((r) => r.method === 'POST' && r.body.block === 'pool:weft');
+  check('a line goes into the room named, appended under the person\'s handle', !!line && line.body.append === true && line.body.content._ === LINE && line.body.content['1'] === 'tester', line);
+  check('…carrying no passphrase, a room being open', !!line && !('secret' in line.body) && !JSON.stringify(line.body).includes(SECRET), line);
+  check('…once the room was found standing', beachLog.some((r) => r.method === 'GET' && r.query.block === 'pool:weft' && r.query.pscale === '9'));
+
+  let w0 = posts();
+  await askIt(frame, 'post in a room that is not there');
+  await frame.locator('#said p', { hasText: 'RESULT: Not posted: no room called pool:nowhere' }).waitFor();
+  check('a room that does not stand is never founded by a line', posts() === w0);
+  await askIt(frame, 'a card I will refuse');
+  await frame.locator('.card button', { hasText: 'Not now' }).click();
+  await frame.locator('#said p', { hasText: 'RESULT: Not written: tester said no' }).waitFor();
+  check('a no writes nothing, and the model is told so', posts() === w0);
+  await page.evaluate(() => { document.querySelector('iframe[title="beach button"]').style.opacity = '0.2'; });
+  await askIt(frame, 'a card under a fade');
+  await armed(addIt);
+  await addIt.click({ force: true });
+  await frame.locator('#said p', { hasText: 'RESULT: Not written: tester said no (covered' }).waitFor();
+  check('a page that fades the button gets no yes for a proposal either', posts() === w0);
+  await page.evaluate(() => { document.querySelector('iframe[title="beach button"]').style.opacity = ''; });
+  await sleep(300);
+
+  console.log('\nplain words, a whole header, and no echo:');
+  await askIt(frame, 'answer with marks');
+  const marked = frame.locator('#said p', { hasText: 'Plain words.' });
+  await marked.waitFor();
+  const shownText = await marked.textContent();
+  check('an answer shows as plain text, its markdown marks taken out', shownText === 'Your room is pool:tester.\nWhere\nPlain words.', shownText);
+  const head = await frame.locator('#who').evaluate((el) => ({ ws: getComputedStyle(el).whiteSpace, cut: el.scrollWidth > el.clientWidth }));
+  check('the header line wraps rather than being cut off', head.ws !== 'nowrap' && !head.cut, head);
+  await frame.locator('#q').fill('');
+  await frame.locator('#mic').click();
+  await sleep(400);
+  const spoken = await frame.locator('#q').inputValue();
+  check('a phone\'s repeated revisions land once — the words rebuilt, never appended', spoken === 'Hello world how are you. Second thing.', spoken);
+  await frame.locator('#q').fill('');
+  s = await spy(page);
+  check('the page heard none of it', leaks(s, [CARD, LINE, SECRET, KEY, 'second thing']).length === 0 && s.keys.length === 0, leaks(s, [CARD, LINE]));
 
   console.log('\none site\'s button is not another\'s:');
   await frame.locator('#q').pressSequentially('a draft left on this site');
