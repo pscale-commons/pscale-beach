@@ -12,7 +12,8 @@
  *
  * What crosses between the two is only what the frame chooses to say, and it says it to anyone
  * listening: its size, a drag, a reply to a request, and the person's name once they have said
- * this page may know it. A passphrase or a key never crosses.
+ * this page may know it. A passphrase or a key never crosses. The page tells the frame only
+ * where it stands: its own address and title.
  *
  * The host may ask the button for things (window.beachButton.request). The person decides, in
  * the frame, where the host cannot see or forge the answer.
@@ -75,7 +76,7 @@
   addEventListener('message', function (e) {
     if (!frame || e.source !== frame.contentWindow || e.origin !== ORIGIN) return;
     var m = e.data || {};
-    if (m.type === 'ready') { ready = true; queue.splice(0).forEach(send); }
+    if (m.type === 'ready') { ready = true; queue.splice(0).forEach(send); where(); }
     else if (m.type === 'size') { open = !!m.open; fit(); }
     else if (m.type === 'drag') {
       if (m.phase === 'start') drag0 = { r: at.r, b: at.b };
@@ -91,6 +92,14 @@
     else if (m.type === 'reply' && waiting[m.id]) { waiting[m.id](m.result || {}); delete waiting[m.id]; }
   });
   addEventListener('resize', fit);
+
+  /* The page says where the button stands — its own address and title, nothing a person typed —
+   * so 'this page' means something to the person asking. The frame believes it only within this
+   * page's origin, drops its query and fragment, and sends it to the beach only inside a card the
+   * person says yes to. */
+  function where() { if (frame && ready) send({ type: 'page', href: location.href, title: document.title }); }
+  addEventListener('hashchange', where);
+  addEventListener('popstate', where);
 
   window.beachButton = {
     /* Ask the person, through the button, for something only they can give:
