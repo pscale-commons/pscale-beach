@@ -102,36 +102,8 @@
     tell({ type: 'size', open: v });
   }
 
-  /* ── moving it: the frame cannot move itself, so it tells the page how far the pointer went
-   * (screen coordinates, which do not shift as the frame moves under them) ── */
-  function draggable(el, onTap) {
-    var s = null, d = null;
-    el.addEventListener('pointerdown', function (e) {
-      if (el !== $('dot') && e.target.closest('button,input,label,textarea')) return;
-      s = { x: e.screenX, y: e.screenY }; d = null;
-      el.setPointerCapture(e.pointerId);
-      tell({ type: 'drag', phase: 'start' });
-    });
-    el.addEventListener('pointermove', function (e) {
-      if (!s) return;
-      var dx = e.screenX - s.x, dy = e.screenY - s.y;
-      if (!d && Math.abs(dx) + Math.abs(dy) < 5) return;
-      d = { dx: dx, dy: dy };
-      tell({ type: 'drag', phase: 'move', dx: dx, dy: dy });
-    });
-    /* it rests where the last move left it; only a lift with no move is a tap — a cancelled
-     * touch (a scroll the browser took over) is neither */
-    function end(tap) {
-      return function () {
-        if (!s) return;
-        s = null;
-        tell({ type: 'drag', phase: 'end', dx: d ? d.dx : 0, dy: d ? d.dy : 0 });
-        if (tap && !d && onTap) onTap();
-      };
-    }
-    el.addEventListener('pointerup', end(true));
-    el.addEventListener('pointercancel', end(false));
-  }
+  /* ── moving it is the page's: a grip beside the button, on the page itself (button.js), carries
+   * the drag, as xstream's construction button is moved — so the circle here only opens ── */
 
   /* ── unlocking: always in the beach's own window ── */
   var popup = null, nonce = '';
@@ -589,8 +561,7 @@
   $('shut').onclick = function () { setOpen(false); };
   $('away').onclick = function () { tell({ type: 'hide' }); };
   $('dot').addEventListener('click', function (e) { if (e.detail === 0) setOpen(true); });   // the keyboard's way in
-  draggable($('dot'), function () { setOpen(true); });
-  draggable($('hdr'));
+  $('dot').addEventListener('click', function () { setOpen(true); });
 
   render();
   tell({ type: 'ready' });

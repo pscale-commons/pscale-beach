@@ -16,7 +16,7 @@ Every beach that deploys this package serves its own button at `<its address>/bu
 
 ## What a person gets
 
-- **A round button**, bottom right. Drag it anywhere, and it stays put on that site. **⌄** folds it back to the dot. **×** puts it away until the page is reloaded; a plain refresh brings it back. A page can also offer its own "show the button" link with `beachButton.show()`.
+- **A round button**, bottom right, with a grip beside it. Drag the grip (⠿) to move it, as xstream's construction button moves; a tap on the circle only opens it. With the grip in focus the arrow keys move it too. It stays where it was left, on that site. **⌄** folds it back to the dot. **×** puts it away until the page is reloaded; a plain refresh brings it back. A page can also offer its own "show the button" link with `beachButton.show()`.
 - **Unlock** opens *the beach's own window*: handle, passphrase (optional: without one you read but never write), Anthropic key (optional), and "remember on this device". The passphrase is never typed into the page or into the button.
 - **Ask the beach.** With a key held, a question box appears (dictation, and it keeps its draft). Claude is called straight from the button with the person's own key (the model is set in `frame.js`) and reads the beach with a read-only tool. The answer appears inside the button, in plain text. Server-side refusal fallbacks are on.
 - **This page.** The page tells the button where it stands: its own address and title, believed only within its own origin, with the query and fragment dropped. "This page" in a question then means something.
@@ -51,7 +51,7 @@ The button is an iframe whose page comes from the beach's own origin, never the 
 - claim another site's address as its own;
 - open the unlock window itself, and frame it.
 
-A mock beach and a mock Anthropic record where every secret actually went. The test also checks that a card is founded and lands only on a yes, that a line reaches only a room that stands and carries no passphrase, that a no writes nothing, that answers show as plain text, and that a phone's repeated revisions are spoken once. **62 checks, run twice** (with the browser's storage partitioning on, as browsers ship it, and off): all hold. It also runs the old way for contrast: a widget drawn *inside* the page, in a closed shadow root as the Chrome extension drew its `#` button. The page logs every key typed into it.
+A mock beach and a mock Anthropic record where every secret actually went. The test also checks that a card is founded and lands only on a yes, that a line reaches only a room that stands and carries no passphrase, that a no writes nothing, that answers show as plain text, that a phone's repeated revisions are spoken once, and that the grip moves the button exactly with a mouse or a finger and never lies over it. **69 checks, run twice** (with the browser's storage partitioning on, as browsers ship it, and off): all hold. It also runs the old way for contrast: a widget drawn *inside* the page, in a closed shadow root as the Chrome extension drew its `#` button. The page logs every key typed into it.
 
 ```bash
 NODE_PATH=$(npm root -g) npm run smoke:button     # needs playwright + chromium
@@ -96,7 +96,7 @@ document.addEventListener('beachbutton:hello', e => { /* e.detail.handle, or nul
 
 | file | runs in | holds |
 |---|---|---|
-| `button.js` | the host page | nothing sensitive: makes the frame, places it, relays layout and requests |
+| `button.js` | the host page | nothing sensitive: makes the frame and its grip, places them, relays layout and requests |
 | `frame.html` · `frame.js` · `frame.css` | the iframe (the beach's origin) | the handle, passphrase and key for this tab; the ask; the approvals |
 | `unlock.html` · `unlock.js` | a top-level window (the beach's origin) | where words are typed; "remember on this device" |
 
