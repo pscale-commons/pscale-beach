@@ -70,7 +70,7 @@ const HOST_PAGE = `<!doctype html><html><head><meta charset="utf-8"><meta name="
     window.__injected = root.querySelector('input');
   })();
 </script>
-<script src="${BUTTON}button.js" data-place="w/test-place" data-beach="http://127.0.0.1:${BEACH}" data-llm="http://127.0.0.1:${LLM}"></script>
+<script src="${BUTTON}button.js" data-place="w/test-place" data-beach="http://127.0.0.1:${BEACH}" data-llm="http://127.0.0.1:${LLM}" data-poll="1"></script>
 </body></html>`;
 
 // ── servers: the site (button + host page), a mock beach, a mock Anthropic ────────────────
@@ -83,6 +83,7 @@ function site(req, res) {
   let body = fs.readFileSync(file, 'utf8');
   // test only: let the frame reach the two mocks (the published CSP names only the real ones)
   if (url.pathname.endsWith('frame.html')) body = body.replace('https://api.anthropic.com;', `https://api.anthropic.com http://127.0.0.1:${BEACH} http://127.0.0.1:${LLM};`);
+  if (url.pathname.endsWith('ear.html')) body = body.replace("connect-src 'self';", `connect-src 'self' http://127.0.0.1:${BEACH};`);
   res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream' });
   res.end(body);
 }
@@ -94,6 +95,22 @@ const BLOCKS = {
   'pool:weft': { _: "Weft's room — say the thing itself." }
 };
 const HANDS = {};   // ahead:now:tester, once founded
+const EARS = {};    // ear:tester, once founded
+const LONG_AGO = '2026-10-01T10:00:00.000Z';
+let TOUCHED = {};   // block → when it last moved, as the beach's index says it
+function freshRooms() {
+  BLOCKS['pool:welcome'] = { _: 'The welcome room.', 1: { _: 'hello, all', 1: 'someone', 3: LONG_AGO } };
+  BLOCKS['ways:push'] = { _: 'The push — how a person hears about what moves at this beach. The engine: https://push-engine.example (code elsewhere).' };
+  TOUCHED = { 'pool:welcome': LONG_AGO, 'pool:weft': LONG_AGO, 'passport:tester': LONG_AGO };
+  Object.keys(EARS).forEach((k) => { delete EARS[k]; });
+}
+// a voice lands in pool:welcome, as anyone's would, and the room is stamped as moved
+function welcomeSays(who, text) {
+  const room = BLOCKS['pool:welcome'], ts = new Date().toISOString();
+  const next = String(Object.keys(room).filter((k) => k !== '_').length + 1);
+  room[next] = { _: text, 1: who, 3: ts };
+  TOUCHED['pool:welcome'] = ts;
+}
 function beach(req, res) {
   res.setHeader('access-control-allow-origin', '*');
   res.setHeader('access-control-allow-methods', 'GET, POST, DELETE, OPTIONS');
@@ -106,9 +123,13 @@ function beach(req, res) {
     const body = raw ? JSON.parse(raw) : null;
     beachLog.push({ method: req.method, path: url.pathname, query: Object.fromEntries(url.searchParams), body, origin: req.headers.origin || null, referer: req.headers.referer || null });
     res.setHeader('content-type', 'application/json');
+    if (req.method === 'GET' && !url.searchParams.get('block')) {
+      res.writeHead(200);
+      return res.end(JSON.stringify({ _: 'the index', origin: 'mock', blocks: Object.keys(BLOCKS), touched: TOUCHED }));
+    }
     if (req.method === 'GET') {
       const name = url.searchParams.get('block');
-      const b = HANDS[name] || BLOCKS[name];
+      const b = HANDS[name] || EARS[name] || BLOCKS[name];
       if (b && url.searchParams.has('pscale')) { res.writeHead(200); return res.end(JSON.stringify({ floor: 1, shape: 'disc', entries: [] })); }
       res.writeHead(b ? 200 : 404); return res.end(JSON.stringify(b || { error: 'not found', code: 'not_found' }));
     }
@@ -124,7 +145,21 @@ function beach(req, res) {
       else if (/^2[1-9]$/.test(body.spindle)) { hand['2'] = hand['2'] || {}; hand['2'][body.spindle[1]] = body.content; }
       res.writeHead(200); return res.end(JSON.stringify({ ok: true }));
     }
+    if (req.method === 'POST' && body.block === 'ear:tester') {
+      // an ear: founded once, locked to the person's own words; then a watch at a free digit, or the
+      // whole block rewritten without one, behind the confirm gate, both under those words
+      const ear = EARS[body.block];
+      if (!ear) {
+        if (!body.new_lock || body.new_lock !== SECRET) { res.writeHead(403); return res.end(JSON.stringify({ error: 'refused', code: 'handle_bound' })); }
+        EARS[body.block] = body.content; res.writeHead(200); return res.end(JSON.stringify({ ok: true, born: true }));
+      }
+      if (body.secret !== SECRET) { res.writeHead(403); return res.end(JSON.stringify({ error: 'secret does not match', code: 'lock_required' })); }
+      if (body.spindle) { ear[body.spindle] = body.content; res.writeHead(200); return res.end(JSON.stringify({ ok: true })); }
+      if (body.confirm !== true) { res.writeHead(400); return res.end(JSON.stringify({ error: 'whole-block replace requires {confirm: true}', code: 'confirm_required' })); }
+      EARS[body.block] = body.content; res.writeHead(200); return res.end(JSON.stringify({ ok: true }));
+    }
     if (req.method === 'POST' && /^pool:/.test(body.block) && body.append) {
+      TOUCHED[body.block] = new Date().toISOString();
       res.writeHead(200); return res.end(JSON.stringify({ ok: true, slot: '7' }));
     }
     if (req.method === 'POST') {
@@ -228,6 +263,14 @@ async function circleSays(cdp) {
   const path = circle && find(circle, (n) => n.nodeName === 'path');
   return { glyph: path ? GLYPH[attr(path, 'd')] || attr(path, 'd') : null, label: circle ? attr(circle, 'aria-label') : null };
 }
+async function circleMark(cdp) {
+  const { root } = await cdp.send('DOM.getDocument', { depth: -1, pierce: true });
+  const attr = (n, k) => { const a = n.attributes || []; for (let i = 0; i < a.length; i += 2) if (a[i] === k) return a[i + 1]; return null; };
+  const find = (n, ok) => { if (ok(n)) return n; for (const c of [].concat(n.children || [], n.shadowRoots || [], n.contentDocument || [])) { const f = find(c, ok); if (f) return f; } return null; };
+  const dock = find(root, (n) => attr(n, 'data-beach-button-dock') !== null);
+  const circle = dock && find(dock, (n) => n.nodeName === 'BUTTON' && attr(n, 'class') === 'c');
+  return !!(circle && find(circle, (n) => n.nodeName === 'SPAN' && attr(n, 'class') === 'm'));
+}
 const whenReady = (page) => page.waitForFunction(() => window.__spy && window.__spy.messages.some((m) => m.includes('"type":"ready"')));
 
 // A phone's speech engine, as Chrome on Android behaves: each revision of a phrase comes back as a
@@ -269,6 +312,7 @@ async function run(partitioned) {
   console.log(`\n━━ storage partitioning ${partitioned ? 'ON — as browsers ship' : 'OFF — Playwright\'s default'} ━━`);
   beachLog.length = 0; llmLog.length = 0;
   Object.keys(HANDS).forEach((k) => { delete HANDS[k]; });
+  freshRooms();
   const browser = await chromium.launch(Object.assign({ executablePath: process.env.CHROMIUM_PATH || undefined }, opts));
   const context = await browser.newContext({ viewport: { width: 1100, height: 800 } });
   context.setDefaultTimeout(15000);
@@ -601,13 +645,126 @@ async function run(partitioned) {
   check('a page that fades the window cannot get the tick that tells it the name', !(await frame.locator('#tell').isChecked()) &&
     await frame.locator('#snote').isVisible() && (await spy(page)).hello.slice(-1)[0] === null);
   await page.evaluate(() => { document.querySelector('iframe[title="beach button"]').style.opacity = ''; });
-  await sleep(300);
+  await settle();   // the refusal's note grew the window, and a frame that just moved drops a tap
   await frame.locator('#tell').click();
   await sleep(100);
-  check('…and the person, seeing it, can give it', await frame.locator('#tell').isChecked() && (await spy(page)).hello.slice(-1)[0] === 'tester');
+  check('…and the person, seeing it, can give it', await frame.locator('#tell').isChecked() && (await spy(page)).hello.slice(-1)[0] === 'tester',
+    { checked: await frame.locator('#tell').isChecked(), snote: await frame.locator('#snote').isVisible(), hello: (await spy(page)).hello.slice(-3) });
   g = await parts(page);
   check('settings stands where the prompt stood, never over the circle', apart(g) && onScreen(g) && g.frame.bottom <= g.dock.y - GAP + 0.5, g);
 
+  console.log('\nwhat reaches you — the ear, in the beach\'s own window:');
+  await page.evaluate(() => { window.__spy.keys.length = 0; });   // the arrow keys pressed on the page's own parts above
+  check('settings offers what reaches you to the one who is held', await frame.locator('#ear').isVisible());
+  await settle();   // the tick taken hid its note, so the window shrank and moved
+  const [earPop] = await Promise.all([context.waitForEvent('page'), frame.locator('#ear').click()]);
+  await earPop.waitForLoadState();
+  await earPop.locator('#lead', { hasText: 'What reaches tester' }).waitFor();
+  check('it opens the beach\'s own window, naming the person and the site it was opened from',
+    /^http:\/\/127\.0\.0\.1:\d+\/button\/ear\.html\?/.test(earPop.url()) && (await earPop.locator('#lead').textContent()).includes(`localhost:${SITE}`), earPop.url());
+  s = await spy(page);
+  check('…the person went over beach to beach: the page heard no passphrase, no key, no keystroke', leaks(s, [SECRET, KEY]).length === 0 && s.keys.length === 0, leaks(s, [SECRET, KEY]));
+  await earPop.locator('#none').waitFor();
+  check('…an ear not yet standing offers the parlour and the name', await earPop.locator('#parlour').isVisible() && await earPop.locator('#named').isVisible());
+  await earPop.locator('#where').waitFor();
+  check('…and where alerts are sent is the push engine\'s own page, its address read from the law', (await earPop.locator('#engine').getAttribute('href')) === 'https://push-engine.example/push?handle=tester');
+  const e0 = posts();
+  await earPop.locator('#room').fill('nowhere');
+  await earPop.locator('#follow').click();
+  await earPop.locator('#msg', { hasText: 'No room called pool:nowhere' }).waitFor();
+  check('a room that does not stand is never followed', posts() === e0);
+  await earPop.locator('#room').fill('welcome');
+  await earPop.locator('#follow').click();
+  await earPop.locator('#msg', { hasText: 'Following pool:welcome' }).waitFor();
+  const bornEar = beachLog.find((r) => r.method === 'POST' && r.body.block === 'ear:tester' && r.body.new_lock);
+  check('following a room starts the ear — parlour, name and the room — locked to the person\'s own words', !!bornEar && bornEar.body.new_lock === SECRET &&
+    bornEar.body.content['1']['1'] === 'parlour' && bornEar.body.content['2']['1'] === 'named' && bornEar.body.content['2']['2'] === 'tester' &&
+    bornEar.body.content['3']['1'] === 'room' && bornEar.body.content['3']['2'] === 'pool:welcome' && bornEar.body.content['3']['3'] === 'all', bornEar && bornEar.body);
+  check('…and lists the three, sentence by sentence', (await earPop.locator('#watches li.watch').count()) === 3 && await earPop.locator('#parlour').isHidden());
+  await earPop.locator('#watches li.watch').nth(2).locator('button', { hasText: 'end' }).click();
+  await earPop.locator('#watches button', { hasText: 'end it' }).click();
+  await earPop.locator('#msg', { hasText: 'Ended' }).waitFor();
+  const endedEar = beachLog.filter((r) => r.method === 'POST' && r.body.block === 'ear:tester' && r.body.confirm === true).pop();
+  check('ending a watch, asked twice, takes its position out whole, behind the confirm gate, under the person\'s key', !!endedEar && endedEar.body.secret === SECRET &&
+    !('3' in endedEar.body.content) && endedEar.body.content['1']['1'] === 'parlour' && endedEar.body.content['2']['1'] === 'named', endedEar && endedEar.body);
+  await earPop.locator('#room').fill('pool:welcome');
+  await earPop.locator('#follow').click();
+  await earPop.locator('#msg', { hasText: 'Following pool:welcome' }).waitFor();
+  const againEar = beachLog.filter((r) => r.method === 'POST' && r.body.block === 'ear:tester' && r.body.spindle).pop();
+  check('following again writes the one watch at the first free position', !!againEar && againEar.body.spindle === '3' && againEar.body.secret === SECRET && againEar.body.content['2'] === 'pool:welcome', againEar && againEar.body);
+  s = await spy(page);
+  check('the page heard nothing of any of it', leaks(s, [SECRET, KEY, 'pool:welcome', 'parlour']).length === 0, leaks(s, [SECRET, 'pool:welcome']));
+  await clickThatCloses(earPop, '#done');
+  const [earEvil] = await Promise.all([context.waitForEvent('page'),
+    page.evaluate((u) => { window.open(u + 'ear.html?for=trusted.example&n=abc', 'evil-ear', 'popup'); }, BUTTON)]);
+  await earEvil.waitForLoadState();
+  await sleep(300);
+  check('opened by a page itself, the ear window shows no ear and changes nothing', await earEvil.locator('#ear').isHidden() && await earEvil.locator('#add').isHidden());
+  await earEvil.close();
+
+  console.log('\nthe ear\'s news, in the button while a page is open:');
+  await sleep(1500);   // a look or two pass, so the room as it stands is what the person has seen
+  welcomeSays('sam', 'Is anyone around to try the new button?');
+  await frame.locator('#alist .alert', { hasText: 'sam: Is anyone around' }).waitFor({ state: 'attached', timeout: 8000 });
+  await toView(page, 'prompt');
+  check('a voice landing in a followed room shows in the window, the room and who said it with it',
+    await frame.locator('#alerts').isVisible() && (await frame.locator('#alist .alert').first().textContent()) === 'pool:welcome sam: Is anyone around to try the new button?',
+    await frame.locator('#alist .alert').first().textContent());
+  s = await spy(page);
+  check('…the page read none of it', leaks(s, ['Is anyone around', 'sam:']).length === 0, leaks(s, ['Is anyone around']));
+  check('…and on a site told the person\'s name, the circle carries a mark', s.messages.includes('{"type":"mark","n":1}') && await circleMark(cdp0),
+    { marks: s.messages.filter((m) => m.includes('"type":"mark"')), dot: await circleMark(cdp0), tell: await frame.locator('#tell').isChecked() });
+  welcomeSays('tester', 'a line of my own');
+  await sleep(2500);
+  check('the person\'s own voice is never news to them', (await frame.locator('#alist .alert').count()) === 1);
+  await toView(page, 'settings');
+  await sleep(300);
+  await frame.locator('#tell').click();
+  await sleep(300);
+  check('untold the name, the site has the mark taken away', (await spy(page)).messages.slice(-4).includes('{"type":"mark","n":0}') && !(await circleMark(cdp0)));
+  const marksBefore = (await spy(page)).messages.filter((m) => m.includes('"type":"mark"')).length;
+  welcomeSays('ren', 'a second voice');
+  await frame.locator('#alist .alert', { hasText: 'ren: a second voice' }).waitFor({ state: 'attached', timeout: 8000 });
+  check('a site not told the name is told nothing as news arrives: no mark, no message',
+    (await spy(page)).messages.filter((m) => m.includes('"type":"mark"')).length === marksBefore && !(await circleMark(cdp0)));
+  await toView(page, 'prompt');
+  check('…while the window shows it all the same, newest first', (await frame.locator('#alist .alert').count()) === 2 &&
+    (await frame.locator('#alist .alert').first().textContent()).includes('ren: a second voice') && (await frame.locator('#acount').textContent()) === '2 new where you listen');
+  await page.reload();
+  await whenReady(page);
+  await toView(page, 'prompt');
+  await frame.locator('#alist .alert').first().waitFor({ state: 'attached', timeout: 8000 });
+  check('news not yet seen outlasts a reload, as it would the next page of the site', (await frame.locator('#alist .alert').count()) === 2 && await frame.locator('#alerts').isVisible());
+  await toView(page, 'settings');
+  await settle();
+  const [popupO] = await Promise.all([context.waitForEvent('page'), frame.locator('#you').click()]);
+  await popupO.waitForLoadState();
+  await popupO.locator('#other').click();
+  await popupO.locator('#h').pressSequentially('other');
+  await clickThatCloses(popupO, '#yes');
+  await frame.locator('#youname', { hasText: 'other' }).waitFor({ state: 'attached' });
+  await toView(page, 'prompt');
+  await sleep(300);
+  check('someone else unlocked here never sees the last one\'s news', await frame.locator('#alerts').isHidden() && (await frame.locator('#alist .alert').count()) === 0);
+  await toView(page, 'settings');
+  await settle();
+  const [popupT] = await Promise.all([context.waitForEvent('page'), frame.locator('#you').click()]);
+  await popupT.waitForLoadState();
+  await clickThatCloses(popupT, '#useknown');
+  await frame.locator('#youname', { hasText: 'tester' }).waitFor({ state: 'attached' });
+  await toView(page, 'prompt');
+  await frame.locator('#alist .alert').first().waitFor({ state: 'attached', timeout: 8000 });
+  check('…and the first, unlocked again, finds theirs waiting', (await frame.locator('#alist .alert').count()) === 2);
+  await frame.locator('#aseen').click();
+  check('seen clears them', await frame.locator('#alerts').isHidden());
+  await page.reload();
+  await whenReady(page);
+  await toView(page, 'prompt');
+  await sleep(500);
+  check('…for good: a reload brings them back no more', await frame.locator('#alerts').isHidden());
+
+  await toView(page, 'settings');
+  await sleep(300);
   await frame.locator('#forget').click();
   await sleep(150);
   check('forget me: this tab lets go of the person — no one is held, and the page is told no name',
