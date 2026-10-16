@@ -4,9 +4,9 @@
  *
  *   <script src="https://beach.happyseaurchin.com/button/next/button.js" data-place="w/community-recovery" async></script>
  *
- * The circle cycles as xstream's does: # opens the prompt (+), a second tap opens settings (×),
- * a third closes everything. Escape closes it too, and a tap elsewhere on the page leaves settings
- * for the prompt. The circle, the grip that moves it and the edge that widens its window are drawn
+ * The circle takes three taps, as xstream's does, its icon naming what the next tap does: + opens
+ * the prompt (to speak or type), # opens settings, × closes everything. Escape closes it too, and
+ * a tap elsewhere on the page leaves settings for the prompt. The circle, the grip that moves it and the edge that widens its window are drawn
  * here, on the page, so a tap lands at once. A frame from another origin inherits the browser's
  * guards (a tap on one that has just moved is dropped), and nothing a person types ever passes
  * through these three. The window they open — the prompt, the reply and settings — is a frame
@@ -109,13 +109,14 @@
     edge.style.left = el + 'px'; edge.style.top = top + 'px'; edge.style.height = h + 'px';
   }
 
-  /* ── the circle: # opens the prompt (+), + opens settings (×), × closes everything ── */
+  /* ── the circle, its icon naming what the next tap does (David, 2026-10-16): + opens the
+   * prompt, to speak or type; # opens settings; × closes everything ── */
   var ICON = {
-    closed: '<path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/>',
-    prompt: '<path d="M5 12h14M12 5v14"/>',
+    closed: '<path d="M5 12h14M12 5v14"/>',
+    prompt: '<path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/>',
     settings: '<path d="M18 6 6 18M6 6l12 12"/>'
   };
-  var SAY = { closed: 'open the beach button', prompt: 'the beach button’s settings', settings: 'close the beach button' };
+  var SAY = { closed: 'open the beach button, to speak or type', prompt: 'the beach button’s settings', settings: 'close the beach button' };
   function paint() {
     if (!circle) return;
     circle.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +

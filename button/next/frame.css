@@ -6,6 +6,7 @@
 :root{
   --abyss:#06171E; --deep:#0A2129; --card:#123742; --foam:#EFF6F5;
   --vapour:#C4DBDF; --dim:#82A0A8; --liquid:#33C2D2; --solid:#E7B24C; --warn:#E58A6B;
+  --liquid-rgb:51,194,210;
   --line:rgba(196,219,223,.18);
   --body:system-ui,-apple-system,'Segoe UI',sans-serif;
   --mono:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;
@@ -14,6 +15,7 @@
   :root{
     --abyss:#FBF8F2; --deep:#F3EEE3; --card:#FFFFFF; --foam:#12333C;
     --vapour:#3C5A63; --dim:#6B848D; --liquid:#0D6B79; --solid:#8E6210; --warn:#A8432A;
+    --liquid-rgb:13,107,121;
     --line:rgba(60,90,99,.24);
   }
 }
@@ -58,8 +60,18 @@ textarea{box-sizing:border-box;display:block;width:100%;resize:none;padding:8px;
   background:var(--deep);color:var(--foam);font:14px/1.4 var(--body)}
 /* a phone zooms into any field smaller than this when it is focused */
 @media (pointer: coarse){ textarea{font-size:16px} }
-#mic{margin-right:auto;color:var(--dim)}
-#mic.on{color:var(--warn);border-color:var(--warn)}
+/* the site's own microphone (happyseaurchin.com's dictation glyph): listening is the accent and a
+ * slow pulse — still, for anyone who asked for less motion */
+#mic{margin-right:auto;display:flex;align-items:center;justify-content:center;box-sizing:border-box;
+  width:30px;height:30px;padding:0;border-radius:50%;color:var(--dim)}
+#mic svg{width:15px;height:15px;fill:currentColor;display:block}
+#mic:hover{color:var(--foam)}
+#mic.on{color:var(--liquid);border-color:rgba(var(--liquid-rgb),.55);animation:listening 1.6s ease-in-out infinite}
+@keyframes listening{
+  0%,100%{box-shadow:0 0 0 0 rgba(var(--liquid-rgb),.45)}
+  50%{box-shadow:0 0 0 7px rgba(var(--liquid-rgb),0)}
+}
+@media (prefers-reduced-motion: reduce){ #mic.on{animation:none;box-shadow:0 0 0 3px rgba(var(--liquid-rgb),.3)} }
 #go{border-color:var(--liquid);color:var(--liquid)}
 
 /* settings */

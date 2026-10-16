@@ -215,6 +215,19 @@ async function toView(page, v) {
   for (let i = 0; i < 3 && (await parts(page)).view !== v; i++) { await tap(page); await sleep(60); }
   await settle();
 }
+// The circle's icon and its spoken name, read through its closed shadow root as only the browser's own
+// tools can (a page cannot): + while closed (its tap opens the prompt), # while the prompt is open
+// (its tap opens settings), × while settings is open (its tap closes everything).
+const GLYPH = { 'M5 12h14M12 5v14': '+', 'M4 9h16M4 15h16M10 3 8 21M16 3l-2 18': '#', 'M18 6 6 18M6 6l12 12': '×' };
+async function circleSays(cdp) {
+  const { root } = await cdp.send('DOM.getDocument', { depth: -1, pierce: true });
+  const attr = (n, k) => { const a = n.attributes || []; for (let i = 0; i < a.length; i += 2) if (a[i] === k) return a[i + 1]; return null; };
+  const find = (n, ok) => { if (ok(n)) return n; for (const c of [].concat(n.children || [], n.shadowRoots || [], n.contentDocument || [])) { const f = find(c, ok); if (f) return f; } return null; };
+  const dock = find(root, (n) => attr(n, 'data-beach-button-dock') !== null);
+  const circle = dock && find(dock, (n) => n.nodeName === 'BUTTON' && attr(n, 'class') === 'c');
+  const path = circle && find(circle, (n) => n.nodeName === 'path');
+  return { glyph: path ? GLYPH[attr(path, 'd')] || attr(path, 'd') : null, label: circle ? attr(circle, 'aria-label') : null };
+}
 const whenReady = (page) => page.waitForFunction(() => window.__spy && window.__spy.messages.some((m) => m.includes('"type":"ready"')));
 
 // A phone's speech engine, as Chrome on Android behaves: each revision of a phrase comes back as a
@@ -283,23 +296,30 @@ async function run(partitioned) {
   await page.evaluate(() => { window.__injected.blur(); window.__spy.keys.length = 0; window.__spy.messages.length = 0; });
 
   console.log('\nthe circle, tapped as xstream\'s construction button is tapped:');
+  const cdp0 = await context.newCDPSession(page);
+  let says = await circleSays(cdp0);
+  check('closed, the circle shows + and says its tap opens the button, to speak or type', says.glyph === '+' && says.label === 'open the beach button, to speak or type', says);
   let g = await parts(page);
-  check('it stands bottom right, closed (#), its window hidden', g.view === 'closed' && g.dock.shown && !g.frame.shown && !g.edge.shown &&
+  check('it stands bottom right, closed, its window hidden', g.view === 'closed' && g.dock.shown && !g.frame.shown && !g.edge.shown &&
     Math.abs(g.dock.right - (g.vw - 16)) <= 1 && Math.abs(g.dock.bottom - (g.vh - 16)) <= 1, g);
   await tap(page); await settle();
   g = await parts(page);
-  check('a first tap opens the prompt (+), hanging up and to the left of the circle', g.view === 'prompt' && g.frame.shown &&
+  check('a first tap (+) opens the prompt, hanging up and to the left of the circle', g.view === 'prompt' && g.frame.shown &&
     Math.abs(g.frame.right - g.dock.right) <= 1 && g.frame.bottom <= g.dock.y - GAP + 0.5, g);
   check('…never over the circle, its grip or its edge, and on screen', apart(g) && onScreen(g), g);
   check('…showing the prompt', await frame.locator('#prompt').isVisible() && await frame.locator('#settings').isHidden());
   check('…and taking the keys, so a person may type at once', g.focus === 'frame', g.focus);
+  says = await circleSays(cdp0);
+  check('…the circle now showing #, its tap opening settings', says.glyph === '#' && says.label === 'the beach button’s settings', says);
   await tap(page); await settle();
   g = await parts(page);
-  check('a second tap opens settings (×)', g.view === 'settings' && await frame.locator('#settings').isVisible() && await frame.locator('#prompt').isHidden(), g.view);
+  check('a second tap (#) opens settings', g.view === 'settings' && await frame.locator('#settings').isVisible() && await frame.locator('#prompt').isHidden(), g.view);
+  says = await circleSays(cdp0);
+  check('…the circle now showing ×, its tap closing everything', says.glyph === '×' && says.label === 'close the beach button', says);
   check('…which holds you, your name, and hide', await frame.locator('#you').isVisible() && await frame.locator('#tell').isVisible() && await frame.locator('#away').isVisible());
   await tap(page); await settle();
   g = await parts(page);
-  check('a third tap closes everything (#)', g.view === 'closed' && !g.frame.shown && !g.edge.shown, g);
+  check('a third tap (×) closes everything, and the circle shows + again', g.view === 'closed' && !g.frame.shown && !g.edge.shown && (await circleSays(cdp0)).glyph === '+', g);
   await tap(page); await settle();
   await page.keyboard.press('Escape');
   await sleep(250);
@@ -472,8 +492,12 @@ async function run(partitioned) {
   check('the target line wraps rather than being cut off', head.ws !== 'nowrap' && !head.cut, head);
   await settle();
   await frame.locator('#q').fill('');
+  await frame.locator('#mic').evaluate((el) => { window.__pressed = []; new MutationObserver(() => window.__pressed.push(el.getAttribute('aria-pressed'))).observe(el, { attributes: true, attributeFilter: ['aria-pressed'] }); });
   await frame.locator('#mic').click();
   await sleep(400);
+  const mic = await frame.locator('#mic').evaluate((el) => ({ paths: [...el.querySelectorAll('svg path')].map((x) => x.getAttribute('d').slice(0, 20)), text: el.textContent.trim(), pressed: window.__pressed, on: el.classList.contains('on') }));
+  check('the microphone is the site\'s own glyph, and says when it listens and when it stops',
+    mic.paths.length === 2 && mic.paths[0] === 'M12 15a4 4 0 0 0 4-4' && mic.text === '' && mic.pressed.join() === 'true,false' && !mic.on, mic);
   const spoken = await frame.locator('#q').inputValue();
   check('a phone\'s repeated revisions land once — the words rebuilt, never appended', spoken === 'Hello world how are you. Second thing.', spoken);
   await frame.locator('#q').fill('');
@@ -564,9 +588,10 @@ async function run(partitioned) {
   console.log('\nsettings, and the one tick that tells the page something:');
   await toView(page, 'settings');
   await sleep(300);
-  check('it names the one who is held, and offers to let them go', (await frame.locator('#youname').textContent()) === 'tester' && await frame.locator('#forget').isVisible());
+  check('it names the one who is held, and offers to forget them on this tab', (await frame.locator('#youname').textContent()) === 'tester' && await frame.locator('#forget').isVisible());
   await frame.locator('#tell').click();   // untaking it is always allowed
-  check('untaking "this page may know my name" is taken at once', !(await frame.locator('#tell').isChecked()) && (await spy(page)).hello.slice(-1)[0] === null);
+  await sleep(150);                        // the page hears of it by message, a hop later
+  check('untaking "this site may know my name" is taken at once', !(await frame.locator('#tell').isChecked()) && (await spy(page)).hello.slice(-1)[0] === null);
   await page.evaluate(() => { document.querySelector('iframe[title="beach button"]').style.opacity = '0.2'; });
   await sleep(300);
   await frame.locator('#tell').click({ force: true });
@@ -580,6 +605,15 @@ async function run(partitioned) {
   check('…and the person, seeing it, can give it', await frame.locator('#tell').isChecked() && (await spy(page)).hello.slice(-1)[0] === 'tester');
   g = await parts(page);
   check('settings stands where the prompt stood, never over the circle', apart(g) && onScreen(g) && g.frame.bottom <= g.dock.y - GAP + 0.5, g);
+
+  await frame.locator('#forget').click();
+  await sleep(150);
+  check('forget me: this tab lets go of the person — no one is held, and the page is told no name',
+    (await frame.locator('#youname').textContent()) === 'no one yet' && (await frame.locator('#forget').isHidden()) && (await spy(page)).hello.slice(-1)[0] === null);
+  await page.reload();
+  await whenReady(page);
+  await toView(page, 'prompt');
+  check('…and a reload brings no one back', (await frame.locator('#who').textContent()).startsWith('the beach'), await frame.locator('#who').textContent());
 
   console.log('\nmoving it by its grip, as xstream moves its construction button:');
   await toView(page, 'closed');

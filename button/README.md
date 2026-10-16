@@ -102,20 +102,24 @@ A second button stands beside this one at `/button/next/`, tapped the way xstrea
 <script src="https://beach.happyseaurchin.com/button/next/button.js" data-place="w/community-recovery" async></script>
 ```
 
-- **Three taps on one circle**, as in xstream: `#` opens the prompt (`+`), a second tap opens settings (`×`), and a third closes everything. Escape closes it too. A tap elsewhere on the page leaves settings for the prompt.
+- **Three taps on one circle**, as in xstream, the icon naming what the tap does: `+` opens the prompt (to speak or type), `#` opens settings, and `×` closes everything. Escape closes it too. A tap elsewhere on the page leaves settings for the prompt.
 - **The circle is on the page**, beside its grip, so a tap lands at once. The frame is only the window the circle opens, and nothing a person types passes through the circle, the grip or the edge.
 - **One window:**
   - a line saying who acts, and where;
   - the reply above (vapour);
   - anything it would write *staged* beneath it (liquid), with **commit** and **not now**;
-  - the prompt at the foot, with dictation. It empties once a question is asked, which then stands in the reply.
+  - the prompt at the foot, with dictation under the site's own microphone. It empties once a question is asked, which then stands in the reply.
 
   The window hangs up and to the left of the circle and flips below it at the top of the screen. It grows with the reply up to 560px, after which the reply scrolls. Drag its left edge to widen it; the width is kept per site.
-- **Settings:** you (opens the beach's own window), this page may know my name, let go, and hide.
+- **Settings:**
+  - **you:** opens the beach's own window, to unlock, to be someone else, or to add a key;
+  - **this site may know my name:** lets the site you are on be told your handle, and nothing more;
+  - **forget me (on this tab):** the button drops your handle, passphrase and key from this tab;
+  - **hide the button:** until the page reloads.
 - **Above the keyboard:** everything is placed against the visual viewport, so when a phone's keyboard takes the bottom of the screen, the circle and its window rise above it. The test proves the arithmetic with a shortened viewport. Real phones still have to try it.
 - **The same inside, laid out anew.** It has the same guards, now also on the tick that tells a page your name: a commit is taken only after the card has stood 0.8 s, and in Chromium only while the window is truly visible. It uses the same unlock window and the same stored names, so switching between the two buttons keeps a person unlocked.
 
-`scripts/smoke-button-next.cjs` makes every attack of the classic test again on the new layout, and holds the layout to what was promised. **104 checks, run twice:** all hold.
+`scripts/smoke-button-next.cjs` makes every attack of the classic test again on the new layout, and holds the layout to what was promised. **110 checks, run twice:** all hold.
 
 ```bash
 NODE_PATH=$(npm root -g) npm run smoke:button-next

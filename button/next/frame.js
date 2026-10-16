@@ -4,7 +4,7 @@
  * construction button's panel: a line naming who acts and where; the reply above (vapour);
  * anything it would write staged beneath it (liquid), with commit and not now; and the prompt at
  * the bottom, with dictation. Settings is the second view: you (the beach's own window), this
- * page may know my name, let go, and hide. The circle that opens it, and the grip and edge that
+ * site may know my name, forget me, and hide. The circle that opens it, and the grip and edge that
  * move and widen it, are drawn by the page's part (button.js), so this frame is only ever the
  * window: the page says which view to show, and the frame says how tall that view stands.
  *
@@ -603,9 +603,9 @@
         grow();
       };
       rec.onerror = function (e) { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') $('mic').hidden = true; };
-      rec.onend = function () { rec = null; $('mic').classList.remove('on'); };
+      rec.onend = function () { rec = null; $('mic').classList.remove('on'); $('mic').setAttribute('aria-pressed', 'false'); };
       rec.start();
-      $('mic').classList.add('on');
+      $('mic').classList.add('on'); $('mic').setAttribute('aria-pressed', 'true');
     };
   }
 
@@ -620,7 +620,7 @@
   $('you').onclick = unlock;
   $('forget').onclick = function () {
     me = null; put(sessionStorage, KEEP, null); render(); hello();
-    note('Let go. Nothing of yours is held here now.');
+    note('Forgotten: this tab holds nothing of yours now.');
   };
   /* The one tick in settings that tells the page something: taken only while the window is truly
    * visible and has stood a moment, as a yes on a card is. Untaking it is always allowed. */
