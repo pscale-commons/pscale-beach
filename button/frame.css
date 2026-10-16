@@ -19,7 +19,8 @@
     --line:rgba(60,90,99,.24);
   }
 }
-html,body{margin:0;height:100%;overflow:hidden;background:transparent;color:var(--foam);font:14px/1.45 var(--body)}
+html,body{margin:0;height:100%;background:transparent;color:var(--foam);font:14px/1.45 var(--body)}
+body:not(.window){overflow:hidden}
 button{font:inherit;color:inherit;cursor:pointer}
 button:disabled{opacity:.45;cursor:default}
 [hidden]{display:none !important}
@@ -86,3 +87,18 @@ textarea{box-sizing:border-box;display:block;width:100%;resize:none;padding:8px;
 .snote{margin:0 14px 6px;font-size:12px;color:var(--warn)}
 .about{margin:6px 14px 4px;padding-top:8px;border-top:1px solid var(--line);font-size:11px;color:var(--dim)}
 .about a{color:var(--liquid)}
+
+/* the beach's own windows (unlock.html), where words are typed: the same palette, a page of
+ * their own that scrolls, and the act that answers marked as the frame's is */
+body.window{background:var(--abyss);height:auto;min-height:100%}
+body.window main{max-width:380px;margin:0 auto;padding:22px 20px}
+body.window h1{margin:0 0 6px;font:600 18px var(--mono);color:var(--liquid)}
+body.window form,body.window section{margin-top:14px}
+body.window label{display:block;margin:12px 0 0;color:var(--vapour);font-size:13px}
+body.window label small{color:var(--dim)}
+body.window input[type=text],body.window input[type=password]{box-sizing:border-box;width:100%;margin-top:4px;padding:8px;
+  border:1px solid var(--line);border-radius:8px;background:var(--deep);color:var(--foam);font:14px var(--body)}
+body.window label.tick{display:flex;align-items:center;gap:6px}
+body.window .row button:last-child{border-color:var(--liquid);color:var(--liquid)}
+body.window #msg{min-height:1.4em;color:var(--warn)}
+body.window .small{font-size:12px;color:var(--dim)}

@@ -338,6 +338,8 @@ async function run(partitioned) {
   const [popup] = await Promise.all([context.waitForEvent('page'), frame.locator('#unlock').click()]);
   await popup.waitForLoadState();
   check('the window names the site that asked', (await popup.locator('#asker').textContent()).includes(`localhost:${SITE}`));
+  const look = await popup.evaluate(() => ({ bg: getComputedStyle(document.body).backgroundColor, w: getComputedStyle(document.querySelector('main')).maxWidth, yes: getComputedStyle(document.getElementById('yes')).borderTopColor }));
+  check('…wearing the beach\'s own look, its answer marked', look.bg !== 'rgba(0, 0, 0, 0)' && look.w === '380px' && look.yes !== look.bg, look);
   await popup.locator('#h').pressSequentially('tester');
   await popup.locator('#s').pressSequentially(SECRET);
   await popup.locator('#k').fill(KEY);
