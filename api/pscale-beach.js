@@ -163,6 +163,14 @@ function touchedKey(origin) { return `${keyNs(origin)}:touched`; }
 // before this stamp existed simply has none, which is honest (bsp-mcp
 // proposals/2026-09-21-tidying-and-spam.md).
 function bornKey(origin) { return `${keyNs(origin)}:born`; }
+// And the weight the index lists beside each name (`bytes`): block name →
+// "<stored size>|<the touched stamp it was weighed under>|<the day it was
+// weighed>". A block's size changes only when it is written, and every write
+// through the door moves its touched stamp, so the index weighs a block again
+// only when its stamp has moved since — and every block once a day, which
+// catches a write that went round the door (a restore, a migration). Weighing
+// every block on every look billed the store one command per block per look.
+function sizesKey(origin) { return `${keyNs(origin)}:sizes`; }
 // The last copy the door keeps before an UNLATCHED block is wiped or replaced
 // whole — once per block per day, first destruction wins, thirty days.
 function lastKey(origin, name, day) { return `${keyNs(origin)}:last:${name}:${day}`; }
@@ -503,9 +511,7 @@ async function listBlockNames(origin) {
     for (const k of legacyKeys) names.push(k.slice(legacyPrefix.length));
     if (names.length > 0) usedPrefix = legacyPrefix;
   }
-  const sorted = Array.from(new Set(names)).sort();
-  const bytes = await blockBytes(usedPrefix, sorted);
-  return { names: sorted, bytes };
+  return { names: Array.from(new Set(names)).sort(), prefix: usedPrefix };
 }
 
 // ── The tables played here ──
@@ -547,32 +553,59 @@ async function listPlayedTables() {
   return tables.sort((a, b) => b.touched.localeCompare(a.touched));
 }
 
-// Per-block stored-JSON size via pipelined STRLEN — one extra round trip for
-// the whole surface, values never transferred. The weight beside the name is
-// what lets a reader choose an aperture (a disc probe, a spindle) BEFORE
-// paying for a read: a grown accumulator is visible as such from the index
-// instead of after a whole-block pull. Sizes are an affordance, never a gate —
-// on any error, or a client without pipeline/strlen (older rigs), the index
-// degrades to its nameless-weight shape unchanged.
-async function blockBytes(prefix, names) {
+// Per-block stored-JSON size via pipelined STRLEN, values never transferred.
+// The weight beside the name is what lets a reader choose an aperture (a disc
+// probe, a spindle) BEFORE paying for a read: a grown accumulator is visible as
+// such from the index instead of after a whole-block pull. Sizes are an
+// affordance, never a gate — on any error, or a client without pipeline/strlen
+// (older rigs), the index degrades to its nameless-weight shape unchanged.
+// Weighed only what moved: a size kept at sizesKey under the block's current
+// touched stamp, today, is listed as kept, so a look at a quiet surface costs
+// one hash read rather than one command per block.
+async function blockBytes(origin, prefix, names, touched) {
   if (names.length === 0) return null;
   try {
-    let lens;
-    if (typeof redis.pipeline === 'function') {
-      const p = redis.pipeline();
-      for (const n of names) p.strlen(`${prefix}${n}`);
-      lens = await p.exec();
-    } else if (typeof redis.strlen === 'function') {
-      lens = [];
-      for (const n of names) lens.push(await redis.strlen(`${prefix}${n}`));
-    } else {
-      return null;
+    const day = new Date().toISOString().slice(0, 10);
+    // The kept sizes are derived, never owned: unreadable (a restore can leave
+    // the key a string), they are dropped and every block weighed afresh.
+    let kept = null;
+    try { kept = await redis.hgetall(sizesKey(origin)); }
+    catch { try { await redis.del(sizesKey(origin)); } catch { /* weigh everything */ } }
+    if (!kept || typeof kept !== 'object') kept = {};
+    const size = {}, stale = [];
+    for (const n of names) {
+      const [v, at, on] = String(kept[n] ?? '').split('|');
+      if (kept[n] != null && at === String(touched[n] || '') && on === day) size[n] = Number(v);
+      else stale.push(n);
     }
+    if (stale.length) {
+      let lens;
+      if (typeof redis.pipeline === 'function') {
+        const p = redis.pipeline();
+        for (const n of stale) p.strlen(`${prefix}${n}`);
+        lens = await p.exec();
+      } else if (typeof redis.strlen === 'function') {
+        lens = [];
+        for (const n of stale) lens.push(await redis.strlen(`${prefix}${n}`));
+      } else {
+        return null;
+      }
+      const weighed = {};
+      stale.forEach((n, i) => {
+        const v = Number(lens[i]);
+        size[n] = v;
+        weighed[n] = `${Number.isFinite(v) ? v : 0}|${touched[n] || ''}|${day}`;
+      });
+      try { await redis.hset(sizesKey(origin), weighed); } catch { /* weighed again next look */ }
+    }
+    const present = new Set(names);
+    const gone = Object.keys(kept).filter((n) => !present.has(n));
+    if (gone.length) { try { await redis.hdel(sizesKey(origin), ...gone); } catch { /* never listed */ } }
     const out = {};
-    names.forEach((n, i) => {
-      const v = Number(lens[i]);
+    for (const n of names) {
+      const v = size[n];
       if (Number.isFinite(v) && v > 0) out[n] = v;
-    });
+    }
     return Object.keys(out).length > 0 ? out : null;
   } catch {
     return null;
@@ -2056,8 +2089,9 @@ export default async function handler(req, res) {
       // Derived index: list named blocks at this surface. The surface is the
       // beach; the blocks listed are what's actually here. `bytes` (when the
       // store supports STRLEN) maps each block to its stored-JSON size, so a
-      // reader picks an aperture before paying for a read.
-      const { names: blocks, bytes } = await listBlockNames(origin);
+      // reader picks an aperture before paying for a read — weighed below,
+      // once touched is read, so only what moved is weighed again.
+      const { names: blocks, prefix } = await listBlockNames(origin);
       // `touched` rides beside `bytes` as a second additive sibling — block
       // name → ISO of its last content write, so one GET answers "what
       // changed since I last looked" and a reader refetches only what moved.
@@ -2072,15 +2106,16 @@ export default async function handler(req, res) {
       // which touched alone cannot: a stray minted a minute ago and a busy old
       // block both read as lately touched. Stamped from 2026-09 on; a block born
       // before that carries none, and a reader treats absence as "before".
-      let touched = null, born = null;
+      let touched = null, born = null, stamps = null;
       const present = new Set(blocks);
       const listed = (t) => {
         if (!t || typeof t !== 'object') return null;
         const kept = Object.fromEntries(Object.entries(t).filter(([k]) => present.has(k)));
         return Object.keys(kept).length ? kept : null;
       };
-      try { touched = listed(await redis.hgetall(touchedKey(origin))); } catch { /* the index stands without it */ }
+      try { stamps = await redis.hgetall(touchedKey(origin)); touched = listed(stamps); } catch { /* the index stands without it */ }
       try { born = listed(await redis.hgetall(bornKey(origin))); } catch { /* the index stands without it */ }
+      const bytes = await blockBytes(origin, prefix, blocks, stamps && typeof stamps === 'object' ? stamps : {});
       return res.status(200).json({
         _: `URL surface at ${origin}. Named sibling blocks listed below; address each via ?block=<name>${bytes ? '; bytes maps each block to its stored size — pick an aperture before the read' : ''}${touched ? '; touched maps each block to when it last changed — fetch only what moved' : ''}${born ? '; born maps each block to when it first arrived — absent means before the stamp existed' : ''}; now is the moment this was served — ISO, its ten-digit sundial address (the year first), its voicing — the stamp every response also carries as X-Pscale-Now.${blocks.includes('lighthouse') ? ' First visit: start at ?block=lighthouse — the compass for this surface.' : ''} Substrate-wide conventions at bsp(agent_id='pscale', block='block-conventions').`,
         origin,
