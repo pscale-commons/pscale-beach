@@ -1,6 +1,6 @@
 # The beach button
 
-A floating button any page can carry, served by the beach itself, holding the mirror's corner (handle, passphrase, API key) and a line to ask the beach. **Nothing typed into it is visible to the page it floats on.** Written by weft on 14 October 2026 to answer David's question: is a beach-served button, rather than a Chrome extension, safe enough to put passphrases in? (First served from happyseaurchin.com, happyseaurchin-home #454; moved onto the beach the same night. On 16 October it took the shape of xstream's construction button, tried as "next" in #85 and #86, and the first shape was retired.)
+A floating button any page can carry, served by the beach itself, holding the mirror's corner (handle, passphrase, API key) and a line to ask the beach. **Nothing typed into it is visible to the page it floats on.** Written by weft on 14 October 2026 to answer David's question: is a beach-served button, rather than a Chrome extension, safe enough to put passphrases in? (First served from happyseaurchin.com, happyseaurchin-home #454; moved onto the beach the same night. On 16 October it took the shape of xstream's construction button, tried as "next" in #85 and #86, and the first shape was retired. The ear came the same day: what reaches a person, set from the button, and what has moved shown in it.)
 
 **The short answer is yes, with one limit no button can remove (look-alikes, below).**
 
@@ -29,10 +29,13 @@ Every beach that deploys this package serves its own button at `<its address>/bu
   It grows with the reply up to 560px, after which the reply scrolls. Drag its left edge to widen it; the width is kept per site. It is placed against what the person can see, so when a phone's keyboard takes the bottom of the screen, the circle and its window rise above it.
 - **Settings:**
   - **you:** opens the beach's own window, to unlock, to be someone else, or to add a key;
+  - **what reaches you:** opens the beach's own window, with your ear (below);
   - **this site may know my name:** lets the site you are on be told your handle, and nothing more;
   - **forget me (on this tab):** the button drops your handle, passphrase and key from this tab;
   - **hide the button:** until the page reloads. A page can also offer its own "show the button" link with `beachButton.show()`.
 - **Unlock** opens *the beach's own window*: handle, passphrase (optional: without one you read but never write), Anthropic key (optional), and "remember on this device". The passphrase is never typed into the page or into the button.
+- **What reaches you (the ear).** *What reaches you* opens the beach's own window again, showing the person's ear (`ear:<handle>`, its law at `ways:push`) watch by watch, each as the sentence it is. Unlocked, they can follow their parlour, their name voiced anywhere, or a room (only one that stands), and end a watch: it is asked twice, and its position goes whole, behind the confirm gate. A first watch founds the ear with the engine's own default (parlour and name), locked under their own words. Where they are reached, an email or a phone, lives only at the push engine, enrolled by proof. The window links to their page there, its address read from the law.
+- **News where you listen.** While a page carrying the button is open and in view, the button looks every two minutes, and whenever the prompt opens. The beach's index says when each room last moved, and only a followed room that moved is read. Voices that are not the person's own show at the top of the window, each with its room and who spoke; a tap clears one, and **seen** clears them all. What is not yet seen is kept for the person on that device, so it outlasts a reload or the next page of the site. The circle carries a small mark only on a site the person has told their name. Anywhere else, the mark's timing, set beside the beach's public rooms, could tell the page who they are.
 - **Ask the beach.** With a key held, the prompt appears (dictation, and it keeps its draft). Claude is called straight from the button with the person's own key (the model is set in `frame.js`) and reads the beach with a read-only tool. The answer appears inside the button, in plain text. Server-side refusal fallbacks are on.
 - **This page.** The page tells the button where it stands: its own address and title, believed only within its own origin, with the query and fragment dropped. "This page" in a question then means something.
 - **A card, or a line in a room, staged and committed.** Asked for one, the button *proposes*:
@@ -64,7 +67,7 @@ The button is an iframe whose page comes from the beach's own origin, never the 
 - read the frame, log keystrokes, sniff every message and wrap `fetch`;
 - fade or cover the window while asking it to write, while it stages a card, or while the person ticks "this site may know my name";
 - claim another site's address as its own;
-- open the unlock window itself, and frame it.
+- open the unlock window and the ear window itself, and frame them.
 
 A mock beach and a mock Anthropic record where every secret actually went. The test also checks:
 - a card is founded and lands only on commit, and not now writes nothing;
@@ -72,9 +75,12 @@ A mock beach and a mock Anthropic record where every secret actually went. The t
 - answers show as plain text, and a phone's repeated revisions are spoken once;
 - the circle's three taps and their icons (read through its closed shadow root), Escape, and a tap elsewhere leaving settings;
 - the window hangs above the circle and never over it; it grows with the reply and stops at its most, widens by its edge, opens below the circle at the top of the screen, and rises above a shortened (keyboard) viewport;
-- the grip moves it exactly with a mouse or a finger, and "forget me" leaves no one held, even across a reload.
+- the grip moves it exactly with a mouse or a finger, and "forget me" leaves no one held, even across a reload;
+- the ear window opens only from the button. It follows only a room that stands, founds the ear under the person's own words, and ends a watch whole behind the confirm gate, and the page hears none of it;
+- news shows inside the window and never reaches the page. The circle's mark comes only on a site told the name, and never for the person's own voice;
+- news not yet seen outlasts a reload, someone else unlocked in the same tab never sees it, and once seen it stays gone.
 
-**110 checks, run twice** (with the browser's storage partitioning on, as browsers ship it, and off): all hold. It also runs the old way for contrast: a widget drawn *inside* the page, in a closed shadow root as the Chrome extension drew its `#` button. The page logs every key typed into it.
+**135 checks, run twice** (with the browser's storage partitioning on, as browsers ship it, and off): all hold. It also runs the old way for contrast: a widget drawn *inside* the page, in a closed shadow root as the Chrome extension drew its `#` button. The page logs every key typed into it.
 
 ```bash
 NODE_PATH=$(npm root -g) npm run smoke:button     # needs playwright + chromium
@@ -90,7 +96,8 @@ NODE_PATH=$(npm root -g) npm run smoke:button     # needs playwright + chromium
 6. **A line in a room is attributed, not proven.** Rooms are open, so a line carries the person's handle but no proof. Where a word must be shown to be theirs, a card in their own latched hand is the proof, and a line can point to it.
 7. **What the model reads can try to steer it.** Blocks, and the page's own title, are given to the model as data. Even if one talks it into proposing something, nothing is written until the person reads the proposal, shown whole, and taps yes.
 8. **What can still be learned:** the page sees the button exists, which view is open, and where it is dragged. The beach sees which *site* loaded the button (not which page), its reads, and the handle on writes, as it always has. Memory is kept per site, both in the browser's per-site storage and by the button's own keying, so one site's "yes, know my name" is never read as another's. "Remember on this device" lives only in the beach window's own storage, unreachable from any page.
-9. **Browser notes:** Chrome and Safari name the asking site from `ancestorOrigins`, which a page can't forge. Firefox falls back to the referrer, or "this page". Safari may clear a frame's storage when the session ends; that only means unlocking again, one tap if remembered. A malicious browser *extension* can read everything; no page-level design can stop that.
+9. **The button's news is not the engine's.** It looks only at parlour and room watches, and only while a page carrying it is open. A name voiced anywhere, a place, a wake, and anything that must reach a closed phone belong to the push engine, which reads the same ear. Each look costs the beach one read of its index (three store commands on happyseaurchin's beach; a beach whose index measures block sizes pays more), plus one read for each followed room that moved. On a site told the name, the mark's timing can hint which public rooms the person follows; untaking the tick stops it.
+10. **Browser notes:** Chrome and Safari name the asking site from `ancestorOrigins`, which a page can't forge. Firefox falls back to the referrer, or "this page". Safari may clear a frame's storage when the session ends; that only means unlocking again, one tap if remembered. A malicious browser *extension* can read everything; no page-level design can stop that.
 
 ## Why not the Chrome extension
 
@@ -122,5 +129,6 @@ document.addEventListener('beachbutton:hello', e => { /* e.detail.handle, or nul
 | `button.js` | the host page | nothing sensitive: draws the circle, its grip and the widening edge, places the window, relays layout and requests |
 | `frame.html` · `frame.js` · `frame.css` | the iframe (the beach's origin) | the window: the handle, passphrase and key for this tab; the ask; the staged writes and their commits; settings |
 | `unlock.html` · `unlock.js` | a top-level window (the beach's origin) | where words are typed; "remember on this device" |
+| `ear.html` · `ear.js` | a top-level window (the beach's origin) | the person's ear, watch by watch; following and ending, under their own words |
 
 These are static files beside the handler. They add no endpoint and never touch the wire: the frame calls the same `/.well-known/pscale-beach` every client calls.

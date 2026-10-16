@@ -2,8 +2,9 @@
  *
  * Laid out as xstream lays out its construction button's panel: a line naming who acts and where; the reply above (vapour);
  * anything it would write staged beneath it (liquid), with commit and not now; and the prompt at
- * the bottom, with dictation. Settings is the second view: you (the beach's own window), this
- * site may know my name, forget me, and hide. The circle that opens it, and the grip and edge that
+ * the bottom, with dictation. Settings is the second view: you (the beach's own window), what
+ * reaches you (the ear, in another window of the beach's own), this site may know my name, forget
+ * me, and hide. The circle that opens it, and the grip and edge that
  * move and widen it, are drawn by the page's part (button.js), so this frame is only ever the
  * window: the page says which view to show, and the frame says how tall that view stands.
  *
@@ -110,6 +111,7 @@
     $('youname').textContent = me ? me.handle : 'no one yet';
     $('youdo').textContent = me ? 'change ›' : 'unlock ›';
     $('forget').hidden = !me;
+    $('ear').hidden = !me;
     $('tell').checked = get(localStorage, TELL) === '1';
     $('served').textContent = 'served by ' + BEACH.replace(/^https?:\/\//, '');
   }
@@ -128,6 +130,7 @@
     if (v !== 'prompt' && rec) rec.stop();      // as xstream: folding the prompt ends the listening
     render();
     if (v === 'prompt') grow();
+    if (v === 'prompt' && me && Date.now() - lookedAt > 30000) listen(false);
     report();
     // the caret goes to the prompt only when the page gave the window the keys (a tap on the
     // circle), never when a page's request opened it
@@ -147,7 +150,7 @@
   }
   try {
     var ro = new ResizeObserver(report);
-    ['prompt', 'settings', 'target', 'log', 'asks', 'askbox'].forEach(function (id) { ro.observe($(id)); });
+    ['prompt', 'settings', 'target', 'alerts', 'log', 'asks', 'askbox'].forEach(function (id) { ro.observe($(id)); });
   } catch (e) {}
 
   /* ── unlocking: always in the beach's own window ── */
@@ -167,6 +170,13 @@
 
   addEventListener('message', function (e) {
     var m = e.data || {};
+    /* the ear's window, the beach's own: it says it is ready, and only then — and only to it — the
+     * person goes over; it says when the ear changed, and the button looks again */
+    if (earWin && e.source === earWin && e.origin === location.origin && m.n === earNonce) {
+      if (m.type === 'beach:ear-ready' && me) earWin.postMessage({ type: 'beach:ear', n: earNonce, handle: me.handle, secret: me.secret }, location.origin);
+      else if (m.type === 'beach:ear-changed') listen(true);
+      return;
+    }
     if (popup && e.source === popup && e.origin === location.origin) {
       if (m.type !== 'beach:unlocked' || m.n !== nonce || !m.handle) return;
       me = { handle: String(m.handle), secret: String(m.secret || ''), key: String(m.key || '') };
@@ -177,12 +187,140 @@
         (me.secret ? ' Your words are not tried until the first write, which will say if they are wrong.' : ' No passphrase, so nothing can be written as you.') +
         (me.key ? '' : ' Add a key to ask the beach.'));
       tell({ type: 'open' });
+      listen(true);
       return;
     }
     if (framed && e.source === window.parent && m.type === 'view') return show(m.view);
     if (framed && e.source === window.parent && m.type === 'page') return setPage(m);
     if (framed && e.source === window.parent && m.type === 'request' && m.id) request(m.id, m.op || {});
   });
+
+  /* ── what reaches the person: their ear (ear:<handle>, the law at ways:push), changed in a
+   * window of the beach's own, as unlocking is, so no page can cover or read it ── */
+  var earWin = null, earNonce = '';
+  function openEar() {
+    if (!me) return;
+    earNonce = rand();
+    var u = new URL('ear.html', location.href);
+    u.searchParams.set('for', HOST);
+    u.searchParams.set('n', earNonce);
+    if (LOCAL && BEACH !== location.origin) u.searchParams.set('beach', BEACH);   // a builder's test only
+    earWin = window.open(u.href, 'beach-ear-' + earNonce, 'popup,width=440,height=680');
+    if (!earWin) { note('Your browser held the beach window back. Allow pop-ups for this button and tap again.'); tell({ type: 'open' }); }
+  }
+
+  /* ── the ear's news: what has moved, while a page is open, in the rooms the person follows ──
+   * The push engine carries what reaches them to their phone or inbox. While a page that carries
+   * the button is open, the button looks too: the beach's index says when each room last moved,
+   * and a room that moved since they last looked is read for the voices that are not their own (a
+   * voice never notifies its own author). What it finds is shown inside the window, where the page
+   * cannot read it. The circle on the page shows a mark only on a site the person has told their
+   * name: anywhere else, a mark's timing, set beside the beach's public rooms, could tell the page
+   * who they are. Parlour and room watches are looked at here; a name or a place is the engine's. */
+  var SEEN = 'beach-button:seen:' + HOST + ':';   // + handle — localStorage: { room: when last looked at }
+  var NEWS = 'beach-button:news:' + HOST + ':';   // + handle — localStorage: what was found and not yet seen
+  var EVERY = (LOCAL && +q.get('poll')) || 120;    // seconds between looks; a builder's test may look sooner
+  var ears = { handle: '', rooms: [], at: 0 }, alerts = [], alertsFor = '', lookedAt = 0, marked = -1;
+  function roomsOf(ear, h) {
+    var out = [];
+    (function walk(node, depth) {
+      if (!node || typeof node !== 'object' || depth > 2) return;
+      for (var d = 1; d <= 9; d++) {
+        var n = node[String(d)];
+        if (!n || typeof n !== 'object') continue;
+        var kind = String(n['1'] || '').trim().toLowerCase();
+        if (kind === 'parlour') out.push('pool:' + h);
+        else if (kind === 'room' && n['2']) out.push('pool:' + String(n['2']).trim().replace(/^pool:/, ''));
+        else if (!kind) walk(n, depth + 1);
+      }
+    })(ear, 0);
+    return out.filter(function (r, i) { return out.indexOf(r) === i; });
+  }
+  function entriesOf(node, out) {
+    out = out || [];
+    if (!node || typeof node !== 'object') return out;
+    if (typeof node._ === 'string' && typeof node['3'] === 'string' && !isNaN(Date.parse(node['3']))) {
+      out.push({ who: String(node['1'] || ''), text: node._.replace(/\s+/g, ' ').trim().slice(0, 160), ts: node['3'] });
+    }
+    Object.keys(node).forEach(function (k) { if (node[k] && typeof node[k] === 'object') entriesOf(node[k], out); });
+    return out;
+  }
+  function beachJSON(block) {
+    var u = new URL(BEACH + '/.well-known/pscale-beach');
+    if (block) u.searchParams.set('block', block);
+    return fetch(u.href, { cache: 'no-store', headers: { Accept: 'application/json' } }).then(function (r) {
+      if (r.status === 404) return null;
+      if (!r.ok) throw new Error('the beach answered ' + r.status);
+      return r.json();
+    });
+  }
+  function listen(fresh) {
+    if (!me) return Promise.resolve();
+    var h = me.handle;
+    lookedAt = Date.now();
+    /* what was found and not yet seen is kept per person on this device, so it outlasts a reload
+     * or the next page of the site, and someone else unlocked here never sees the last one's */
+    if (alertsFor !== h) {
+      alertsFor = h;
+      try { alerts = JSON.parse(get(localStorage, NEWS + h)) || []; } catch (e) { alerts = []; }
+      alerts = Array.isArray(alerts) ? alerts.filter(function (a) { return a && typeof a.room === 'string' && typeof a.text === 'string' && typeof a.ts === 'string'; }) : [];
+      paintAlerts();
+    }
+    var earRead = fresh || ears.handle !== h || Date.now() - ears.at > 600000
+      ? beachJSON('ear:' + h).then(function (ear) { ears = { handle: h, rooms: roomsOf(ear, h), at: Date.now() }; })
+      : Promise.resolve();
+    return earRead.then(function () {
+      if (ears.handle !== h || !ears.rooms.length) return;
+      var rooms = ears.rooms;   // this look is the person's it began for, whoever is unlocked meanwhile
+      return beachJSON('').then(function (index) {
+        if (alertsFor !== h) return;
+        var touched = (index && index.touched) || {}, seen = {};
+        try { seen = JSON.parse(get(localStorage, SEEN + h)) || {}; } catch (e) { seen = {}; }
+        var moved = rooms.filter(function (r) {
+          if (!touched[r]) return false;
+          if (!seen[r]) { seen[r] = touched[r]; return false; }   // a first look: what came before is not news
+          return Date.parse(touched[r]) > Date.parse(seen[r]);
+        });
+        return Promise.all(moved.map(function (r) {
+          var since = Date.parse(seen[r]);
+          return beachJSON(r).then(function (pool) {
+            if (alertsFor !== h) return;   // someone else was unlocked while this was read
+            entriesOf(pool).forEach(function (en) {
+              if (Date.parse(en.ts) <= since || en.who === h) return;
+              if (alerts.some(function (a) { return a.room === r && a.ts === en.ts && a.who === en.who; })) return;
+              alerts.push({ room: r, who: en.who, text: en.text, ts: en.ts });
+            });
+            seen[r] = touched[r];
+          }, function () {});
+        })).then(function () { put(localStorage, SEEN + h, JSON.stringify(seen)); });
+      });
+    }).then(paintAlerts, function () {});
+  }
+  function paintAlerts() {
+    alerts.sort(function (a, b) { return Date.parse(b.ts) - Date.parse(a.ts); });
+    alerts = alerts.slice(0, 9);
+    var list = $('alist');
+    list.textContent = '';
+    alerts.forEach(function (a) {
+      var p = document.createElement('p');
+      p.className = 'alert'; p.title = 'seen';
+      var b = document.createElement('b'); b.textContent = a.room;
+      p.append(b, ' ' + (a.who ? a.who + ': ' : '') + a.text);
+      p.onclick = function () { alerts.splice(alerts.indexOf(a), 1); paintAlerts(); };
+      list.appendChild(p);
+    });
+    $('acount').textContent = (alerts.length > 1 ? alerts.length + ' ' : '') + 'new where you listen';
+    $('alerts').hidden = !alerts.length;
+    if (alertsFor) put(localStorage, NEWS + alertsFor, alerts.length ? JSON.stringify(alerts) : null);
+    markIt();
+  }
+  /* the circle's mark, said to the page only where the person has told it their name */
+  function markIt() {
+    var n = me && get(localStorage, TELL) === '1' ? alerts.length : 0;
+    if (n === marked || (marked < 0 && n === 0)) { marked = n; return; }
+    marked = n;
+    tell({ type: 'mark', n: n });
+  }
 
   /* ── what the page may ask; the person answers here ── */
   function reply(id, result) { tell({ type: 'reply', id: id, result: result }); }
@@ -619,6 +757,7 @@
   $('you').onclick = unlock;
   $('forget').onclick = function () {
     me = null; put(sessionStorage, KEEP, null); render(); hello();
+    alerts = []; alertsFor = ''; ears = { handle: '', rooms: [], at: 0 }; paintAlerts();
     note('Forgotten: this tab holds nothing of yours now.');
   };
   /* The one tick in settings that tells the page something: taken only while the window is truly
@@ -630,8 +769,12 @@
       return;
     }
     $('snote').hidden = true;
-    put(localStorage, TELL, this.checked ? '1' : null); hello();
+    put(localStorage, TELL, this.checked ? '1' : null); hello(); markIt();
   };
+  $('ear').onclick = openEar;
+  $('aseen').onclick = function () { alerts = []; paintAlerts(); };
+  /* a look every so often while the tab is in view, as well as each time the prompt opens */
+  setInterval(function () { if (me && document.visibilityState !== 'hidden') listen(false); }, EVERY * 1000);
   $('away').onclick = function () { tell({ type: 'hide' }); };
   /* Escape closes the window from inside it, where the page cannot hear the keys — on the key's
    * release, so the release is not heard by the page either once the circle takes the keys back */
@@ -645,5 +788,5 @@
   render();
   show(framed ? 'closed' : 'prompt');
   tell({ type: 'ready' });
-  if (me) hello();
+  if (me) { hello(); listen(true); }
 })();

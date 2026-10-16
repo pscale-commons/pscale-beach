@@ -55,11 +55,12 @@
   if (place) params.set('place', place);
   // a builder's test: the frame honours these only when it is itself served from this computer,
   // so no page can point a person's passphrase at another beach
-  ['beach', 'llm'].forEach(function (k) { var v = me.getAttribute('data-' + k); if (v) params.set(k, v); });
+  ['beach', 'llm', 'poll'].forEach(function (k) { var v = me.getAttribute('data-' + k); if (v) params.set(k, v); });
 
   var frame = null, dock = null, circle = null, edge = null;
   var ready = false, queue = [], waiting = {}, n = 0;
   var view = 'closed';                 // closed · prompt · settings
+  var marked = false;                  // something new where the person listens, on a site told their name
   var tall = {};                       // each view's own height, as the frame last said it
   var shown = null;                    // the window as last placed
   var at = { r: 16, b: 16 }, wide = WIDE[1];
@@ -125,8 +126,9 @@
   function paint() {
     if (!circle) return;
     circle.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
-      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICON[view] + '</svg>';
-    circle.setAttribute('aria-label', SAY[view]);
+      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICON[view] + '</svg>' +
+      (marked ? '<span class="m" aria-hidden="true"></span>' : '');
+    circle.setAttribute('aria-label', SAY[view] + (marked ? ' — something new where you listen' : ''));
     circle.setAttribute('aria-expanded', view === 'closed' ? 'false' : 'true');
     dock.setAttribute('data-view', view);
   }
@@ -154,12 +156,14 @@
     '.c{box-sizing:border-box;flex:none;width:' + CIRCLE + 'px;height:' + CIRCLE + 'px;margin:0;padding:0;border-radius:50%;' +
     'border:1px solid rgba(196,219,223,.3);background:#0A2129;color:#33C2D2;display:flex;align-items:center;' +
     'justify-content:center;cursor:pointer;touch-action:manipulation;box-shadow:0 2px 6px rgba(0,0,0,.35);outline:none;' +
-    '-webkit-tap-highlight-color:transparent}' +
+    '-webkit-tap-highlight-color:transparent;position:relative}' +
     '.c:focus-visible{border-color:#33C2D2;box-shadow:0 0 0 2px rgba(51,194,210,.4)}' +
+    '.m{position:absolute;top:8px;right:8px;width:10px;height:10px;border-radius:50%;background:#E7B24C;box-shadow:0 0 0 2px #0A2129}' +
     '@media (prefers-color-scheme: light){.g{background:#F3EEE3;border-color:rgba(60,90,99,.24);color:#6B848D}' +
     '.g:hover,.g:focus-visible{color:#0D6B79}.g:focus-visible{border-color:#0D6B79}' +
     '.c{background:#F3EEE3;border-color:rgba(60,90,99,.24);color:#0D6B79;box-shadow:0 2px 6px rgba(0,0,0,.18)}' +
-    '.c:focus-visible{border-color:#0D6B79;box-shadow:0 0 0 2px rgba(13,107,121,.35)}}</style>';
+    '.c:focus-visible{border-color:#0D6B79;box-shadow:0 0 0 2px rgba(13,107,121,.35)}' +
+    '.m{background:#8E6210;box-shadow:0 0 0 2px #F3EEE3}}</style>';
   var DOTS = '<svg width="12" height="18" viewBox="0 0 12 18" aria-hidden="true" fill="currentColor">' +
     '<circle cx="3" cy="3" r="1.6"/><circle cx="9" cy="3" r="1.6"/><circle cx="3" cy="9" r="1.6"/>' +
     '<circle cx="9" cy="9" r="1.6"/><circle cx="3" cy="15" r="1.6"/><circle cx="9" cy="15" r="1.6"/></svg>';
@@ -271,7 +275,7 @@
     frame.allow = 'microphone';               // the prompt's dictation, nothing else
     frame.referrerPolicy = 'origin';          // the button learns which site, never which page
     frame.style.cssText = 'position:fixed;display:none;border:0;margin:0;padding:0;z-index:2147483647;background:transparent';
-    view = 'closed'; ready = false; tall = {};
+    view = 'closed'; ready = false; tall = {}; marked = false;
     (document.body || document.documentElement).appendChild(frame);
     makeDock(); makeEdge();
     paint(); fit();
@@ -304,6 +308,7 @@
     else if (m.type === 'open') setView('prompt');       // a request or a proposal waits for the person
     else if (m.type === 'close') setView('closed');      // Escape, pressed in the window
     else if (m.type === 'hide') hide();
+    else if (m.type === 'mark') { var v = typeof m.n === 'number' && m.n > 0; if (v !== marked) { marked = v; paint(); } }
     else if (m.type === 'hello') document.dispatchEvent(new CustomEvent('beachbutton:hello', { detail: { handle: m.handle || null } }));
     else if (m.type === 'reply' && waiting[m.id]) { waiting[m.id](m.result || {}); delete waiting[m.id]; }
     // anything else is from a newer or older window than this page part, and is let pass
