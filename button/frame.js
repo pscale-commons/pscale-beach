@@ -1,4 +1,11 @@
-/* frame.js — the inside of the beach button.
+/* frame.js — the window of the beach button.
+ *
+ * Laid out as xstream lays out its construction button's panel: a line naming who acts and where; the reply above (vapour);
+ * anything it would write staged beneath it (liquid), with commit and not now; and the prompt at
+ * the bottom, with dictation. Settings is the second view: you (the beach's own window), this
+ * site may know my name, forget me, and hide. The circle that opens it, and the grip and edge that
+ * move and widen it, are drawn by the page's part (button.js), so this frame is only ever the
+ * window: the page says which view to show, and the frame says how tall that view stands.
  *
  * Runs in an iframe from the button's own origin, on whatever page carries it. The page around
  * it cannot read this frame's fields, storage, keystrokes or fetches; it sees only what is said
@@ -6,14 +13,14 @@
  * were reading it — because a hostile page is.
  *
  * Held here, for this tab only: the person's handle, their passphrase (the latch on their own
- * blocks) and their Anthropic key. They arrive from the beach's own window (unlock.html), never
- * typed into this frame, so a look-alike button drawn by a page has nothing true to imitate:
- * the real one always sends a person to a window whose address bar they can read.
+ * blocks) and their Anthropic key. They arrive from the beach's own window (unlock.html),
+ * never typed into this frame, so a look-alike button drawn by a page has nothing true to
+ * imitate: the real one always sends a person to a window whose address bar they can read.
  *
  * Asked something, the button may PROPOSE two writes and never makes either by itself: a card
  * for the person's own hand, and a line in a room — someone's open parlour — signed as them.
- * Each is shown whole, with where it will land, and goes only on the person's yes, given here
- * where the page can neither see nor forge it.
+ * Each is staged whole, with where it will land, and goes only when the person commits it here,
+ * where the page can neither see nor forge the tap.
  */
 (function () {
   'use strict';
@@ -37,10 +44,16 @@
   var HOST = hostName();
   /* What the button keeps is kept per site, by name, as well as in the per-site storage today's
    * browsers give a frame — so one site's yes is never read as another's, even in a browser
-   * that does not partition (or a test harness that turns partitioning off). */
+   * that does not partition (or a test harness that turns partitioning off). The names are the
+   * ones the button has always used, so a person unlocked before it took this shape stays
+   * unlocked, and keeps their yes about their name and the question they had not yet asked. */
   var KEEP = 'beach-button:me:' + HOST;       // sessionStorage — this tab only
   var TELL = 'beach-button:tell:' + HOST;     // localStorage — this site may know my name
   var DRAFT = 'beach-button:draft:' + HOST;   // localStorage — the question not yet asked here
+  /* a mouse or a trackpad: the prompt takes the caret when it opens. A finger's screen does not,
+   * so the keyboard rises only when the person taps the prompt. */
+  var FINE = false;
+  try { FINE = matchMedia('(pointer: fine)').matches; } catch (e) {}
 
   function get(s, k) { try { return s.getItem(k); } catch (e) { return null; } }
   function put(s, k, v) { try { if (v == null) s.removeItem(k); else s.setItem(k, v); } catch (e) {} }
@@ -82,28 +95,60 @@
     var p = document.createElement('p');
     p.className = cls || 'note';
     p.textContent = text;
-    $('said').appendChild(p);
+    $('log').appendChild(p);
     $('said').scrollTop = $('said').scrollHeight;
     return p;
   }
 
   function render() {
-    $('glyph').textContent = me ? me.handle.charAt(0).toUpperCase() : '~';
-    $('who').textContent = (me ? me.handle + (me.secret ? '' : ' (reading only)') : 'the beach') + ' · on ' + HOST;
-    $('unlock').textContent = me ? 'someone else' : 'unlock';
+    var asking = !!(me && me.key);
+    $('who').textContent = (me ? 'as ' + me.handle + (me.secret ? ' ' : ' (reading only) ') : 'the beach ') + '· on ' + HOST;
+    $('unlock').hidden = asking;
+    $('unlock').textContent = me ? 'add a key' : 'unlock';
+    $('askbox').hidden = !asking;
+    $('hint').hidden = asking;
+    $('youname').textContent = me ? me.handle : 'no one yet';
+    $('youdo').textContent = me ? 'change ›' : 'unlock ›';
     $('forget').hidden = !me;
-    $('askbox').hidden = !(me && me.key);
     $('tell').checked = get(localStorage, TELL) === '1';
+    $('served').textContent = 'served by ' + BEACH.replace(/^https?:\/\//, '');
   }
 
-  function setOpen(v) {
-    $('panel').hidden = !v;
-    $('dot').hidden = v;
-    tell({ type: 'size', open: v });
+  /* ── the view is the page's to choose (the circle is on the page): closed, the prompt, or
+   * settings. The frame shows it and says how tall it stands, so the page can hang the window
+   * above the circle at exactly that height — never more than the page lets it, past which the
+   * reply scrolls and the prompt stays in reach. ── */
+  var view = 'closed', shownAt = 0, told = {};
+  function show(v) {
+    if (v !== 'prompt' && v !== 'settings') v = 'closed';
+    view = v;
+    $('prompt').hidden = v !== 'prompt';
+    $('settings').hidden = v !== 'settings';
+    if (v === 'settings') { shownAt = performance.now(); $('snote').hidden = true; }
+    if (v !== 'prompt' && rec) rec.stop();      // as xstream: folding the prompt ends the listening
+    render();
+    if (v === 'prompt') grow();
+    report();
+    // the caret goes to the prompt only when the page gave the window the keys (a tap on the
+    // circle), never when a page's request opened it
+    if (v === 'prompt' && FINE && me && me.key && document.hasFocus()) { try { $('q').focus({ preventScroll: true }); } catch (e) {} }
   }
-
-  /* ── moving it is the page's: a grip beside the button, on the page itself (button.js), carries
-   * the drag, as xstream's construction button is moved — so the circle here only opens ── */
+  /* measured to the fraction of a pixel and rounded up, so the window the page sizes to it holds
+   * the view exactly, and the two never chase each other by a pixel's rounding */
+  function tallness(el) { return el.getBoundingClientRect().height; }
+  function report() {
+    if (!framed || view === 'closed') return;
+    var el = $(view), h;
+    // the prompt's own height, with its reply measured whole rather than as it scrolls now
+    if (view === 'prompt') h = tallness(el) - tallness($('said')) + tallness($('log'));
+    else h = el.scrollHeight > el.clientHeight ? el.scrollHeight + el.offsetHeight - el.clientHeight : tallness(el);
+    h = Math.ceil(h - 0.01);
+    if (h > 0 && told[view] !== h) { told[view] = h; tell({ type: 'height', view: view, h: h }); }
+  }
+  try {
+    var ro = new ResizeObserver(report);
+    ['prompt', 'settings', 'target', 'log', 'asks', 'askbox'].forEach(function (id) { ro.observe($(id)); });
+  } catch (e) {}
 
   /* ── unlocking: always in the beach's own window ── */
   var popup = null, nonce = '';
@@ -117,7 +162,7 @@
     u.searchParams.set('for', HOST);
     u.searchParams.set('n', nonce);
     popup = window.open(u.href, 'beach-unlock-' + nonce, 'popup,width=440,height=640');
-    if (!popup) note('Your browser held the beach window back. Allow pop-ups for this button and tap unlock again.');
+    if (!popup) { note('Your browser held the beach window back. Allow pop-ups for this button and tap unlock again.'); tell({ type: 'open' }); }
   }
 
   addEventListener('message', function (e) {
@@ -131,8 +176,10 @@
       note('Holding ' + me.handle + ' for this tab on ' + HOST + '.' +
         (me.secret ? ' Your words are not tried until the first write, which will say if they are wrong.' : ' No passphrase, so nothing can be written as you.') +
         (me.key ? '' : ' Add a key to ask the beach.'));
+      tell({ type: 'open' });
       return;
     }
+    if (framed && e.source === window.parent && m.type === 'view') return show(m.view);
     if (framed && e.source === window.parent && m.type === 'page') return setPage(m);
     if (framed && e.source === window.parent && m.type === 'request' && m.id) request(m.id, m.op || {});
   });
@@ -144,7 +191,7 @@
     if (op.kind === 'who') {
       if (!me) return reply(id, { ok: false, error: 'no one has unlocked the button here' });
       if (get(localStorage, TELL) === '1') return reply(id, { ok: true, handle: me.handle });
-      return decide(HOST + ' asks your name.', null, 'Tell it', function (yes, why) {
+      return decide(HOST + ' asks your name.', null, 'tell it', function (yes, why) {
         if (yes && me) { put(localStorage, TELL, '1'); render(); hello(); }
         reply(id, yes && me ? { ok: true, handle: me.handle } : { ok: false, error: why || 'declined' });
       });
@@ -169,7 +216,7 @@
     if (op.content == null) return reply(id, { ok: false, error: 'nothing to write' });
     var shown = typeof op.content === 'string' ? op.content : JSON.stringify(op.content, null, 1);
     var where = SURFACE.replace(/^https?:\/\//, '') + ' — ' + block + (spindle ? ' at ' + spindle : '');
-    decide(HOST + ' asks to write as ' + me.handle + ', at ' + where + ':', shown, 'Write it', function (yes, why) {
+    decide(HOST + ' asks to write as ' + me.handle + ', at ' + where + ':', shown, 'commit', function (yes, why) {
       if (!yes) return reply(id, { ok: false, error: why || 'declined' });
       var body = { block: block, content: op.content, secret: me.secret };
       if (spindle) body.spindle = spindle;
@@ -177,23 +224,33 @@
         reply(id, r);
         note(r.ok ? 'Written: ' + where + '.' : 'The beach refused that write: ' + (r.error || r.status) + (r.status === 403 ? ' — unlock again if your words were wrong.' : ''));
       });
-    });
+    }, true);
   }
 
-  /* Two guards against a page that tries to click yes for the person: the answer is taken only
-   * after the card has stood a moment (no flash-then-click), and — where the browser can say so,
-   * Chromium's IntersectionObserver v2 — only while the button is truly visible: not faded,
-   * covered, filtered or transformed away by the page around it. */
-  var visible = true;
+  /* Two guards against a page that tries to tap yes for the person: the answer is taken only
+   * after the card has stood a moment (no flash-then-tap), and — where the browser can say so,
+   * Chromium's IntersectionObserver v2 — only while the window is truly visible: not faded,
+   * covered, filtered or transformed away by the page around it. Each view is watched on its
+   * own, so settings' one consequential tick is guarded the same way. */
+  var seen = { prompt: true, settings: true };
   try {
-    new IntersectionObserver(function (es) {
-      es.forEach(function (x) { visible = x.isVisible !== false; });
-    }, { trackVisibility: true, delay: 100, threshold: [1] }).observe($('panel'));
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (x) { seen[x.target.id] = x.isVisible !== false; });
+    }, { trackVisibility: true, delay: 100, threshold: [1] });
+    io.observe($('prompt')); io.observe($('settings'));
   } catch (e) {}
 
-  function decide(text, body, yesLabel, done) {
-    setOpen(true);
-    var c = document.createElement('div'); c.className = 'card';
+  /* A staged card is liquid: what will be written, and where, shown whole until the person
+   * commits it (solid) or lets it go. A page's question that writes nothing (its name) is asked
+   * the same way, without the staging. */
+  function decide(text, body, yesLabel, done, staged) {
+    tell({ type: 'open' });
+    var c = document.createElement('div'); c.className = staged ? 'card staged' : 'card';
+    if (staged) {
+      var tag = document.createElement('span'); tag.className = 'tag';
+      tag.textContent = 'staged · nothing is written until you commit';
+      c.appendChild(tag);
+    }
     var p = document.createElement('p'); p.textContent = text; c.appendChild(p);
     if (body != null) {
       var pre = document.createElement('pre');
@@ -201,8 +258,8 @@
       c.appendChild(pre);
     }
     var row = document.createElement('div'); row.className = 'row';
-    var no = document.createElement('button'); no.type = 'button'; no.textContent = 'Not now';
-    var yes = document.createElement('button'); yes.type = 'button'; yes.textContent = yesLabel;
+    var no = document.createElement('button'); no.type = 'button'; no.textContent = 'not now';
+    var yes = document.createElement('button'); yes.type = 'button'; yes.className = 'yes'; yes.textContent = yesLabel;
     yes.disabled = true;
     setTimeout(function () { yes.disabled = false; }, 800);
     row.append(no, yes); c.appendChild(row);
@@ -210,7 +267,7 @@
     function finish(v, why) { c.remove(); done(v, why); }
     no.onclick = function () { finish(false); };
     yes.onclick = function () {
-      if (!visible) {
+      if (!seen.prompt) {
         note('The page around the button was hiding it when that was tapped, so it was not taken as a yes. Nothing was written.');
         return finish(false, 'covered — the button was not fully visible when tapped');
       }
@@ -231,7 +288,7 @@
     }, function () { return { ok: false, status: 0, error: 'the beach did not answer' }; });
   }
   function yesOrNo(text, body, yesLabel) {
-    return new Promise(function (ok) { decide(text, body, yesLabel, function (yes, why) { ok({ yes: yes, why: why }); }); });
+    return new Promise(function (ok) { decide(text, body, yesLabel, function (yes, why) { ok({ yes: yes, why: why }); }, true); });
   }
 
   /* ── what the button may propose when asked; the person says yes or no here ── */
@@ -294,7 +351,7 @@
         spindle = addr = RUNG + slot; content = entry;
       }
       var where = block + ', for today' + (hand ? '' : ' — this starts your hand, locked with your passphrase');
-      return yesOrNo('Add this card to your hand (' + where + ')?', sentence + (PAGE ? '\n\nfrom ' + PAGE.href : ''), 'Add it').then(function (d) {
+      return yesOrNo('Add this card to your hand (' + where + ')?', sentence + (PAGE ? '\n\nfrom ' + PAGE.href : ''), 'commit').then(function (d) {
         if (!d.yes) return 'Not written: ' + me.handle + ' said no' + (d.why ? ' (' + d.why + ')' : '') + '.';
         return (hand ? Promise.resolve({ ok: true }) : found(block)).then(function (w) {
           return w.ok ? post({ block: block, spindle: spindle, content: content, secret: me.secret }, BEACH) : w;
@@ -322,7 +379,7 @@
     return readRoot(room, base, 9).then(function (r) {
       if (!r) return 'Not posted: no room called ' + room + ' stands on the beach.';
       var where = base.replace(/^https?:\/\//, '') + ' — ' + room + (answers ? ', answering ' + answers : '');
-      return yesOrNo('Post this in ' + where + ', as ' + me.handle + '?', text, 'Post it').then(function (d) {
+      return yesOrNo('Post this in ' + where + ', as ' + me.handle + '?', text, 'commit').then(function (d) {
         if (!d.yes) return 'Not posted: ' + me.handle + ' said no' + (d.why ? ' (' + d.why + ')' : '') + '.';
         return post({ block: room, append: true, content: { _: text, 1: me.handle, 2: answers, 3: new Date().toISOString() } }, base).then(function (w) {
           note(w.ok ? 'Posted in ' + room + (w.slot ? ' at ' + w.slot : '') + '.' : 'The beach refused the line: ' + (w.error || w.status));
@@ -477,12 +534,15 @@
     $('go').disabled = true;
     note(question, 'q');
     var waiting = note('reading the beach…', 'wait');
-    if (rec) rec.stop();
+    if (rec) { rec.onresult = null; rec.stop(); }
+    // as xstream: the question leaves the prompt once it is asked — it stands in the reply above —
+    // so the next thought has somewhere to go; it comes back if the asking fails
+    $('q').value = ''; put(localStorage, DRAFT, null); grow();
     converse(question).then(function (answer) {
       waiting.className = ''; waiting.textContent = answer;
-      $('q').value = ''; put(localStorage, DRAFT, null);
     }, function (err) {
       waiting.className = 'note'; waiting.textContent = 'Could not ask: ' + (err && err.message || err);
+      if (!$('q').value.trim()) { $('q').value = question; put(localStorage, DRAFT, question); grow(); }
     }).then(function () { $('go').disabled = false; $('said').scrollTop = $('said').scrollHeight; });
   }
 
@@ -539,31 +599,51 @@
         el.value = out + tail;
         el.selectionStart = el.selectionEnd = out.length;
         put(localStorage, DRAFT, el.value);
+        grow();
       };
       rec.onerror = function (e) { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') $('mic').hidden = true; };
-      rec.onend = function () { rec = null; $('mic').classList.remove('on'); };
+      rec.onend = function () { rec = null; $('mic').classList.remove('on'); $('mic').setAttribute('aria-pressed', 'false'); };
       rec.start();
-      $('mic').classList.add('on');
+      $('mic').classList.add('on'); $('mic').setAttribute('aria-pressed', 'true');
     };
   }
 
+  /* the prompt grows with what is written in it, to a few lines, then scrolls */
+  function grow() { var el = $('q'); el.style.height = 'auto'; if (el.scrollHeight) el.style.height = Math.min(el.scrollHeight + 2, 150) + 'px'; }
   $('q').value = get(localStorage, DRAFT) || '';
   /* a person typing while the microphone listens ends the listening, so neither writes over the other */
-  $('q').addEventListener('input', function () { if (rec) rec.stop(); put(localStorage, DRAFT, $('q').value || null); });
+  $('q').addEventListener('input', function () { if (rec) rec.stop(); put(localStorage, DRAFT, $('q').value || null); grow(); });
   $('q').addEventListener('keydown', function (e) { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); ask(); } });
   $('go').onclick = ask;
   $('unlock').onclick = unlock;
+  $('you').onclick = unlock;
   $('forget').onclick = function () {
     me = null; put(sessionStorage, KEEP, null); render(); hello();
-    note('Let go. Nothing of yours is held here now.');
+    note('Forgotten: this tab holds nothing of yours now.');
   };
-  $('tell').onchange = function () { put(localStorage, TELL, this.checked ? '1' : null); hello(); };
-  $('shut').onclick = function () { setOpen(false); };
+  /* The one tick in settings that tells the page something: taken only while the window is truly
+   * visible and has stood a moment, as a yes on a card is. Untaking it is always allowed. */
+  $('tell').onchange = function () {
+    if (this.checked && (!seen.settings || performance.now() - shownAt < 800)) {
+      this.checked = false;
+      $('snote').hidden = false;
+      return;
+    }
+    $('snote').hidden = true;
+    put(localStorage, TELL, this.checked ? '1' : null); hello();
+  };
   $('away').onclick = function () { tell({ type: 'hide' }); };
-  $('dot').addEventListener('click', function (e) { if (e.detail === 0) setOpen(true); });   // the keyboard's way in
-  $('dot').addEventListener('click', function () { setOpen(true); });
+  /* Escape closes the window from inside it, where the page cannot hear the keys — on the key's
+   * release, so the release is not heard by the page either once the circle takes the keys back */
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') e.preventDefault(); });
+  document.addEventListener('keyup', function (e) {
+    if (e.key !== 'Escape') return;
+    if (rec) rec.stop();
+    tell({ type: 'close' });
+  });
 
   render();
+  show(framed ? 'closed' : 'prompt');
   tell({ type: 'ready' });
   if (me) hello();
 })();
