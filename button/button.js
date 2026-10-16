@@ -1,28 +1,36 @@
-/* button.js — the beach button, carried by any page.
+/* button.js — the beach button, carried by any page, and tapped the way xstream's construction
+ * button is tapped.
  *
  * A page that wants the button adds one line, and may name its place on the beach:
  *
  *   <script src="https://beach.happyseaurchin.com/button/button.js" data-place="w/community-recovery" async></script>
  *
+ * The circle takes three taps, as xstream's does, its icon naming what the next tap does: + opens
+ * the prompt (to speak or type), # opens settings, × closes everything. Escape closes it too, and
+ * a tap elsewhere on the page leaves settings for the prompt. The circle, the grip that moves it
+ * and the edge that widens its window are drawn here, on the page, so a tap lands at once: a
+ * frame from another origin inherits the browser's guards (a tap on one that has just moved is
+ * dropped), and nothing a person types ever passes through these three. The window they open —
+ * the prompt, the reply and settings — is a frame from the beach's own origin. Everything a
+ * person types is typed there or in the beach's own window, and the browser keeps this page out
+ * of both (the same-origin policy).
+ *
  * This file runs INSIDE the host page, with the host's privileges, so it holds nothing worth
- * taking. It makes one iframe whose page comes from the beach that served this script, and everything a
- * person types — handle, passphrase, API key, a question — is typed there or in the beach's own
- * window, never here. The browser keeps the host out of that frame (the same-origin policy): no
- * script on this page can read its fields, its storage, its keystrokes or what it fetches.
+ * taking: where the button stands, how wide its window is, and which view is open — all things
+ * the page can see anyway. The frame tells it only how tall its view stands, when it needs the
+ * person (a request or a proposal to answer), a reply to a request, and the person's name once
+ * they have said this site may know it. The page tells the frame where it stands: its own
+ * address and title.
  *
- * What crosses between the two is only what the frame chooses to say, and it says it to anyone
- * listening: its size, a reply to a request, and the person's name once they have said this page
- * may know it. A passphrase or a key never crosses. The page tells the frame only where it stands:
- * its own address and title.
- *
- * It is MOVED BY A GRIP beside it, here on the page, as xstream's construction button is: the
- * circle only opens, and the grip carries the drag with the page's own pointer events. A frame
- * from another origin cannot follow a pointer that leaves it, and moving it under its own pointer
- * fights the browser's guard against frames slid under a finger; a grip on the page has neither
- * problem. The grip holds nothing — it moves a frame the page could always move.
+ * The window hangs up and to the left of the circle and flips below it where the top of the
+ * screen leaves no room. It stays inside what the person can see: when a phone's keyboard takes
+ * the bottom of the screen, the circle and its window rise above it.
  *
  * The host may ask the button for things (window.beachButton.request). The person decides, in
  * the frame, where the host cannot see or forge the answer.
+ *
+ * Both halves come from the beach on every load, so a change here reaches every page that
+ * carries the button, and no page ever changes.
  */
 (function () {
   'use strict';
@@ -32,9 +40,15 @@
 
   var BASE = new URL('.', me.src);
   var ORIGIN = BASE.origin;
-  var SIZES = { shut: [64, 64], open: [360, 560] };
-  var GRIP = [28, 44], GAP = 6;
-  var AT = 'beach-button:at';   // where the person last left it, on this site — not sensitive
+  var EDGE = 8;                        // kept clear of the screen's edges
+  var GAP = 10;                        // between the window and anything of ours: the frame refuses a yes
+                                       // while anything lies over it, the circle's shadow included
+  var CIRCLE = 56, GRIP = [28, 44];
+  var DOCK = [GRIP[0] + 4 + CIRCLE, CIRCLE];   // the grip, then the circle, as xstream sets them
+  var WIDE = [280, 352, 0.9];          // the window's width: least, first, most as a share of the screen (xstream's)
+  var TALL = 560;                      // the window's height at most; past it the reply scrolls
+  var HANDLE = 12;                     // the widening edge
+  var AT = 'beach-button:at', WIDTH = 'beach-button:width';   // kept on this site; not sensitive
 
   var params = new URLSearchParams();
   var place = (me.getAttribute('data-place') || '').replace(/^\/+|\/+$/g, '');
@@ -43,118 +57,231 @@
   // so no page can point a person's passphrase at another beach
   ['beach', 'llm'].forEach(function (k) { var v = me.getAttribute('data-' + k); if (v) params.set(k, v); });
 
-  var frame = null, grip = null, open = false, ready = false, queue = [], waiting = {}, n = 0;
-  var at = { r: 16, b: 16 };
-  try { var saved = JSON.parse(localStorage.getItem(AT)); if (saved && saved.r >= 0 && saved.b >= 0) at = saved; } catch (e) {}
+  var frame = null, dock = null, circle = null, edge = null;
+  var ready = false, queue = [], waiting = {}, n = 0;
+  var view = 'closed';                 // closed · prompt · settings
+  var tall = {};                       // each view's own height, as the frame last said it
+  var shown = null;                    // the window as last placed
+  var at = { r: 16, b: 16 }, wide = WIDE[1];
+  try { var a0 = JSON.parse(localStorage.getItem(AT)); if (a0 && a0.r >= 0 && a0.b >= 0) at = { r: +a0.r, b: +a0.b }; } catch (e) {}
+  try { var w0 = parseInt(localStorage.getItem(WIDTH), 10); if (w0 >= WIDE[0]) wide = w0; } catch (e) {}
 
-  function size() { return SIZES[open ? 'open' : 'shut']; }
-  function shown() { var s = size(); return [Math.min(s[0], innerWidth), Math.min(s[1], innerHeight)]; }
-  /* anchored by its bottom-right corner, so opening grows up and to the left, and never off-screen */
-  function settle(p) {
-    var s = shown();
-    return { r: Math.max(0, Math.min(p.r, innerWidth - s[0])), b: Math.max(0, Math.min(p.b, innerHeight - s[1])) };
-  }
-  function fit() {
-    if (!frame) return;
-    var s = shown(), p = settle(at);
-    frame.style.width = s[0] + 'px'; frame.style.height = s[1] + 'px';
-    frame.style.right = p.r + 'px'; frame.style.bottom = p.b + 'px';
-    placeGrip(p.r, p.b, s[0], s[1]);
-  }
-  /* The grip stands beside the frame and never touches it: the frame refuses a yes while anything
-   * lies over it, so a grip against its edge, or its shadow, would read as a page covering it. Left
-   * of the circle, or right of it at the left edge; beside the open panel's top, or above it where
-   * a phone leaves no room at its sides; hidden only where nothing fits. */
-  function placeGrip(r, b, w, h) {
-    if (!grip) return;
-    var gw = GRIP[0] + GAP, gh = GRIP[1], gr = null, gb;
-    if (!open) {
-      gb = b + 32 - gh / 2;   // level with the circle, which sits 4px in from the frame's corner
-      if (r + w + gw <= innerWidth) gr = r + w + GAP; else if (r >= gw) gr = r - gw;
-    } else {
-      gb = b + h - gh - 8;
-      if (r + w + gw <= innerWidth) gr = r + w + GAP;
-      else if (r >= gw) gr = r - gw;
-      else if (b + h + gh + GAP <= innerHeight) { gr = r + w - GRIP[0]; gb = b + h + GAP; }
+  /* What the person can see, in the coordinates fixed elements are placed in: the visual viewport,
+   * which a phone's keyboard shortens. Pinch-zoomed, the whole layout viewport, so the button does
+   * not chase every pan. */
+  function sight() {
+    var W = document.documentElement.clientWidth || innerWidth, H = innerHeight, v = window.visualViewport;
+    if (v && v.scale <= 1.01 && v.width > 0 && v.height > 0) {
+      return { x: v.offsetLeft, y: v.offsetTop, w: Math.min(v.width, W), h: Math.min(v.height, H) };
     }
-    grip.style.display = gr === null ? 'none' : 'block';
-    if (gr !== null) { grip.style.right = gr + 'px'; grip.style.bottom = gb + 'px'; }
+    return { x: 0, y: 0, w: W, h: H };
   }
-  function keep() { try { localStorage.setItem(AT, JSON.stringify(at)); } catch (e) {} }
+  /* the grip and circle, held by their bottom-right corner, never off what can be seen */
+  function settle(p, s) {
+    return { r: Math.max(EDGE, Math.min(p.r, s.w - DOCK[0] - EDGE)), b: Math.max(EDGE, Math.min(p.b, s.h - DOCK[1] - EDGE)) };
+  }
+  function widest(s) { return Math.min(Math.floor(s.w * WIDE[2]), s.w - 2 * EDGE); }
 
-  function makeGrip() {
-    grip = document.createElement('div');
-    grip.setAttribute('data-beach-button-grip', '');
-    grip.style.cssText = 'position:fixed;z-index:2147483647;display:block;width:' + GRIP[0] + 'px;height:' + GRIP[1] +
-      'px;margin:0;padding:0;border:0;background:transparent;touch-action:none;cursor:grab;user-select:none;' +
-      '-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent';
-    var root = grip.attachShadow ? grip.attachShadow({ mode: 'closed' }) : grip;
-    root.innerHTML =
-      '<style>:host{all:initial}' +
-      '.g{box-sizing:border-box;width:' + GRIP[0] + 'px;height:' + GRIP[1] + 'px;border-radius:14px;' +
-      'background:#0A2129;border:1px solid rgba(196,219,223,.3);' +
-      'color:#82A0A8;display:flex;align-items:center;justify-content:center;outline:none}' +
-      '.g:hover,.g:focus-visible{color:#33C2D2}.g:focus-visible{border-color:#33C2D2}' +
-      '@media (prefers-color-scheme: light){.g{background:#F3EEE3;border-color:rgba(60,90,99,.24);color:#6B848D}' +
-      '.g:hover,.g:focus-visible{color:#0D6B79}.g:focus-visible{border-color:#0D6B79}}</style>' +
-      '<div class="g" role="button" tabindex="0" aria-label="move the beach button — drag it, or use the arrow keys" title="drag to move">' +
-      '<svg width="12" height="18" viewBox="0 0 12 18" aria-hidden="true" fill="currentColor">' +
-      '<circle cx="3" cy="3" r="1.6"/><circle cx="9" cy="3" r="1.6"/><circle cx="3" cy="9" r="1.6"/>' +
-      '<circle cx="9" cy="9" r="1.6"/><circle cx="3" cy="15" r="1.6"/><circle cx="9" cy="15" r="1.6"/></svg></div>';
+  function fit() {
+    if (!dock) return;
+    var s = sight(), p = settle(at, s);
+    var left = s.x + s.w - p.r - DOCK[0], top = s.y + s.h - p.b - DOCK[1];
+    dock.style.left = left + 'px'; dock.style.top = top + 'px';
+    hang(s, { left: left + DOCK[0] - CIRCLE, top: top, right: left + DOCK[0], bottom: top + CIRCLE });
+  }
 
-    /* the drag, as xstream moves its construction button: where the pointer went from where it
-     * pressed, applied once a frame, clamped to the screen, and kept when it lets go */
+  /* xstream's flyout: its right edge flush with the circle's, resting above it, and below it where
+   * the top of the screen leaves no room; slid sideways to stay on screen; never over the circle
+   * or its grip; shortened, with the reply scrolling, rather than run off what can be seen. */
+  function hang(s, c) {
+    if (view === 'closed') { frame.style.display = 'none'; edge.style.display = 'none'; shown = null; return; }
+    var w = Math.min(Math.max(wide, WIDE[0]), widest(s));
+    var want = Math.min(tall[view] || 160, TALL);
+    var above = c.top - GAP - (s.y + EDGE), below = (s.y + s.h - EDGE) - (c.bottom + GAP);
+    var up = want <= above ? true : want <= below ? false : above >= below;
+    var h = Math.max(0, Math.min(want, up ? above : below));
+    var top = up ? c.top - GAP - h : c.bottom + GAP;
+    var left = Math.max(s.x + EDGE, Math.min(c.right - w, s.x + s.w - EDGE - w));
+    frame.style.display = 'block';
+    frame.style.left = left + 'px'; frame.style.top = top + 'px';
+    frame.style.width = w + 'px'; frame.style.height = h + 'px';
+    shown = { left: left, top: top, w: w, h: h };
+    // the edge that widens it stands beside its left side, never against it, and only where it
+    // fits clear of the screen's own edge (where a phone's back-swipe lives)
+    var el = left - GAP - HANDLE;
+    if (el < s.x + EDGE) { edge.style.display = 'none'; return; }
+    edge.style.display = 'block';
+    edge.style.left = el + 'px'; edge.style.top = top + 'px'; edge.style.height = h + 'px';
+  }
+
+  /* ── the circle, its icon naming what the next tap does (David, 2026-10-16): + opens the
+   * prompt, to speak or type; # opens settings; × closes everything ── */
+  var ICON = {
+    closed: '<path d="M5 12h14M12 5v14"/>',
+    prompt: '<path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/>',
+    settings: '<path d="M18 6 6 18M6 6l12 12"/>'
+  };
+  var SAY = { closed: 'open the beach button, to speak or type', prompt: 'the beach button’s settings', settings: 'close the beach button' };
+  function paint() {
+    if (!circle) return;
+    circle.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+      'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICON[view] + '</svg>';
+    circle.setAttribute('aria-label', SAY[view]);
+    circle.setAttribute('aria-expanded', view === 'closed' ? 'false' : 'true');
+    dock.setAttribute('data-view', view);
+  }
+  function setView(v, tapped) {
+    if (!frame || v === view) return;
+    var had = document.activeElement === frame;
+    view = v;
+    paint();
+    if (ready) frame.contentWindow.postMessage({ type: 'view', view: v }, ORIGIN);
+    fit();
+    // a tap that opens the prompt gives the window the keys, so a person may type at once and
+    // Escape reaches it; a page's request opens it without taking the keys from whatever the
+    // person is typing on the page; closed, the keys come back to the circle
+    if (v === 'prompt' && tapped) { try { frame.focus(); } catch (e) {} }
+    else if (v === 'closed' && had) { try { circle.focus({ preventScroll: true }); } catch (e) {} }
+  }
+  function cycle() { setView(view === 'closed' ? 'prompt' : view === 'prompt' ? 'settings' : 'closed', true); }
+
+  var STYLE = '<style>:host{all:initial}' +
+    '.d{display:flex;align-items:center;gap:4px;width:' + DOCK[0] + 'px;height:' + DOCK[1] + 'px}' +
+    '.g{box-sizing:border-box;flex:none;width:' + GRIP[0] + 'px;height:' + GRIP[1] + 'px;border-radius:14px;' +
+    'background:#0A2129;border:1px solid rgba(196,219,223,.3);color:#82A0A8;display:flex;align-items:center;' +
+    'justify-content:center;outline:none;cursor:grab;touch-action:none}' +
+    '.g:hover,.g:focus-visible{color:#33C2D2}.g:focus-visible{border-color:#33C2D2}' +
+    '.c{box-sizing:border-box;flex:none;width:' + CIRCLE + 'px;height:' + CIRCLE + 'px;margin:0;padding:0;border-radius:50%;' +
+    'border:1px solid rgba(196,219,223,.3);background:#0A2129;color:#33C2D2;display:flex;align-items:center;' +
+    'justify-content:center;cursor:pointer;touch-action:manipulation;box-shadow:0 2px 6px rgba(0,0,0,.35);outline:none;' +
+    '-webkit-tap-highlight-color:transparent}' +
+    '.c:focus-visible{border-color:#33C2D2;box-shadow:0 0 0 2px rgba(51,194,210,.4)}' +
+    '@media (prefers-color-scheme: light){.g{background:#F3EEE3;border-color:rgba(60,90,99,.24);color:#6B848D}' +
+    '.g:hover,.g:focus-visible{color:#0D6B79}.g:focus-visible{border-color:#0D6B79}' +
+    '.c{background:#F3EEE3;border-color:rgba(60,90,99,.24);color:#0D6B79;box-shadow:0 2px 6px rgba(0,0,0,.18)}' +
+    '.c:focus-visible{border-color:#0D6B79;box-shadow:0 0 0 2px rgba(13,107,121,.35)}}</style>';
+  var DOTS = '<svg width="12" height="18" viewBox="0 0 12 18" aria-hidden="true" fill="currentColor">' +
+    '<circle cx="3" cy="3" r="1.6"/><circle cx="9" cy="3" r="1.6"/><circle cx="3" cy="9" r="1.6"/>' +
+    '<circle cx="9" cy="9" r="1.6"/><circle cx="3" cy="15" r="1.6"/><circle cx="9" cy="15" r="1.6"/></svg>';
+
+  /* a part drawn on the page, in a closed shadow root: the page's styles cannot reach in, and
+   * focusing the part focuses what it holds */
+  function part(attr, css) {
+    var el = document.createElement('div');
+    el.setAttribute(attr, '');
+    el.style.cssText = 'position:fixed;z-index:2147483647;margin:0;padding:0;border:0;background:transparent;' +
+      'touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;' +
+      '-webkit-tap-highlight-color:transparent;' + css;
+    var root = el.attachShadow ? el.attachShadow({ mode: 'closed', delegatesFocus: true }) : el;
+    return { el: el, root: root };
+  }
+
+  /* a drag carried by the page's own pointer events, captured, applied once a frame and kept
+   * when it lets go — as xstream moves its construction button */
+  function dragging(handle, start, move, end) {
     var g0 = null, next = null, raf = 0;
-    function step() { raf = 0; if (next) { at = settle(next); fit(); } }
-    grip.addEventListener('pointerdown', function (e) {
+    function step() { raf = 0; if (next) move(next); }
+    handle.addEventListener('pointerdown', function (e) {
       if (e.button > 0) return;
       e.preventDefault();
-      g0 = { x: e.clientX, y: e.clientY, r: settle(at).r, b: settle(at).b, id: e.pointerId };
-      try { grip.setPointerCapture(e.pointerId); } catch (err) {}
-      grip.style.cursor = 'grabbing';
+      g0 = start(e);
+      if (!g0) return;
+      g0.id = e.pointerId;
+      try { handle.setPointerCapture(e.pointerId); } catch (err) {}
     });
-    grip.addEventListener('pointermove', function (e) {
+    handle.addEventListener('pointermove', function (e) {
       if (!g0 || e.pointerId !== g0.id) return;
-      next = { r: g0.r - (e.clientX - g0.x), b: g0.b - (e.clientY - g0.y) };
+      next = { dx: e.clientX - g0.x, dy: e.clientY - g0.y, g0: g0 };
       if (!raf) raf = requestAnimationFrame(step);
     });
     function drop(e) {
       if (!g0 || e.pointerId !== g0.id) return;
-      g0 = null; grip.style.cursor = 'grab';
       if (raf) { cancelAnimationFrame(raf); raf = 0; }
-      step(); next = null;
-      keep();
+      step(); next = null; g0 = null;
+      end();
     }
-    grip.addEventListener('pointerup', drop);
-    grip.addEventListener('pointercancel', drop);
-    grip.addEventListener('lostpointercapture', drop);
-    grip.addEventListener('keydown', function (e) {
-      var s = e.shiftKey ? 64 : 16;
-      var d = e.key === 'ArrowLeft' ? [s, 0] : e.key === 'ArrowRight' ? [-s, 0] : e.key === 'ArrowUp' ? [0, s] : e.key === 'ArrowDown' ? [0, -s] : null;
-      if (!d) return;
-      e.preventDefault();
-      at = settle({ r: settle(at).r + d[0], b: settle(at).b + d[1] });
-      fit(); keep();
-    });
-    (document.body || document.documentElement).appendChild(grip);
+    handle.addEventListener('pointerup', drop);
+    handle.addEventListener('pointercancel', drop);
+    handle.addEventListener('lostpointercapture', drop);
   }
+
+  function makeDock() {
+    var d = part('data-beach-button-dock', 'display:block;width:' + DOCK[0] + 'px;height:' + DOCK[1] + 'px');
+    dock = d.el;
+    d.root.innerHTML = STYLE + '<div class="d">' +
+      '<div class="g" role="button" tabindex="0" aria-label="move the beach button — drag it, or use the arrow keys" title="drag to move">' + DOTS + '</div>' +
+      '<button class="c" type="button"></button></div>';
+    var g = d.root.querySelector('.g');
+    circle = d.root.querySelector('.c');
+    circle.addEventListener('click', cycle);
+    dragging(g, function (e) {
+      var p = settle(at, sight());
+      g.style.cursor = 'grabbing';
+      return { x: e.clientX, y: e.clientY, r: p.r, b: p.b };
+    }, function (m) {
+      at = settle({ r: m.g0.r - m.dx, b: m.g0.b - m.dy }, sight()); fit();
+    }, function () { g.style.cursor = ''; keepAt(); });
+    // the arrow keys move it from the grip or the circle, whichever holds the keys
+    d.root.querySelector('.d').addEventListener('keydown', function (e) {
+      var s = e.shiftKey ? 64 : 16;
+      var k = e.key === 'ArrowLeft' ? [s, 0] : e.key === 'ArrowRight' ? [-s, 0] : e.key === 'ArrowUp' ? [0, s] : e.key === 'ArrowDown' ? [0, -s] : null;
+      if (!k) return;
+      e.preventDefault();
+      var v = sight(), p = settle(at, v);
+      at = settle({ r: p.r + k[0], b: p.b + k[1] }, v);
+      fit(); keepAt();
+    });
+    (document.body || document.documentElement).appendChild(dock);
+  }
+
+  /* the window's left side, which widens it as xstream's panel widens: drag left to grow */
+  function makeEdge() {
+    var d = part('data-beach-button-edge', 'display:none;width:' + HANDLE + 'px;cursor:ew-resize');
+    edge = d.el;
+    d.root.innerHTML = '<style>:host{all:initial}' +
+      '.e{box-sizing:border-box;width:' + HANDLE + 'px;height:100%;display:flex;align-items:center;justify-content:center;' +
+      'outline:none;cursor:ew-resize;touch-action:none}' +
+      '.e i{display:block;width:4px;height:40px;max-height:70%;border-radius:2px;background:rgba(196,219,223,.35)}' +
+      '.e:hover i,.e:focus-visible i{background:#33C2D2}' +
+      '@media (prefers-color-scheme: light){.e i{background:rgba(60,90,99,.35)}.e:hover i,.e:focus-visible i{background:#0D6B79}}</style>' +
+      '<div class="e" role="separator" aria-orientation="vertical" tabindex="0" ' +
+      'aria-label="widen the beach button’s window — drag it, or use the arrow keys" title="drag to widen"><i></i></div>';
+    var e0 = d.root.querySelector('.e');
+    function to(w) { wide = Math.max(WIDE[0], Math.min(w, widest(sight()))); fit(); }
+    dragging(e0, function (e) {
+      return shown ? { x: e.clientX, y: e.clientY, w: shown.w } : null;
+    }, function (m) { to(m.g0.w - m.dx); }, keepWidth);
+    e0.addEventListener('keydown', function (e) {
+      var s = e.shiftKey ? 64 : 16;
+      var k = e.key === 'ArrowLeft' ? s : e.key === 'ArrowRight' ? -s : 0;
+      if (!k || !shown) return;
+      e.preventDefault();
+      to(shown.w + k); keepWidth();
+    });
+    (document.body || document.documentElement).appendChild(edge);
+  }
+
+  function keepAt() { try { localStorage.setItem(AT, JSON.stringify(at)); } catch (e) {} }
+  function keepWidth() { try { localStorage.setItem(WIDTH, String(wide)); } catch (e) {} }
 
   function make() {
     frame = document.createElement('iframe');
     frame.src = BASE.href + 'frame.html' + (params.toString() ? '?' + params : '');
     frame.title = 'beach button';
-    frame.allow = 'microphone';               // the ask box's dictation, nothing else
+    frame.allow = 'microphone';               // the prompt's dictation, nothing else
     frame.referrerPolicy = 'origin';          // the button learns which site, never which page
-    frame.style.cssText = 'position:fixed;border:0;margin:0;padding:0;z-index:2147483647;background:transparent';
+    frame.style.cssText = 'position:fixed;display:none;border:0;margin:0;padding:0;z-index:2147483647;background:transparent';
+    view = 'closed'; ready = false; tall = {};
     (document.body || document.documentElement).appendChild(frame);
-    makeGrip();
-    fit();
+    makeDock(); makeEdge();
+    paint(); fit();
   }
 
   function hide() {
     if (!frame) return;
-    frame.remove(); frame = null; open = false; ready = false;
-    if (grip) { grip.remove(); grip = null; }
+    frame.remove(); dock.remove(); edge.remove();
+    frame = dock = circle = edge = null;
+    view = 'closed'; ready = false; queue = []; shown = null;
     Object.keys(waiting).forEach(function (id) { waiting[id]({ ok: false, error: 'the button was put away' }); delete waiting[id]; });
   }
 
@@ -166,18 +293,39 @@
   addEventListener('message', function (e) {
     if (!frame || e.source !== frame.contentWindow || e.origin !== ORIGIN) return;
     var m = e.data || {};
-    if (m.type === 'ready') { ready = true; queue.splice(0).forEach(send); where(); }
-    else if (m.type === 'size') { open = !!m.open; fit(); }
+    if (m.type === 'ready') {
+      ready = true;
+      frame.contentWindow.postMessage({ type: 'view', view: view }, ORIGIN);
+      queue.splice(0).forEach(send); where();
+    }
+    else if (m.type === 'height') {
+      if ((m.view === 'prompt' || m.view === 'settings') && typeof m.h === 'number' && m.h > 0 && m.h < 4000) { tall[m.view] = Math.ceil(m.h); fit(); }
+    }
+    else if (m.type === 'open') setView('prompt');       // a request or a proposal waits for the person
+    else if (m.type === 'close') setView('closed');      // Escape, pressed in the window
     else if (m.type === 'hide') hide();
     else if (m.type === 'hello') document.dispatchEvent(new CustomEvent('beachbutton:hello', { detail: { handle: m.handle || null } }));
     else if (m.type === 'reply' && waiting[m.id]) { waiting[m.id](m.result || {}); delete waiting[m.id]; }
+    // anything else is from a newer or older window than this page part, and is let pass
   });
   addEventListener('resize', fit);
+  if (window.visualViewport) {
+    visualViewport.addEventListener('resize', fit);
+    visualViewport.addEventListener('scroll', fit);
+  }
+  /* a tap elsewhere on the page leaves settings for the prompt, as xstream's menu does; a tap in
+   * the window never reaches this page at all */
+  document.addEventListener('pointerdown', function (e) {
+    if (view === 'settings' && e.target !== dock && e.target !== edge && e.target !== frame) setView('prompt');
+  }, true);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && view !== 'closed' && (document.activeElement === dock || document.activeElement === edge)) setView('closed');
+  });
 
   /* The page says where the button stands — its own address and title, nothing a person typed —
    * so 'this page' means something to the person asking. The frame believes it only within this
    * page's origin, drops its query and fragment, and sends it to the beach only inside a card the
-   * person says yes to. */
+   * person commits. */
   function where() { if (frame && ready) send({ type: 'page', href: location.href, title: document.title }); }
   addEventListener('hashchange', where);
   addEventListener('popstate', where);
@@ -186,7 +334,7 @@
     /* Ask the person, through the button, for something only they can give:
      *   { kind: 'who' }  — their handle, if they say this page may know it
      *   { kind: 'write', block, spindle, content }  — a write AS them, to a block named for them,
-     *                                                 at this page's place; they see it and say yes
+     *                                                 at this page's place; they see it and commit it
      * Resolves to { ok, ... }. Nothing the person types ever comes back. */
     request: function (op) {
       return new Promise(function (resolve) {

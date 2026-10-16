@@ -1,6 +1,6 @@
 # The beach button
 
-A floating button any page can carry, served by the beach itself, holding the mirror's corner (handle, passphrase, API key) and a line to ask the beach. **Nothing typed into it is visible to the page it floats on.** Written by weft on 14 October 2026 to answer David's question: is a beach-served button, rather than a Chrome extension, safe enough to put passphrases in? (First served from happyseaurchin.com, happyseaurchin-home #454; moved onto the beach the same night.)
+A floating button any page can carry, served by the beach itself, holding the mirror's corner (handle, passphrase, API key) and a line to ask the beach. **Nothing typed into it is visible to the page it floats on.** Written by weft on 14 October 2026 to answer David's question: is a beach-served button, rather than a Chrome extension, safe enough to put passphrases in? (First served from happyseaurchin.com, happyseaurchin-home #454; moved onto the beach the same night. On 16 October it took the shape of xstream's construction button, tried as "next" in #85 and #86, and the first shape was retired.)
 
 **The short answer is yes, with one limit no button can remove (look-alikes, below).**
 
@@ -18,17 +18,30 @@ Every beach that deploys this package serves its own button at `<its address>/bu
 
 ## What a person gets
 
-- **A round button**, bottom right, with a grip beside it. Drag the grip (⠿) to move it, as xstream's construction button moves; a tap on the circle only opens it. With the grip in focus the arrow keys move it too. It stays where it was left, on that site. **⌄** folds it back to the dot. **×** puts it away until the page is reloaded; a plain refresh brings it back. A page can also offer its own "show the button" link with `beachButton.show()`.
+- **One circle, three taps**, as xstream's construction button is tapped, its icon naming what the tap does: **+** opens the prompt (to speak or type), **#** opens settings, and **×** closes everything. Escape closes it too, and a tap elsewhere on the page leaves settings for the prompt.
+- **The circle is drawn on the page**, beside its grip, so a tap lands at once. Drag the grip (⠿) to move it, or use the arrow keys with the grip in focus; it stays where it was left, on that site. The beach's frame is only the window the circle opens, and nothing a person types passes through the circle, the grip or the edge.
+- **One window**, hung up and to the left of the circle (below it at the top of the screen):
+  - a line saying who acts, and where;
+  - the reply above (vapour);
+  - anything it would write *staged* beneath it (liquid), with **commit** and **not now**;
+  - the prompt at the foot, with dictation under the site's own microphone. It empties once a question is asked, which then stands in the reply.
+
+  It grows with the reply up to 560px, after which the reply scrolls. Drag its left edge to widen it; the width is kept per site. It is placed against what the person can see, so when a phone's keyboard takes the bottom of the screen, the circle and its window rise above it.
+- **Settings:**
+  - **you:** opens the beach's own window, to unlock, to be someone else, or to add a key;
+  - **this site may know my name:** lets the site you are on be told your handle, and nothing more;
+  - **forget me (on this tab):** the button drops your handle, passphrase and key from this tab;
+  - **hide the button:** until the page reloads. A page can also offer its own "show the button" link with `beachButton.show()`.
 - **Unlock** opens *the beach's own window*: handle, passphrase (optional: without one you read but never write), Anthropic key (optional), and "remember on this device". The passphrase is never typed into the page or into the button.
-- **Ask the beach.** With a key held, a question box appears (dictation, and it keeps its draft). Claude is called straight from the button with the person's own key (the model is set in `frame.js`) and reads the beach with a read-only tool. The answer appears inside the button, in plain text. Server-side refusal fallbacks are on.
+- **Ask the beach.** With a key held, the prompt appears (dictation, and it keeps its draft). Claude is called straight from the button with the person's own key (the model is set in `frame.js`) and reads the beach with a read-only tool. The answer appears inside the button, in plain text. Server-side refusal fallbacks are on.
 - **This page.** The page tells the button where it stands: its own address and title, believed only within its own origin, with the query and fragment dropped. "This page" in a question then means something.
-- **A card, or a line in a room, on a yes.** Asked for one, the button *proposes*:
+- **A card, or a line in a room, staged and committed.** Asked for one, the button *proposes*:
   - a **card** for the person's own hand (`ahead:now:<handle>`, today, as happyseaurchin.com's ＋card lands one, with the page it came from);
   - a **line** in a room (`pool:<name>`, the open parlour where a person or agent is found), signed with their handle.
 
-  Each is shown whole, with where it will land, and is sent only when the person taps yes inside the button. A line goes only into a room that already stands, so a misspelt name never founds one. A line in an agent's room rings its doorbell where its keeper has one on (`ways:doorbell`).
+  Each is staged whole, with where it will land, and is sent only when the person taps commit inside the button. A line goes only into a room that already stands, so a misspelt name never founds one. A line in an agent's room rings its doorbell where its keeper has one on (`ways:doorbell`).
 - **Dictation without echo.** A phone sends each revision of a phrase back again; the button rebuilds the spoken words from all of them every time instead of appending them (the fix written at `ways:dictation`).
-- **The page can ask; the person answers.** `beachButton.request({kind:'who'})` gets the handle only if the person says yes. `beachButton.request({kind:'write', block, spindle, content})` writes *as the person*, only to a block named for them (`…:<handle>`), at the page's place. The person sees exactly what will be written, and where, before saying yes.
+- **The page can ask; the person answers.** `beachButton.request({kind:'who'})` gets the handle only if the person says yes. `beachButton.request({kind:'write', block, spindle, content})` writes *as the person*, only to a block named for them (`…:<handle>`), at the page's place. The person sees exactly what will be written, and where, before committing it. A request opens the window without taking the keys from whatever the person is typing on the page.
 
 ## Why the page can't see in
 
@@ -36,8 +49,8 @@ The button is an iframe whose page comes from the beach's own origin, never the 
 
 | the page around the button **can** | the page **cannot** |
 |---|---|
-| see that the button is there, open or folded, and where it is dragged | read anything typed into it: fields, keystrokes, the question, the answer |
-| be told the person's handle, *if they tick "this page may know my name"* | read its storage, its fetches, or even its address |
+| see that the button is there, which view is open, and where it is dragged | read anything typed into it: fields, keystrokes, the question, the answer |
+| be told the person's handle, *if they tick "this site may know my name"* | read its storage, its fetches, or even its address |
 | ask for a write, which the person must approve inside the button | approve for them by fading or covering it (see clickjacking below) |
 | put it away (it's their page) | point it at another beach: the button talks only to the beach that serves it |
 
@@ -49,11 +62,19 @@ The button is an iframe whose page comes from the beach's own origin, never the 
 
 `scripts/smoke-button.cjs` puts the button on a hostile page in headless Chromium and attacks it. The page tries to:
 - read the frame, log keystrokes, sniff every message and wrap `fetch`;
-- fade or cover the button while asking it to write, or while it proposes a card;
+- fade or cover the window while asking it to write, while it stages a card, or while the person ticks "this site may know my name";
 - claim another site's address as its own;
 - open the unlock window itself, and frame it.
 
-A mock beach and a mock Anthropic record where every secret actually went. The test also checks that a card is founded and lands only on a yes, that a line reaches only a room that stands and carries no passphrase, that a no writes nothing, that answers show as plain text, that a phone's repeated revisions are spoken once, and that the grip moves the button exactly with a mouse or a finger and never lies over it. **69 checks, run twice** (with the browser's storage partitioning on, as browsers ship it, and off): all hold. It also runs the old way for contrast: a widget drawn *inside* the page, in a closed shadow root as the Chrome extension drew its `#` button. The page logs every key typed into it.
+A mock beach and a mock Anthropic record where every secret actually went. The test also checks:
+- a card is founded and lands only on commit, and not now writes nothing;
+- a line reaches only a room that stands, and carries no passphrase;
+- answers show as plain text, and a phone's repeated revisions are spoken once;
+- the circle's three taps and their icons (read through its closed shadow root), Escape, and a tap elsewhere leaving settings;
+- the window hangs above the circle and never over it; it grows with the reply and stops at its most, widens by its edge, opens below the circle at the top of the screen, and rises above a shortened (keyboard) viewport;
+- the grip moves it exactly with a mouse or a finger, and "forget me" leaves no one held, even across a reload.
+
+**110 checks, run twice** (with the browser's storage partitioning on, as browsers ship it, and off): all hold. It also runs the old way for contrast: a widget drawn *inside* the page, in a closed shadow root as the Chrome extension drew its `#` button. The page logs every key typed into it.
 
 ```bash
 NODE_PATH=$(npm root -g) npm run smoke:button     # needs playwright + chromium
@@ -62,18 +83,18 @@ NODE_PATH=$(npm root -g) npm run smoke:button     # needs playwright + chromium
 ## The limits, honestly
 
 1. **Look-alikes. The one real limit.** Any page can *draw* a fake button and ask for a passphrase. No browser feature tells a person which pixels are genuine. The defence is a habit the real button makes easy to keep: **it never asks for a passphrase inside a page; it always opens the beach's own window.** So: type your passphrase only where the address bar shows the beach's address. Password managers help, because they fill only on the true address. The way past habit is **passkeys** (WebAuthn): browsers bind them to the true address, so a fake can't use them. That needs a beach change (next steps).
-2. **Clickjacking is guarded, but not equally in every browser.** A yes is taken only after the card has stood 0.8 s, and in Chromium only while the button is truly visible (IntersectionObserver v2), not faded, covered or transformed. Chromium also drops clicks on a cross-origin frame that appeared or moved in the last half second, so a page can't slide the button under the pointer. Firefox and Safari get the delay, plus the person seeing exactly what will be written.
+2. **Clickjacking is guarded, but not equally in every browser.** A commit, or the tick that tells a site your name, is taken only after it has stood 0.8 s, and in Chromium only while the window is truly visible (IntersectionObserver v2), not faded, covered or transformed. Chromium also drops clicks on a cross-origin frame that appeared or moved in the last half second, so a page can't slide the window under the pointer. Firefox and Safari get the delay, plus the person seeing exactly what will be written.
 3. **The beach sees the passphrase in transit**, as it does from every client today; that is how the latch is checked. Privacy even from the beach is gray sealing with a separate vault key, which the button doesn't do yet.
 4. **The beach can't check a passphrase without writing.** Its only proof, re-latching the passport with the same words, would *claim* a passport that stands open. So the button holds the words untried, and the first real write proves them (a 403 says they were wrong). A side-effect-free `prove` act on the beach would fix this; the handler is wire-frozen, so that's David's call.
 5. **Whoever serves the button's code holds the trust.** That is why the beach serves it: the parties who could ever see a passphrase stay exactly the person and the beach, and no one new is added. An operator who deploys this package serves their own button, to their own beach.
 6. **A line in a room is attributed, not proven.** Rooms are open, so a line carries the person's handle but no proof. Where a word must be shown to be theirs, a card in their own latched hand is the proof, and a line can point to it.
 7. **What the model reads can try to steer it.** Blocks, and the page's own title, are given to the model as data. Even if one talks it into proposing something, nothing is written until the person reads the proposal, shown whole, and taps yes.
-8. **What can still be learned:** the page sees the button exists, when it opens, and where it is dragged. The beach sees which *site* loaded the button (not which page), its reads, and the handle on writes, as it always has. Memory is kept per site, both in the browser's per-site storage and by the button's own keying, so one site's "yes, know my name" is never read as another's. "Remember on this device" lives only in the beach window's own storage, unreachable from any page.
+8. **What can still be learned:** the page sees the button exists, which view is open, and where it is dragged. The beach sees which *site* loaded the button (not which page), its reads, and the handle on writes, as it always has. Memory is kept per site, both in the browser's per-site storage and by the button's own keying, so one site's "yes, know my name" is never read as another's. "Remember on this device" lives only in the beach window's own storage, unreachable from any page.
 9. **Browser notes:** Chrome and Safari name the asking site from `ancestorOrigins`, which a page can't forge. Firefox falls back to the referrer, or "this page". Safari may clear a frame's storage when the session ends; that only means unlocking again, one tap if remembered. A malicious browser *extension* can read everything; no page-level design can stop that.
 
 ## Why not the Chrome extension
 
-People rarely install extensions, and the old one drew its widget inside the page, where the test shows a page can log its keystrokes. A frame from another origin has neither problem. It arrives with the page (whoever makes the page adds one line), and the person can move it, fold it, or put it away.
+People rarely install extensions, and the old one drew its widget inside the page, where the test shows a page can log its keystrokes. A frame from another origin has neither problem. It arrives with the page (whoever makes the page adds one line), and the person can move it, close it, or put it away.
 
 ## For Matthew's pages
 
@@ -94,45 +115,12 @@ document.addEventListener('beachbutton:hello', e => { /* e.detail.handle, or nul
 - **A `prove` act on the beach**, and in time **signed writes** (the beach verifies a signature from the passport's published keys), after which not even the beach sees a passphrase.
 - **The button's prompt into a block** (`function:button`), so it is tuned on the beach, not in code.
 
-## Next — the trial (16 October 2026)
-
-A second button stands beside this one at `/button/next/`, tapped the way xstream's construction button is tapped. It is a trial. Once it has been lived with, and tried on an Android phone and an iPhone, it takes the main address and this one is deleted. A page carries it the same way, and `window.beachButton` answers the same:
-
-```html
-<script src="https://beach.happyseaurchin.com/button/next/button.js" data-place="w/community-recovery" async></script>
-```
-
-- **Three taps on one circle**, as in xstream, the icon naming what the tap does: `+` opens the prompt (to speak or type), `#` opens settings, and `×` closes everything. Escape closes it too. A tap elsewhere on the page leaves settings for the prompt.
-- **The circle is on the page**, beside its grip, so a tap lands at once. The frame is only the window the circle opens, and nothing a person types passes through the circle, the grip or the edge.
-- **One window:**
-  - a line saying who acts, and where;
-  - the reply above (vapour);
-  - anything it would write *staged* beneath it (liquid), with **commit** and **not now**;
-  - the prompt at the foot, with dictation under the site's own microphone. It empties once a question is asked, which then stands in the reply.
-
-  The window hangs up and to the left of the circle and flips below it at the top of the screen. It grows with the reply up to 560px, after which the reply scrolls. Drag its left edge to widen it; the width is kept per site.
-- **Settings:**
-  - **you:** opens the beach's own window, to unlock, to be someone else, or to add a key;
-  - **this site may know my name:** lets the site you are on be told your handle, and nothing more;
-  - **forget me (on this tab):** the button drops your handle, passphrase and key from this tab;
-  - **hide the button:** until the page reloads.
-- **Above the keyboard:** everything is placed against the visual viewport, so when a phone's keyboard takes the bottom of the screen, the circle and its window rise above it. The test proves the arithmetic with a shortened viewport. Real phones still have to try it.
-- **The same inside, laid out anew.** It has the same guards, now also on the tick that tells a page your name: a commit is taken only after the card has stood 0.8 s, and in Chromium only while the window is truly visible. It uses the same unlock window and the same stored names, so switching between the two buttons keeps a person unlocked.
-
-`scripts/smoke-button-next.cjs` makes every attack of the classic test again on the new layout, and holds the layout to what was promised. **110 checks, run twice:** all hold.
-
-```bash
-NODE_PATH=$(npm root -g) npm run smoke:button-next
-```
-
 ## Files
 
 | file | runs in | holds |
 |---|---|---|
-| `button.js` | the host page | nothing sensitive: makes the frame and its grip, places them, relays layout and requests |
-| `frame.html` · `frame.js` · `frame.css` | the iframe (the beach's origin) | the handle, passphrase and key for this tab; the ask; the approvals |
+| `button.js` | the host page | nothing sensitive: draws the circle, its grip and the widening edge, places the window, relays layout and requests |
+| `frame.html` · `frame.js` · `frame.css` | the iframe (the beach's origin) | the window: the handle, passphrase and key for this tab; the ask; the staged writes and their commits; settings |
 | `unlock.html` · `unlock.js` | a top-level window (the beach's origin) | where words are typed; "remember on this device" |
-| `next/button.js` | the host page | the trial's circle, grip and widening edge: where it stands, how wide, which view is open |
-| `next/frame.html` · `next/frame.js` · `next/frame.css` | the iframe (the beach's origin) | the trial's window: the same holdings and guards as `frame.*`, laid out as xstream's panel |
 
 These are static files beside the handler. They add no endpoint and never touch the wire: the frame calls the same `/.well-known/pscale-beach` every client calls.
