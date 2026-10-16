@@ -12,6 +12,8 @@ A floating button any page can carry, served by the beach itself, holding the mi
 
 `data-place` is optional and names the page's place on the beach (a `/w/<name>` table). That's the whole install: no extension, no build step, no account.
 
+Both halves come from the beach on every load: the small part that runs on the page (`button.js`) and the frame. So an update to the beach reaches every page that carries the button, and the page never changes. Link to the beach's copy; never copy the file onto a site.
+
 Every beach that deploys this package serves its own button at `<its address>/button/button.js`, and that button talks only to the beach that serves it.
 
 ## What a person gets
@@ -92,6 +94,33 @@ document.addEventListener('beachbutton:hello', e => { /* e.detail.handle, or nul
 - **A `prove` act on the beach**, and in time **signed writes** (the beach verifies a signature from the passport's published keys), after which not even the beach sees a passphrase.
 - **The button's prompt into a block** (`function:button`), so it is tuned on the beach, not in code.
 
+## Next — the trial (16 October 2026)
+
+A second button stands beside this one at `/button/next/`, tapped the way xstream's construction button is tapped. It is a trial. Once it has been lived with, and tried on an Android phone and an iPhone, it takes the main address and this one is deleted. A page carries it the same way, and `window.beachButton` answers the same:
+
+```html
+<script src="https://beach.happyseaurchin.com/button/next/button.js" data-place="w/community-recovery" async></script>
+```
+
+- **Three taps on one circle**, as in xstream: `#` opens the prompt (`+`), a second tap opens settings (`×`), and a third closes everything. Escape closes it too. A tap elsewhere on the page leaves settings for the prompt.
+- **The circle is on the page**, beside its grip, so a tap lands at once. The frame is only the window the circle opens, and nothing a person types passes through the circle, the grip or the edge.
+- **One window:**
+  - a line saying who acts, and where;
+  - the reply above (vapour);
+  - anything it would write *staged* beneath it (liquid), with **commit** and **not now**;
+  - the prompt at the foot, with dictation. It empties once a question is asked, which then stands in the reply.
+
+  The window hangs up and to the left of the circle and flips below it at the top of the screen. It grows with the reply up to 560px, after which the reply scrolls. Drag its left edge to widen it; the width is kept per site.
+- **Settings:** you (opens the beach's own window), this page may know my name, let go, and hide.
+- **Above the keyboard:** everything is placed against the visual viewport, so when a phone's keyboard takes the bottom of the screen, the circle and its window rise above it. The test proves the arithmetic with a shortened viewport. Real phones still have to try it.
+- **The same inside, laid out anew.** It has the same guards, now also on the tick that tells a page your name: a commit is taken only after the card has stood 0.8 s, and in Chromium only while the window is truly visible. It uses the same unlock window and the same stored names, so switching between the two buttons keeps a person unlocked.
+
+`scripts/smoke-button-next.cjs` makes every attack of the classic test again on the new layout, and holds the layout to what was promised. **104 checks, run twice:** all hold.
+
+```bash
+NODE_PATH=$(npm root -g) npm run smoke:button-next
+```
+
 ## Files
 
 | file | runs in | holds |
@@ -99,5 +128,7 @@ document.addEventListener('beachbutton:hello', e => { /* e.detail.handle, or nul
 | `button.js` | the host page | nothing sensitive: makes the frame and its grip, places them, relays layout and requests |
 | `frame.html` · `frame.js` · `frame.css` | the iframe (the beach's origin) | the handle, passphrase and key for this tab; the ask; the approvals |
 | `unlock.html` · `unlock.js` | a top-level window (the beach's origin) | where words are typed; "remember on this device" |
+| `next/button.js` | the host page | the trial's circle, grip and widening edge: where it stands, how wide, which view is open |
+| `next/frame.html` · `next/frame.js` · `next/frame.css` | the iframe (the beach's origin) | the trial's window: the same holdings and guards as `frame.*`, laid out as xstream's panel |
 
 These are static files beside the handler. They add no endpoint and never touch the wire: the frame calls the same `/.well-known/pscale-beach` every client calls.

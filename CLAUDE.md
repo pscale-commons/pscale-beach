@@ -35,7 +35,7 @@ Above the wire-frozen kernel, everything in this repo is forkable per operator:
 - `init/seed-beach.js` — the wizard. Iterations expected as friction surfaces.
 - `vercel.json`, `package.json`, deploy templates — operational evolution.
 - `README.md` onboarding flow — friction-finding work continues.
-- `button/` — the beach button: static files served beside the handler, so any page can carry `<beach>/button/button.js` and a person's handle, passphrase and key stay in a frame from the beach's own origin, out of the page's reach. It adds no endpoint and never touches the wire (it calls `/.well-known/pscale-beach` like any client). Its security case is `button/README.md`, proven by `npm run smoke:button` (headless Chromium against a hostile page; needs Playwright).
+- `button/` — the beach button: static files served beside the handler, so any page can carry `<beach>/button/button.js` and a person's handle, passphrase and key stay in a frame from the beach's own origin, out of the page's reach. It adds no endpoint and never touches the wire (it calls `/.well-known/pscale-beach` like any client). Its security case is `button/README.md`, proven by `npm run smoke:button` (headless Chromium against a hostile page; needs Playwright). `button/next/` is the trial of the next button — tapped as xstream's construction button is (# → + → ×), one window with the reply, staged writes and the prompt — proven by `npm run smoke:button-next`; when it has been tried on real phones it takes the main address and the classic one goes.
 
 ## What NOT to do
 
@@ -63,7 +63,7 @@ pscale-beach/
 │   ├── config/                  — tide + settings (every beach needs these by spec)
 │   └── templates/               — operator-presence + beach-surface scaffolds
 ├── init/seed-beach.js           — env-driven init wizard
-├── button/                      — the beach button (static; served at /button/)
+├── button/                      — the beach button (static; served at /button/; next/ is the trial)
 ├── vercel.json                  — Vercel rewrite for /.well-known/...
 ├── package.json                 — Node ESM, single dep (@upstash/redis)
 ├── .env.example                 — env-var template (clearly sectioned: handler vs init)

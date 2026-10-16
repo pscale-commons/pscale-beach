@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The window of the beach button (next), served by the beach itself. It loads nothing it did
+     not bring: its own script and style, and it talks to two places only — the beach that serves
+     it ('self'), and Anthropic with the person's own key. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' https://api.anthropic.com; img-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>beach button</title>
+<link rel="stylesheet" href="frame.css">
+</head>
+<body>
+<section id="prompt" class="win" hidden>
+  <div id="target"><span id="who">the beach</span><button id="unlock" type="button" class="link">unlock</button></div>
+  <div id="said"><div id="log" aria-live="polite"><p id="hint" class="note">Ask the beach from this page. Unlocking opens the beach’s own window: your handle, passphrase and key are typed there, never here, and this page sees none of them.</p></div></div>
+  <div id="asks"></div>
+  <div id="askbox" hidden>
+    <textarea id="q" rows="2" placeholder="ask the beach…" aria-label="ask the beach"></textarea>
+    <div class="row">
+      <button id="mic" type="button" hidden title="speak instead of typing" aria-label="dictate">●</button>
+      <button id="go" type="button" title="ask the beach (⌘↵)">ask ↑</button>
+    </div>
+  </div>
+</section>
+<section id="settings" class="win" hidden>
+  <button id="you" type="button" class="item"><span>you</span><b id="youname">no one yet</b><i id="youdo">unlock ›</i></button>
+  <label class="item"><span>this page may know my name</span><input id="tell" type="checkbox"></label>
+  <p id="snote" class="snote" hidden>That tick was not taken: the page was hiding the button, or it had only just opened. Tick it again.</p>
+  <button id="forget" type="button" class="item" hidden><span>let go</span><b>on this tab</b></button>
+  <button id="away" type="button" class="item"><span>hide the button</span><b>until this page reloads</b></button>
+  <p class="about"><span id="served">the beach</span> · <a href="https://github.com/pscale-commons/pscale-beach/blob/main/button/README.md" target="_blank" rel="noopener noreferrer">what it keeps, and why</a></p>
+</section>
+<script src="frame.js"></script>
+</body>
+</html>
