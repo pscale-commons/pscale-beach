@@ -2,7 +2,8 @@
 # beach-backup.sh — DR snapshot in PURE bash + curl + jq. Deliberately NO node: node's
 # networking (both undici fetch and node-spawned curl) hangs under launchd, while bash-spawned
 # curl is proven to work there (diagnosed 2026-07-14). Complete image: every pscale-beach-v2:*
-# key — blocks AND locks, all origins — the restorable snapshot. Read-only against Upstash.
+# key — blocks AND locks, all origins, and the hashes beside them (touched, born, sizes) — the
+# restorable snapshot. Read-only against Upstash.
 #
 #   set -a; . <clone>/.env.local; set +a
 #   OUT=/Volumes/CORSAIR/pscale/beach-backups SPLIT=/path/to/mirror ./beach-backup.sh
@@ -18,6 +19,7 @@ SPLIT="${SPLIT:-}"
 
 TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
 u() { curl -sS --max-time 25 -X POST "$KV_REST_API_URL" -H "Authorization: Bearer $KV_REST_API_TOKEN" -H "Content-Type: application/json" --data-binary "$1"; }
+pl() { curl -sS --max-time 25 -X POST "$KV_REST_API_URL/pipeline" -H "Authorization: Bearer $KV_REST_API_TOKEN" -H "Content-Type: application/json" --data-binary "$1"; }
 
 # ── SCAN every key ──
 cursor=0; : > "$TMP/keys"
@@ -42,14 +44,42 @@ for bf in "$TMP"/b.*; do
     | add' >> "$TMP/objs"
 done
 
+# ── hashes: MGET reads strings only and answers nil for a hash (touched, born, sizes), so every
+# key that came back nil is asked its TYPE in one pipelined call, and each hash is read whole with
+# HGETALL. Kept apart, under `hashes`, so a restore can put each back as the hash it is: a nil
+# kept in `data`, written back by an older restore, became the string "null" and the beach could
+# stamp nothing after it. A key of any other kind (none is written today) is named, never kept
+# as a nil. ──
+jq -rs 'add // {} | to_entries[] | select(.value == null) | .key' "$TMP/objs" > "$TMP/nils"
+: > "$TMP/hobjs"
+if [ -s "$TMP/nils" ]; then
+  split -l 100 "$TMP/nils" "$TMP/n."
+  for nf in "$TMP"/n.*; do
+    resp=$(pl "$(jq -Rnc '[inputs | ["TYPE", .]]' < "$nf")") || { echo "TYPE curl failed"; exit 1; }
+    echo "$resp" | jq -e 'type == "array" and all(.[]; .error == null)' >/dev/null 2>&1 || { echo "TYPE error: $resp"; exit 1; }
+    kinds=$(jq -Rnc --argjson r "$resp" '[[inputs], ($r | map(.result))] | transpose' < "$nf")
+    echo "$kinds" | jq -r '.[] | select(.[1] != "hash" and .[1] != "none") | "  ! \(.[0]) is a \(.[1]) the backup does not read — not in the snapshot"'
+    echo "$kinds" | jq -r '.[] | select(.[1] == "hash") | .[0]' > "$nf.h"
+    [ -s "$nf.h" ] || continue
+    resp=$(pl "$(jq -Rnc '[inputs | ["HGETALL", .]]' < "$nf.h")") || { echo "HGETALL curl failed"; exit 1; }
+    echo "$resp" | jq -e 'type == "array" and all(.[]; .error == null)' >/dev/null 2>&1 || { echo "HGETALL error: $resp"; exit 1; }
+    jq -Rnc --argjson r "$resp" '
+      [[inputs], ($r | map(.result))] | transpose
+      | map({ (.[0]): ((.[1] // []) as $a | [range(0; $a | length; 2) as $i | { ($a[$i]): $a[$i + 1] }] | add // {}) })
+      | add // {}' < "$nf.h" >> "$TMP/hobjs"
+  done
+fi
+
 # ── assemble snapshot ──
 created=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-jq -s --arg ts "$created" '
-  add as $data | {
-    meta: { created_at: $ts, key_count: ($data|keys|length),
+jq -s 'add // {}' "$TMP/hobjs" > "$TMP/hashes.json"
+jq -s --arg ts "$created" --slurpfile h "$TMP/hashes.json" '
+  (add // {} | with_entries(select(.value != null))) as $data | $h[0] as $hashes | {
+    meta: { created_at: $ts, key_count: (($data|keys|length) + ($hashes|keys|length)),
       blocks: ([$data|keys[]|select(contains(":block:"))]|length),
-      locks:  ([$data|keys[]|select(contains(":locks:"))]|length) },
-    data: $data }' "$TMP/objs" > "$TMP/snap.json"
+      locks:  ([$data|keys[]|select(contains(":locks:"))]|length),
+      hashes: ($hashes|keys|length) },
+    data: $data, hashes: $hashes }' "$TMP/objs" > "$TMP/snap.json"
 kc=$(jq '.meta.key_count' "$TMP/snap.json")
 
 # ── complete image → OUT ──
