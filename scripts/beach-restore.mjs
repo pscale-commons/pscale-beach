@@ -11,7 +11,8 @@
 //   --confirm        actually SET the snapshot values. WITHOUT it, dry-run: lists what would change.
 //
 // DESTRUCTIVE with --confirm: the current value of each restored key is overwritten by the
-// snapshot's. Restores BOTH content and locks (a complete image), so ownership comes back too.
+// snapshot's. Restores BOTH content and locks (a complete image), so ownership comes back too,
+// and the beach's stamps (touched, born, sizes) as the hashes they are.
 
 import { Redis } from '@upstash/redis';
 import { promises as fs } from 'node:fs';
@@ -55,15 +56,27 @@ const raw = await fs.readFile(IN);
 const text = IN.endsWith('.gz') ? gunzipSync(raw).toString() : raw.toString();
 const snap = JSON.parse(text);
 let keys = Object.keys(snap.data || {});
-if (ONLY) keys = keys.filter((k) => k.includes(ONLY));
+let hashKeys = Object.keys(snap.hashes || {});
+if (ONLY) { keys = keys.filter((k) => k.includes(ONLY)); hashKeys = hashKeys.filter((k) => k.includes(ONLY)); }
+// A snapshot from an older backup holds nil where each hash was (MGET reads strings only). There
+// is nothing to put back there: written, a nil would turn the hash into the string "null", and the
+// beach could stamp nothing after it. So such a key is left as it stands, and said.
+const nils = keys.filter((k) => snap.data[k] == null);
+keys = keys.filter((k) => snap.data[k] != null);
 
-console.error(`snapshot ${snap.meta?.created_at} — ${keys.length} key(s)${ONLY ? ` matching "${ONLY}"` : ''}`);
-if (!keys.length) { console.error('nothing to restore'); process.exit(0); }
+console.error(`snapshot ${snap.meta?.created_at} — ${keys.length} key(s)${hashKeys.length ? ` and ${hashKeys.length} hash(es)` : ''}${ONLY ? ` matching "${ONLY}"` : ''}`);
+if (nils.length) {
+  console.error(`  ${nils.length} key(s) the snapshot holds no value for (hashes an older backup could not read), left as they stand — the beach stamps touched and born again as blocks are written:`);
+  nils.slice(0, 5).forEach((k) => console.error('    ' + k));
+  if (nils.length > 5) console.error(`    … and ${nils.length - 5} more`);
+}
+if (!keys.length && !hashKeys.length) { console.error('nothing to restore'); process.exit(0); }
 
 if (!CONFIRM) {
+  const all = [...keys, ...hashKeys];
   console.error('DRY RUN (no --confirm) — would overwrite current values of:');
-  keys.slice(0, 25).forEach((k) => console.error('  ' + k));
-  if (keys.length > 25) console.error(`  … and ${keys.length - 25} more`);
+  all.slice(0, 25).forEach((k) => console.error('  ' + k));
+  if (all.length > 25) console.error(`  … and ${all.length - 25} more`);
   console.error('Re-run with --confirm to write.');
   process.exit(0);
 }
@@ -78,4 +91,18 @@ for (let i = 0; i < keys.length; i += 25) {
   await Promise.all(chunk.map((k) => redis.set(k, snap.data[k])));
   n += chunk.length;
 }
-console.error(`✓ restored ${n} key(s), overwritten from snapshot ${snap.meta?.created_at}`);
+// A hash goes back whole, as a hash: what stands at its key is cleared first, so no field the
+// snapshot never held survives, and every field is written as the string it was stored as (the
+// client sends a string as it is). In one transaction, so the beach never reads it half-written.
+let h = 0;
+for (let i = 0; i < hashKeys.length; i += 25) {
+  const chunk = hashKeys.slice(i, i + 25);
+  await Promise.all(chunk.map((k) => {
+    const fields = Object.fromEntries(Object.entries(snap.hashes[k] || {}).map(([f, v]) => [f, String(v)]));
+    const t = redis.multi().del(k);
+    if (Object.keys(fields).length) t.hset(k, fields);
+    return t.exec();
+  }));
+  h += chunk.length;
+}
+console.error(`✓ restored ${n} key(s)${h ? ` and ${h} hash(es)` : ''}, overwritten from snapshot ${snap.meta?.created_at}`);
