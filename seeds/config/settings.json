@@ -19,5 +19,10 @@
   },
   "5": {
     "_": "Recipe overrides at (tier, face). Walk via 5.<tier>.<face>: tier digits 1=soft, 2=medium, 3=hard; face digits 1=character, 2=author, 3=designer, 4=observer. Each leaf is the recipe JSON; absent = client uses built-in default recipe for that (tier, face) combination."
+  },
+  "9": {
+    "_": "Pages subsystem — what a page carrying the beach's voice (button/voice.js) shows the person reading it. Read only per person, from settings:<handle> at these same addresses (a shell's 5 is kept for other things): the person's own settings, sovereign to them.",
+    "1": {"_": "beach_button — set boolean true, at settings:<handle> → 9.1, for the beach button to stand on every page that carries the voice; false, or nothing, and it stays off until the person turns it on. Built-in default false."},
+    "2": {"_": "theme — light or dark, at settings:<handle> → 9.2, for the register every page that offers both opens in, on every device where the person's name is known. Built-in default: the device's own preference."}
   }
 }
