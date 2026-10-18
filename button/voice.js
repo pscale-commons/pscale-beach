@@ -31,7 +31,9 @@
  * carries this script wherever their name is known, and is kept on this device alone where no name
  * is. beachVoice.button.set(on) turns it on or off, wherever a page offers the choice. Never in a
  * frame (the page that frames it has its own) and never on a page whose body says
- * data-beach-button="off" (its own corner is taken).
+ * data-beach-button="off" (its own corner is taken). Any other page setting of the person's is read
+ * and kept the same way, beachVoice.setting('9.2') and beachVoice.set('9.2', 'light'): 9.2 is the
+ * light or the dark, which a site's own switch keeps here so it follows them too.
  *
  * The name this device signs with is the one happyseaurchin.com's pages have always kept,
  * render:who, set when a write lands under a name or the button says whose it is; a key kept is
@@ -114,21 +116,23 @@
     } catch (e) {}
     return '';
   }
-  function question(name, founding, r) {
-    if (r && r.code === 'handle_bound') return name + ' has a passport on the beach, so its words go under the key that passport uses. Enter that key (' + KEPT + '):';
-    if (r) return 'That key is not the one ' + name + '’s words are kept under. Enter it again (' + KEPT + '):';
-    if (founding) return 'This puts your words on the beach as ' + name + ', locked to you.\nEnter your key — the one your passport uses, if you have one; with no passport yet, choose one (' + KEPT + '):';
-    return name + '’s words on the beach are locked — enter your key (' + KEPT + '):';
+  function question(name, founding, r, what) {
+    var its = what || 'words';
+    if (r && r.code === 'handle_bound') return name + ' has a passport on the beach, so its ' + its + ' go under the key that passport uses. Enter that key (' + KEPT + '):';
+    if (r) return 'That key is not the one ' + name + '’s ' + its + ' are kept under. Enter it again (' + KEPT + '):';
+    if (founding) return (what === 'settings' ? 'This keeps your settings on the beach as ' + name + ', so they follow you to every device, locked to you.'
+      : 'This puts your words on the beach as ' + name + ', locked to you.') + '\nEnter your key — the one your passport uses, if you have one; with no passport yet, choose one (' + KEPT + '):';
+    return name + '’s ' + its + ' on the beach are locked — enter your key (' + KEPT + '):';
   }
   function refused(r) { return !!r && (r.code === 'lock_required' || r.code === 'handle_bound' || r.status === 403); }
   /* act(key) makes the write: with the key kept here, else the one asked for, again (twice at most)
    * while the beach refuses it; the key that lands is kept, and the name is the one this device signs with */
-  function signed(block, name, founding, act) {
+  function signed(block, name, founding, act, what) {
     var key = keyFor(block, name), asked = 0, last = null;
     function attempt() {
       if (!key) {
         if (asked++ === 2) return Promise.resolve(last);
-        var v = window.prompt(question(name, founding, last));
+        var v = window.prompt(question(name, founding, last, what));
         if (v === null || !v.trim()) return Promise.resolve({ ok: false, quiet: true });
         key = v.trim();
       }
@@ -207,7 +211,7 @@
     return signed(block, name, false, function (key) { return send('DELETE', block, { secret: key, confirm: true }); }).catch(failed);
   }
 
-  // ── the button, as the person chose ──
+  // ── the button on the page ──
   function shown() {
     return !!(window.beachButton && typeof window.beachButton.request === 'function' && document.querySelector('iframe[title="beach button"]'));
   }
@@ -222,50 +226,78 @@
     ['place', 'beach', 'llm', 'poll'].forEach(function (k) { var v = me && me.getAttribute('data-' + k); if (v) s.setAttribute('data-' + k, v); });
     (document.body || document.documentElement).appendChild(s);
   }
+
+  // ── the person's own settings: settings:<handle>, at the addresses of the beach's settings block ──
   var PAGES = 'Pages — what a page carrying the beach’s voice (button/voice.js) shows this person. ' +
-    '9.1, the beach button: true to have it stand on every such page, false to leave it off.';
+    '9.1, the beach button: true to have it stand on every such page, false to leave it off. ' +
+    '9.2, the light or the dark: light or dark, on every page that offers both.';
   function settingsIntro(name) {
     return 'SETTINGS — ' + name + '’s own settings, at the addresses of this beach’s settings block, whose ' +
       'values stand wherever these are silent, and the built-in defaults where both are. Sovereign to them, and read by any page or AI.';
   }
-  /* on or off: here, on this device, and in the person's own settings on the beach where their name
-   * is known, written as every write here is — through the button where it is on the page (turning
-   * it off, the person commits that in it, and it goes once they have answered), else under the key
-   * this device keeps or the browser's prompt (turning it on the first time founds their settings,
-   * locked to that key). Off needs no write where nothing on the beach says on. */
+  var held = null;   // their settings as this page last read them: { name, p }
+  function settings(fresh) {
+    var name = who();
+    if (!name) return Promise.resolve(null);
+    if (fresh || !held || held.name !== name) held = { name: name, p: read('settings:' + name) };
+    return held.p;
+  }
+  /* one of the person's settings at a page address ('9.2'), or undefined where none stands, or no
+   * name is known, or the beach does not answer */
+  function setting(addr) {
+    return settings().then(function (b) {
+      var v = b ? at(b, String(addr)) : undefined;
+      return v !== null && typeof v === 'object' ? undefined : v;
+    }, function () { return undefined; });
+  }
+  /* a setting kept, where their name is known, in their own settings on the beach, written as every
+   * write here is: under the key this device keeps, else through the button where it is on the page
+   * and holds them (they commit it there), else under the key they give the browser's prompt, the
+   * first time founding their settings locked to it. A device that knows no name keeps nothing here. */
+  function set(addr, value) {
+    addr = String(addr);
+    if (!/^9\.[1-9]$/.test(addr)) return Promise.resolve({ ok: false, error: 'a page setting stands at 9.1 to 9.9, not ' + addr });
+    var name = who();
+    if (!name) return Promise.resolve({ ok: true, kept: 'device' });
+    var block = 'settings:' + name;
+    return settings(true).then(function (b) {
+      if (b && at(b, addr) === value) return { ok: true, kept: 'beach' };                 // their settings say so already
+      if (b && shown() && !keyFor(block, name)) return through({ kind: 'write', block: block, spindle: addr, content: value });
+      return signed(block, name, !b, function (key) {
+        var pages = { _: PAGES }; pages[addr.slice(2)] = value;
+        if (!b) return found(block, key, { _: settingsIntro(name), 9: pages }).then(function (w) {
+          return w.code === 'confirm_required' ? post({ block: block, spindle: addr, content: value, secret: key }) : w;
+        });
+        // pages not yet among their settings arrive described; where they are, only the one line changes
+        if (b['9'] == null) return post({ block: block, spindle: '9', content: pages, secret: key });
+        return post({ block: block, spindle: addr, content: value, secret: key });
+      }, 'settings');
+    }).then(function (r) {
+      if (r && r.ok) { r.kept = r.kept || 'beach'; held = null; }
+      return r;
+    }, failed);
+  }
+
+  // ── the button, as the person chose ──
+  /* on or off, here and on this device at once, and in their settings where their name is known.
+   * Off needs no write where nothing on the beach says on, and the button goes once the person has
+   * answered, so where it holds them they commit the change in it. */
   function setButton(on) {
     on = !!on;
     put(DEVICE, on ? 'on' : 'off');
-    var name = who(), block = 'settings:' + name;
-    if (!name) { show(on); return Promise.resolve({ ok: true, kept: 'device' }); }
-    if (on) show(true);
-    var gone = function (r) { if (!on) show(false); return r; };
-    return read(block).then(function (b) {
-      var was = b ? at(b, SPOT) : undefined;
-      if (was === on) return { ok: true, kept: 'beach' };                 // their settings say so already
-      if (!on && was !== true) return { ok: true, kept: 'device' };
-      if (!on && shown()) return through({ kind: 'write', block: block, spindle: SPOT, content: false }).then(function (r) { if (r.ok) r.kept = 'beach'; return r; });
-      return signed(block, name, !b, function (key) {
-        if (!b) return found(block, key, { _: settingsIntro(name), 9: { _: PAGES, 1: on } }).then(function (w) {
-          return w.code === 'confirm_required' ? post({ block: block, spindle: SPOT, content: on, secret: key }) : w;
-        });
-        // pages not yet among their settings arrive described; where they are, only the button's line changes
-        if (b['9'] == null) return post({ block: block, spindle: '9', content: { _: PAGES, 1: on }, secret: key });
-        return post({ block: block, spindle: SPOT, content: on, secret: key });
-      }).then(function (r) { if (r && r.ok) r.kept = 'beach'; return r; });
-    }).then(gone, function (e) { return gone(failed(e)); });
+    if (!who()) { show(on); return Promise.resolve({ ok: true, kept: 'device' }); }
+    if (on) { show(true); return set(SPOT, true); }
+    return setting(SPOT).then(function (was) { return was === true ? set(SPOT, false) : { ok: true, kept: 'device' }; })
+      .then(function (r) { show(false); return r; });
   }
-  /* the person's own setting where their name is known, else this device's; never waiting long on
-   * a beach that is slow to answer, and following it once it does */
+  /* the person's own choice where their name is known and their settings say, else this device's */
   function wanted() {
-    var mine = get(DEVICE) === 'on', name = who();
-    if (!name) return Promise.resolve(mine);
-    return read('settings:' + name).then(function (b) {
-      var v = b ? at(b, SPOT) : undefined;
+    var mine = get(DEVICE) === 'on';
+    return setting(SPOT).then(function (v) {
       if (typeof v !== 'boolean') return mine;
       put(DEVICE, v ? 'on' : 'off');
       return v;
-    }, function () { return mine; });
+    });
   }
 
   var watchers = [], was = false;
@@ -292,6 +324,7 @@
     say: say, keep: keep, ask: ask, drop: drop,
     name: who,
     button: { shown: shown, set: setButton },
+    setting: setting, set: set,
     onButton: onButton,
     beach: ROOT
   };

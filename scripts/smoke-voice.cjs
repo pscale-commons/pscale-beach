@@ -152,8 +152,13 @@ const writes = (block) => log.filter((x) => x.method !== 'GET' && (!block || x.b
   const s = BLOCKS['settings:tester'];
   check('…and it is kept in their own settings at 9.1, founded under their key without asking', r.ok && r.kept === 'beach' && s && s['9'] && s['9']['1'] === true &&
     /^SETTINGS — tester/.test(s._) && LOCKS['settings:tester'] === SECRET && asked.length === 0, { r, s });
+  r = await p.evaluate(() => beachVoice.set('9.2', 'light'));
+  check('another of their settings, the light or the dark, is kept beside it at 9.2, asking nothing', r.ok && r.kept === 'beach' && BLOCKS['settings:tester']['9']['2'] === 'light' && BLOCKS['settings:tester']['9']['1'] === true && asked.length === 0, { r, s: BLOCKS['settings:tester'] });
+  r = await p.evaluate(() => beachVoice.set('3.1', 'x'));
+  check('…and nothing outside the pages is written by a page', !r.ok && /9\.1 to 9\.9/.test(r.error), r);
   const other = await device({ 'render:who': 'tester' });
   check('another device that knows the name shows the button without being asked', await until(other.p, true));
+  check('…and reads their light or dark', (await other.p.evaluate(() => beachVoice.setting('9.2'))) === 'light');
   const frame = other.p.frameLocator('iframe[title="beach button"]');
   const said = other.p.evaluate(() => beachVoice.say({ field: 'reflexive-reading', at: '1.3', text: 'Through the button.' }));
   const unlockOnCard = frame.locator('.card.waiting button', { hasText: 'unlock' });
