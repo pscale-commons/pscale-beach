@@ -26,7 +26,9 @@
  * The page may ask too, and is answered the same way: who the person is (if they say it may
  * know), a write to a block named for them, a reading in their own mirror of a family (say), that
  * whole mirror kept at once (keep), and a question put in their prompt for them to ask or not
- * (ask). Every write is staged here first; the question is sent only if they send it.
+ * (ask). Every write is staged here first; the question is sent only if they send it. A write
+ * asked for before anyone has unlocked waits on a card of its own until they do, and is then
+ * staged like any other, so a page can simply ask, whoever is or is not holding the button yet.
  */
 (function () {
   'use strict';
@@ -193,6 +195,7 @@
         (me.key ? '' : ' Add a key to ask the beach.'));
       tell({ type: 'open' });
       listen(true);
+      unhold();
       return;
     }
     if (framed && e.source === window.parent && m.type === 'view') return show(m.view);
@@ -355,12 +358,12 @@
     return block.slice(-(me.handle.length + 1)) === ':' + me.handle && !/^(sed|grain):/.test(block);
   }
   function write(id, op) {
-    if (!me || !me.secret) return reply(id, { ok: false, error: 'no passphrase is held here — the person has not unlocked the button' });
     var block = String(op.block || ''), spindle = op.spindle == null ? '' : String(op.spindle);
-    if (!mine(block)) return reply(id, { ok: false, error: 'the button writes only blocks named for the person (…:' + me.handle + ')' });
     if (spindle && !/^[0-9]+(\.[0-9]+)?$/.test(spindle)) return reply(id, { ok: false, error: 'not an address: ' + spindle });
     if (op.content == null) return reply(id, { ok: false, error: 'nothing to write' });
     var shown = typeof op.content === 'string' ? op.content : JSON.stringify(op.content, null, 1);
+    if (!me || !me.secret) return hold(id, op, HOST + ' asks to write as you, at ' + block + (spindle ? ' at ' + spindle : '') + ':', shown);
+    if (!mine(block)) return reply(id, { ok: false, error: 'the button writes only blocks named for the person (…:' + me.handle + ')' });
     var where = SURFACE.replace(/^https?:\/\//, '') + ' — ' + block + (spindle ? ' at ' + spindle : '');
     decide(HOST + ' asks to write as ' + me.handle + ', at ' + where + ':', shown, 'commit', function (yes, why) {
       if (!yes) return reply(id, { ok: false, error: why || 'declined' });
@@ -428,13 +431,13 @@
 
   /* say: one reading at one address, in the person's own mirror; saying again there replaces it */
   function say(id, op) {
-    if (!me || !me.secret) return reply(id, { ok: false, error: 'no passphrase is held here — the person has not unlocked the button' });
     var field = familyOf(op);
     if (!field) return reply(id, { ok: false, error: 'not a family name: ' + String(op.field || '') });
     var at = String(op.at == null ? '' : op.at).trim();
     if (!/^[1-9][0-9]*(\.[0-9]+)?$/.test(at)) return reply(id, { ok: false, error: 'not an address: ' + at });
     var text = String(op.text || '').trim().slice(0, 2000);
     if (!text) return reply(id, { ok: false, error: 'nothing to say' });
+    if (!me || !me.secret) return hold(id, op, HOST + ' asks to add your reading to ' + field + ', in your own mirror:', text);
     var base = op.where === 'here' ? SURFACE : BEACH, block = field + ':' + me.handle;
     if (!mine(block)) return reply(id, { ok: false, error: 'the button writes only blocks named for the person (…:' + me.handle + ')' });
     family(field, block, base).then(function (f) {
@@ -460,13 +463,13 @@
    * clock is never kept whole: its mirror grows a beat at a time, each line said where it falls,
    * and a page could show only a few of those beats. */
   function keep(id, op) {
-    if (!me || !me.secret) return reply(id, { ok: false, error: 'no passphrase is held here — the person has not unlocked the button' });
     var field = familyOf(op);
     if (!field) return reply(id, { ok: false, error: 'not a family name: ' + String(op.field || '') });
     var content = op.content, shown;
     if (!content || typeof content !== 'object' || Array.isArray(content)) return reply(id, { ok: false, error: 'nothing to keep' });
     try { shown = JSON.stringify(content, null, 1); } catch (e) { return reply(id, { ok: false, error: 'nothing to keep' }); }
     if (shown.length > 20000) return reply(id, { ok: false, error: 'too much to keep at once' });
+    if (!me || !me.secret) return hold(id, op, HOST + ' asks to keep this as your own mirror of ' + field + ':', shown);
     content = JSON.parse(shown);
     // a mirror's opening line names whose it is; a page that does not know the name writes 'a'
     if (typeof content._ === 'string' && content._.trim()) content._ = content._.replace(/^MIRROR — a /, 'MIRROR — ' + me.handle + '’s ');
@@ -557,6 +560,44 @@
       }
       finish(true);
     };
+  }
+
+  /* A request that needs the person's words (a reading, a mirror kept, a write as them) may come
+   * before anyone has unlocked the button here, as on a first visit. It is held rather than refused:
+   * the window opens on a card naming the page and what it asks, with unlock beside not now. Once
+   * they have unlocked, in the beach's own window as always, each held request is asked again and
+   * staged as any request is, so nothing is written until they commit; not now answers the page
+   * as a no. A held request never reaches the beach. */
+  var held = [];
+  function hold(id, op, text, body) {
+    tell({ type: 'open' });
+    var c = document.createElement('div'); c.className = 'card waiting';
+    var tag = document.createElement('span'); tag.className = 'tag';
+    tag.textContent = 'waiting · unlock to see where it goes, then commit it';
+    c.appendChild(tag);
+    var p = document.createElement('p'); p.textContent = text; c.appendChild(p);
+    if (body != null) {
+      var pre = document.createElement('pre');
+      pre.textContent = body.length > 2000 ? body.slice(0, 2000) + '…' : body;
+      c.appendChild(pre);
+    }
+    var row = document.createElement('div'); row.className = 'row';
+    var no = document.createElement('button'); no.type = 'button'; no.textContent = 'not now';
+    var yes = document.createElement('button'); yes.type = 'button'; yes.className = 'yes'; yes.textContent = 'unlock';
+    yes.disabled = true;
+    setTimeout(function () { yes.disabled = false; }, 800);
+    row.append(no, yes); c.appendChild(row);
+    $('asks').appendChild(c);
+    var h = { id: id, op: op, card: c };
+    held.push(h);
+    no.onclick = function () {
+      c.remove(); held.splice(held.indexOf(h), 1);
+      reply(id, { ok: false, error: 'declined' });
+    };
+    yes.onclick = unlock;
+  }
+  function unhold() {
+    held.splice(0).forEach(function (h) { h.card.remove(); request(h.id, h.op); });
   }
 
   /* a write to the page's place (base omitted) or to the beach's own root (base = BEACH) */

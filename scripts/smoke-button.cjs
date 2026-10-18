@@ -174,7 +174,7 @@ function beach(req, res) {
       if (body.confirm !== true) { res.writeHead(400); return res.end(JSON.stringify({ error: 'whole-block replace requires {confirm: true}', code: 'confirm_required' })); }
       EARS[body.block] = body.content; res.writeHead(200); return res.end(JSON.stringify({ ok: true }));
     }
-    if (req.method === 'POST' && /^(reflexive-reading|place-in-the-wave|clock):tester$/.test(body.block)) {
+    if (req.method === 'POST' && /^(reflexive-reading|place-in-the-wave|clock):(tester|reader)$/.test(body.block)) {
       // a mirror: founded once under the person's own words (the passport's, which the beach ties to
       // the name: any other is handle_bound); then a reading at an address, or the whole mirror
       // replaced behind the confirm gate, both under those words
@@ -712,6 +712,63 @@ async function run(partitioned) {
   s = await spy(page);
   check('the page is told only that it waits, never what the person had written', leaks(s, ['a thought of my own', SECRET, KEY]).length === 0, leaks(s, ['a thought of my own']));
   await frame.locator('#q').fill('');
+
+  console.log('\na reading asked for before anyone has unlocked waits for them:');
+  // a second tab holds no one: the button keeps the person for one tab only
+  const pageW = await context.newPage();
+  pageW.on('pageerror', (e) => errors.push(e.message));
+  await pageW.goto(HOST_URL('localhost'));
+  const frameW = pageW.frameLocator('iframe[title="beach button"]');
+  await whenReady(pageW);
+  const EARLY = 'The ZX Spectrum, Christmas 1982.';
+  const h0 = posts();
+  const waiting = frameW.locator('.card.waiting');
+  const unlockOnCard = waiting.locator('button', { hasText: 'unlock' });
+  pending = pageW.evaluate((t) => window.beachButton.request({ kind: 'say', field: 'reflexive-reading', at: '1.13', text: t }), EARLY);
+  await armed(unlockOnCard);
+  g = await parts(pageW);
+  check('asked for a reading with no one unlocked, the button opens on a card that waits, naming the page, the family and the words',
+    g.view === 'prompt' && (await waiting.locator('p').textContent()) === `localhost:${SITE} asks to add your reading to reflexive-reading, in your own mirror:` &&
+    (await waiting.locator('pre').textContent()) === EARLY, { view: g.view, p: await waiting.locator('p').textContent() });
+  check('…without taking the keys from the page', g.focus !== 'frame', g.focus);
+  check('…and nothing reaches the beach while it waits', posts() === h0);
+  await waiting.locator('button', { hasText: 'not now' }).click();
+  got = await within(pending, 5000, 'a held reading declined');
+  check('not now answers the page with a no, and the card goes', !got.ok && got.error === 'declined' && await waiting.count() === 0, got);
+  pending = pageW.evaluate((t) => window.beachButton.request({ kind: 'say', field: 'reflexive-reading', at: '1.13', text: t }), EARLY);
+  const heldKeep = pageW.evaluate((w) => window.beachButton.request({ kind: 'keep', field: 'place-in-the-wave', content: w }), WAVE);
+  await waiting.nth(1).waitFor();
+  await armed(unlockOnCard.first());
+  check('two requests wait on two cards, and still nothing is written', await waiting.count() === 2 && posts() === h0);
+  const [popupW] = await Promise.all([context.waitForEvent('page'), unlockOnCard.first().click()]);
+  await popupW.waitForLoadState();
+  check('unlock on the card opens the beach\'s own window, as unlocking always does', (await popupW.locator('#asker').textContent()).includes(`localhost:${SITE}`));
+  // the window remembers the tester the main tab unlocked (remember on this device): someone else
+  if (await popupW.locator('#known').isVisible()) await popupW.locator('#other').click();
+  await popupW.locator('#h').fill('reader');
+  await popupW.locator('#s').fill(SECRET);
+  await clickThatCloses(popupW, '#yes');
+  const stagedW = (what) => frameW.locator('.card.staged', { hasText: what });
+  const commitFor = (what) => stagedW(what).locator('button', { hasText: 'commit' });
+  await commitFor('reflexive-reading:reader at 1.13').waitFor();
+  await commitFor('place-in-the-wave:reader').waitFor();
+  check('once they have unlocked, each held request is staged as any request is, where it will land now named',
+    await waiting.count() === 0 && await frameW.locator('.card.staged').count() === 2 &&
+    (await stagedW('reflexive-reading:reader').locator('p').textContent()).includes('reflexive-reading:reader at 1.13 (this founds your mirror') && posts() === h0,
+    await frameW.locator('.card.staged p').allTextContents());
+  await armed(commitFor('reflexive-reading:reader'));
+  await commitFor('reflexive-reading:reader').click();
+  got = await within(pending, 5000, 'a held reading committed');
+  const early = mirrorPosts('reflexive-reading:reader').find((x) => x.body.spindle === '1.13');
+  check('…and a reading committed lands in the mirror of whoever unlocked, under their words',
+    got.ok && got.founded === true && got.handle === 'reader' && !!early && early.body.content === EARLY && early.body.secret === SECRET, { got, early: early && early.body });
+  await armed(commitFor('place-in-the-wave:reader'));
+  await commitFor('place-in-the-wave:reader').click();
+  got = await within(heldKeep, 5000, 'a held keep committed');
+  check('…as does the mirror kept whole', got.ok && got.founded === true && got.block === 'place-in-the-wave:reader', got);
+  s = await spy(pageW);
+  check('the page waiting was never told the passphrase', leaks(s, [SECRET]).length === 0, leaks(s, [SECRET]));
+  await pageW.close();
 
   console.log('\none site\'s button is not another\'s:');
   await settle();
