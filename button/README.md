@@ -1,6 +1,6 @@
 # The beach button
 
-A floating button any page can carry, served by the beach itself, holding the mirror's corner (handle, passphrase, API key) and a line to ask the beach. **Nothing typed into it is visible to the page it floats on.** Written by weft on 14 October 2026 to answer David's question: is a beach-served button, rather than a Chrome extension, safe enough to put passphrases in? (First served from happyseaurchin.com, happyseaurchin-home #454; moved onto the beach the same night. On 16 October it took the shape of xstream's construction button, tried as "next" in #85 and #86, and the first shape was retired. The ear came the same day: what reaches a person, set from the button, and what has moved shown in it. On 18 October it learned to keep a reader's own words for a page: a reading, a whole mirror, a question for their prompt; later that day, to hold such a request until the reader has unlocked it, so a page can simply ask.)
+A floating button any page can carry, served by the beach itself, holding the mirror's corner (handle, passphrase, API key) and a line to ask the beach. **Nothing typed into it is visible to the page it floats on.** Written by weft on 14 October 2026 to answer David's question: is a beach-served button, rather than a Chrome extension, safe enough to put passphrases in? (First served from happyseaurchin.com, happyseaurchin-home #454; moved onto the beach the same night. On 16 October it took the shape of xstream's construction button, tried as "next" in #85 and #86, and the first shape was retired. The ear came the same day: what reaches a person, set from the button, and what has moved shown in it. On 18 October it learned to keep a reader's own words for a page: a reading, a whole mirror, a question for their prompt; later that day, to hold such a request until the reader has unlocked it, so a page can simply ask. The same evening the voice came beside it: one script a page carries to take a person's words, through the button where they have turned it on and through the page's own text entry where they have not, with the button off until they do and their choice kept in their own settings on the beach.)
 
 **The short answer is yes, with one limit no button can remove (look-alikes, below).**
 
@@ -15,6 +15,12 @@ A floating button any page can carry, served by the beach itself, holding the mi
 Both halves come from the beach on every load: the small part that runs on the page (`button.js`) and the frame. So an update to the beach reaches every page that carries the button, and the page never changes. Link to the beach's copy; never copy the file onto a site.
 
 Every beach that deploys this package serves its own button at `<its address>/button/button.js`, and that button talks only to the beach that serves it.
+
+**A page that takes words carries the voice instead.** It brings the button wherever the person has turned it on, and gives the page one call for each kind of words, which goes through the button where it is and through the page's own text entry where it is not (below, *The voice*):
+
+```html
+<script src="https://beach.happyseaurchin.com/button/voice.js"></script>
+```
 
 ## What a person gets
 
@@ -108,7 +114,8 @@ NODE_PATH=$(npm root -g) npm run smoke:button     # needs playwright + chromium
 7. **What the model reads can try to steer it.** Blocks, and the page's own title, are given to the model as data. Even if one talks it into proposing something, nothing is written until the person reads the proposal, shown whole, and taps yes.
 8. **What can still be learned:** the page sees the button exists, which view is open, and where it is dragged. The beach sees which *site* loaded the button (not which page), its reads, and the handle on writes, as it always has. Memory is kept per site, both in the browser's per-site storage and by the button's own keying, so one site's "yes, know my name" is never read as another's. "Remember on this device" lives only in the beach window's own storage, unreachable from any page.
 9. **The button's news is not the engine's.** It looks only at parlour and room watches, and only while a page carrying it is open. A name voiced anywhere, a place, a wake, and anything that must reach a closed phone belong to the push engine, which reads the same ear. Each look costs the beach one read of its index (a few store commands however many blocks it holds, since the index weighs again only the blocks that moved), plus one read for each followed room that moved. On a site told the name, the mark's timing can hint which public rooms the person follows; untaking the tick stops it.
-10. **Browser notes:** Chrome and Safari name the asking site from `ancestorOrigins`, which a page can't forge. Firefox falls back to the referrer, or "this page". Safari may clear a frame's storage when the session ends; that only means unlocking again, one tap if remembered. A malicious browser *extension* can read everything; no page-level design can stop that.
+10. **The page's own text entry is as safe as the page.** Where the button is not on the page, the voice asks for the key in the browser's own prompt and keeps it in the page's storage, as happyseaurchin.com's pages always have, and a page that wanted the key could take it there. The button is the way past that: with it on the page, no key reaches the page.
+11. **Browser notes:** Chrome and Safari name the asking site from `ancestorOrigins`, which a page can't forge. Firefox falls back to the referrer, or "this page". Safari may clear a frame's storage when the session ends; that only means unlocking again, one tap if remembered. A malicious browser *extension* can read everything; no page-level design can stop that.
 
 ## Why not the Chrome extension
 
@@ -125,19 +132,28 @@ const r = await beachButton.request({ kind: 'write', block: 'standards:' + who.h
 document.addEventListener('beachbutton:hello', e => { /* e.detail.handle, or null */ });
 ```
 
-## For pages that keep their readers' words
+## The voice: one call, with or without the button
 
-The reflexive charts at happyseaurchin.com/reflexive-charts (Murmuration as a motif, Your place in the wave) place a reader in a chart and keep their words on the beach, in families whose spines keel framed on 17 October (`spine:reflexive-reading`, `spine:place-in-the-wave`, `spine:murmuration-motif`). Where the button is on the page they simply ask it, and it holds the request until the reader has unlocked. Where it is not, the reader gives a handle, and the browser asks for their key once and keeps it on that device, as happyseaurchin.com's own pages do:
+David's ask, 18 October: a page takes a person's words its usual way, and where the person has the button, the button takes them; the button is theirs, on whatever page they are on, and the page's own look is undisturbed. `voice.js` is that, for any page:
 
 ```js
-const r = await beachButton.request({ kind: 'say', field: 'reflexive-reading', at: '1.12',
-                                      text: 'The Walkman, on the bus to school.' });   // { ok, handle, block, at, founded }
-await beachButton.request({ kind: 'keep', field: 'place-in-the-wave',
-                            content: { _: 'MIRROR — a place in the wave …', 1: '1979 — at my gran’s', 8: '1960s' } });
-await beachButton.request({ kind: 'ask', text: 'Who in place-in-the-wave came early, and who is most like me?' });
+const r = await beachVoice.say({ field: 'reflexive-reading', at: '1.12', text, name });   // { ok, name } or { ok: false, error, quiet?, needName? }
+await beachVoice.keep({ field: 'place-in-the-wave', content: { _: 'MIRROR — a place in the wave …', 1: '1979 — at my gran’s', 8: '1960s' }, name });
+await beachVoice.ask('Who in place-in-the-wave came early, and who is most like me?');      // only where the button is
+await beachVoice.drop({ field: 'murmuration-motif', name });                                 // a deletion: always the page's own
+beachVoice.onButton(on => nameField.hidden = on);                                            // the button came or went
 ```
 
-A page that does not know the person's name writes its mirror's opening line as `MIRROR — a …`, and the button makes it `MIRROR — <handle>’s …`.
+- **Where the person has the button on the page,** `say`, `keep` and `ask` go through it (`{kind:'say'}`, `{kind:'keep'}`, `{kind:'ask'}` above): it holds the request until they have unlocked, shows the words where they will stand, and writes only on commit. The page never holds their passphrase.
+- **Where they have not,** the call is the page's own text entry, as happyseaurchin.com's o-pages have always taken words: the name the page passes (or the one the device signs with, `render:who`), and the key the device keeps for it (`next-latch:<block>`, or the passport's), else the one they give the browser's own prompt, asked again while the beach refuses it and kept once it lands. The writes are the button's own, by its rules: only a family whose spine stands, a mirror founded locked to the person's words (the passport's, where they have one), a family on the clock never kept whole.
+- **The page draws its box the same either way** and hides only its name field while the button is there: `beachVoice.button.shown()` says whether it is, and `beachVoice.onButton(fn)` calls `fn(shown)` whenever it comes or goes, including when the person puts it away.
+- **The button is the person's choice, and off until they make it.** `beachVoice.button.set(true)` (or `false`) wherever a page offers it: under a site's options, or beside a write box ("use the beach button"). The choice is kept with their settings on the beach, `settings:<handle>`: the per-person layer of the beach's own `settings` block, at its addresses, where 9 is pages and 9.1 the button (`true` or `false`). So it stands on every page that carries the voice, wherever their name is known; a device that knows no name keeps the choice for itself. Turning it on writes their settings as the page's own text entry would (the first time founding them, locked to their key); turning it off where the button holds them is theirs to commit in it. Never in a frame (the page framing it has its own), and never on a page whose body says `data-beach-button="off"` (its corner is taken).
+
+`scripts/smoke-voice.cjs` proves it on a plain page against a mock beach that refuses a wrong key and ties a name with a passport to that key: with no button, a reading founds the mirror and lands, the key asked once and kept, a second asking nothing; a missing name, a family with no spine and a whole keep of a clock family are refused before anyone is asked; turned on, the button comes and the page hears it, the choice founds the person's settings at 9.1; another device knowing the name shows it unasked, and the same `say` there waits in the button until the person unlocks and commits; turned off where the button holds them, they commit that in it and the page asks no key, and the first device follows; a nameless device keeps the choice to itself; a page that opts out, or a framed one, never shows it; and a mirror is taken down with the kept key. **22 checks**, all hold.
+
+```bash
+NODE_PATH=$(npm root -g) npm run smoke:voice     # needs playwright + chromium
+```
 
 ## Next steps (proposed, not built)
 
@@ -155,5 +171,6 @@ A page that does not know the person's name writes its mirror's opening line as 
 | `frame.html` · `frame.js` · `frame.css` | the iframe (the beach's origin) | the window: the handle, passphrase and key for this tab; the ask; the staged writes and their commits; settings |
 | `unlock.html` · `unlock.js` | a top-level window (the beach's origin) | where words are typed; "remember on this device" |
 | `ear.html` · `ear.js` | a top-level window (the beach's origin) | the person's ear, watch by watch; following and ending, under their own words |
+| `voice.js` | the host page | the page's side: one call for a person's words, through the button where it is, else the page's own text entry (the key the browser keeps for it, in the page's storage); the person's choice of button, in their settings on the beach |
 
 These are static files beside the handler. They add no endpoint and never touch the wire: the frame calls the same `/.well-known/pscale-beach` every client calls.

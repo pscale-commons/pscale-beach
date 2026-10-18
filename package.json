@@ -27,7 +27,8 @@
     "smoke:caps": "node scripts/smoke-caps.mjs && node scripts/smoke-caps.mjs --caps-off",
     "smoke:index-sizes": "node scripts/smoke-index-sizes.mjs",
     "smoke:backup-restore": "node scripts/smoke-backup-restore.mjs",
-    "smoke:button": "node scripts/smoke-button.cjs"
+    "smoke:button": "node scripts/smoke-button.cjs",
+    "smoke:voice": "node scripts/smoke-voice.cjs"
   },
   "dependencies": {
     "@upstash/redis": "^1.34.0"
