@@ -30,6 +30,8 @@ const QUESTION = 'what does my passport say about me';
 const ANSWER = 'Your passport says you are a tester of buttons.';
 const CARD = 'Ask weft to pass the dictation fix to whoever keeps this page';
 const LINE = 'Thank you, weft: the button works from my own pages.';
+const READING = 'The Walkman, on the bus to school.';
+const ASKED = 'Who in place-in-the-wave came early, and who is most like me?';
 // the page's own address carries a query and a fragment, which never leave the frame
 const HOST_URL = (host) => `http://${host}:${SITE}/__test/host.html?token=page-secret#frag`;
 const PAGE_SAID = `http://localhost:${SITE}/__test/host.html`;
@@ -94,8 +96,22 @@ const BLOCKS = {
   'lighthouse': { _: 'the test place' },
   'pool:weft': { _: "Weft's room — say the thing itself." }
 };
+// families a page may ask a reading or a mirror of: a spine each, one of them on the clock
+BLOCKS['spine:reflexive-reading'] = { _: 'Reading this reflexively.', 1: { _: 'Most charts ask you to take in information…', 1: 'David Pinto, who made these pages…' } };
+BLOCKS['spine:place-in-the-wave'] = { _: 'Your place in the wave.', 1: 'TV', 3: 'Internet', 5: 'Social media' };
+BLOCKS['spine:clock'] = { _: 'A family on the clock.' };
+const FLOORS = { 'spine:clock': 10 };
 const HANDS = {};   // ahead:now:tester, once founded
 const EARS = {};    // ear:tester, once founded
+const MIRRORS = {}; // <family>:tester, once founded
+// a reading at a dotted address ('1.12' walks 1, 1, 2), voicing a position that already holds readings
+function setAt(tree, spindle, text) {
+  const path = spindle.replace('.', '').split('');
+  let n = tree;
+  path.slice(0, -1).forEach((d) => { if (typeof n[d] === 'string') n[d] = { _: n[d] }; else if (!n[d]) n[d] = {}; n = n[d]; });
+  const last = path[path.length - 1];
+  if (n[last] && typeof n[last] === 'object') n[last]._ = text; else n[last] = text;
+}
 const LONG_AGO = '2026-10-01T10:00:00.000Z';
 let TOUCHED = {};   // block → when it last moved, as the beach's index says it
 function freshRooms() {
@@ -129,8 +145,8 @@ function beach(req, res) {
     }
     if (req.method === 'GET') {
       const name = url.searchParams.get('block');
-      const b = HANDS[name] || EARS[name] || BLOCKS[name];
-      if (b && url.searchParams.has('pscale')) { res.writeHead(200); return res.end(JSON.stringify({ floor: 1, shape: 'disc', entries: [] })); }
+      const b = HANDS[name] || EARS[name] || MIRRORS[name] || BLOCKS[name];
+      if (b && url.searchParams.has('pscale')) { res.writeHead(200); return res.end(JSON.stringify({ floor: FLOORS[name] || 1, shape: 'disc', entries: [] })); }
       res.writeHead(b ? 200 : 404); return res.end(JSON.stringify(b || { error: 'not found', code: 'not_found' }));
     }
     if (req.method === 'POST' && body.block === 'ahead:now:tester') {
@@ -157,6 +173,20 @@ function beach(req, res) {
       if (body.spindle) { ear[body.spindle] = body.content; res.writeHead(200); return res.end(JSON.stringify({ ok: true })); }
       if (body.confirm !== true) { res.writeHead(400); return res.end(JSON.stringify({ error: 'whole-block replace requires {confirm: true}', code: 'confirm_required' })); }
       EARS[body.block] = body.content; res.writeHead(200); return res.end(JSON.stringify({ ok: true }));
+    }
+    if (req.method === 'POST' && /^(reflexive-reading|place-in-the-wave|clock):tester$/.test(body.block)) {
+      // a mirror: founded once under the person's own words (the passport's, which the beach ties to
+      // the name: any other is handle_bound); then a reading at an address, or the whole mirror
+      // replaced behind the confirm gate, both under those words
+      const mirror = MIRRORS[body.block];
+      if (!mirror) {
+        if (!body.new_lock || body.new_lock !== SECRET) { res.writeHead(403); return res.end(JSON.stringify({ error: 'refused', code: 'handle_bound' })); }
+        MIRRORS[body.block] = body.content; res.writeHead(200); return res.end(JSON.stringify({ ok: true, born: true }));
+      }
+      if (body.secret !== SECRET) { res.writeHead(403); return res.end(JSON.stringify({ error: 'secret does not match', code: 'lock_required' })); }
+      if (body.spindle) { setAt(mirror, body.spindle, body.content); res.writeHead(200); return res.end(JSON.stringify({ ok: true })); }
+      if (body.confirm !== true) { res.writeHead(400); return res.end(JSON.stringify({ error: 'whole-block replace requires {confirm: true}', code: 'confirm_required' })); }
+      MIRRORS[body.block] = body.content; res.writeHead(200); return res.end(JSON.stringify({ ok: true }));
     }
     if (req.method === 'POST' && /^pool:/.test(body.block) && body.append) {
       TOUCHED[body.block] = new Date().toISOString();
@@ -312,6 +342,7 @@ async function run(partitioned) {
   console.log(`\n━━ storage partitioning ${partitioned ? 'ON — as browsers ship' : 'OFF — Playwright\'s default'} ━━`);
   beachLog.length = 0; llmLog.length = 0;
   Object.keys(HANDS).forEach((k) => { delete HANDS[k]; });
+  Object.keys(MIRRORS).forEach((k) => { delete MIRRORS[k]; });
   freshRooms();
   const browser = await chromium.launch(Object.assign({ executablePath: process.env.CHROMIUM_PATH || undefined }, opts));
   const context = await browser.newContext({ viewport: { width: 1100, height: 800 } });
@@ -594,6 +625,93 @@ async function run(partitioned) {
   await sleep(150);
   g = await parts(page);
   check('…and they settle back when the keyboard goes', Math.abs(g.dock.bottom - (g.vh - 16)) <= 1, g.dock);
+
+  console.log('\na reading, a mirror kept whole, and a question, for a page that keeps its readers\' words:');
+  const lastCard = () => frame.locator('.card.staged p').last().textContent();
+  const mirrorPosts = (block) => beachLog.filter((x) => x.method === 'POST' && x.body.block === block);
+  pending = page.evaluate((t) => window.beachButton.request({ kind: 'say', field: 'reflexive-reading', at: '1.12', text: t }), READING);
+  await armed(commit);
+  let staged = await lastCard();
+  check('a reading the page asks for is staged, naming the mirror and the address, before anything is written',
+    staged.includes('reflexive-reading:tester at 1.12') && staged.includes('founds your mirror') && !mirrorPosts('reflexive-reading:tester').length, staged);
+  await commit.click();
+  let got = await pending;
+  const bornMirror = mirrorPosts('reflexive-reading:tester').find((x) => x.body.new_lock);
+  const reading = mirrorPosts('reflexive-reading:tester').find((x) => x.body.spindle === '1.12');
+  check('committed, it founds the person\'s mirror, locked to their own words and named as theirs', got.ok && got.founded === true && got.handle === 'tester' &&
+    !!bornMirror && bornMirror.body.new_lock === SECRET && /^MIRROR — tester’s readings on the reflexive-reading family/.test(bornMirror.body.content._), { got, born: bornMirror && bornMirror.body });
+  check('…then the reading lands at its address under those words, at the beach\'s root where families stand, whatever the page\'s place',
+    !!reading && reading.body.content === READING && reading.body.secret === SECRET && reading.path === '/.well-known/pscale-beach', reading);
+  pending = page.evaluate(() => window.beachButton.request({ kind: 'say', field: 'reflexive-reading', at: '1.12', text: 'A Walkman on the bus, and a mixtape.' }));
+  await armed(commit);
+  staged = await lastCard();
+  check('a second reading at the same address says what it replaces', staged.includes('replacing what you said there: “' + READING + '”'), staged);
+  await commit.click();
+  got = await pending;
+  check('…and replaces it, the mirror founded only once', got.ok && got.founded === false && mirrorPosts('reflexive-reading:tester').filter((x) => x.body.new_lock).length === 1, got);
+  const p0 = posts();
+  const passportAsFamily = await page.evaluate(() => window.beachButton.request({ kind: 'say', field: 'passport', at: '1', text: 'offers: nothing at all' }));
+  check('a "family" with no spine on the beach is refused before anyone is asked, so a page cannot call the person\'s passport one',
+    !passportAsFamily.ok && /no family called passport/.test(passportAsFamily.error), passportAsFamily);
+  const twoPoints = await page.evaluate(() => window.beachButton.request({ kind: 'say', field: 'reflexive-reading', at: '1.1.2', text: 'two points' }));
+  check('…as is an address with more than one point', !twoPoints.ok && /not an address/.test(twoPoints.error), twoPoints);
+  const collective = await page.evaluate(() => window.beachButton.request({ kind: 'keep', field: 'sed', content: { 1: 'mine now' } }));
+  check('…and a keep into a collective', !collective.ok && /named for the person/.test(collective.error), collective);
+  check('…none of which writes anything', posts() === p0);
+
+  const WAVE = { _: 'MIRROR — a place in the wave (spine:place-in-the-wave): the year each technology reached them.', 1: '1979 — at my gran’s', 3: '1996 — dial-up', 5: '2009 — MySpace' };
+  pending = page.evaluate((w) => window.beachButton.request({ kind: 'keep', field: 'place-in-the-wave', content: w }), WAVE);
+  await armed(commit);
+  staged = await lastCard();
+  check('a whole mirror the page keeps is staged, saying it founds the mirror, before anything is written',
+    staged.includes('place-in-the-wave:tester, founding your mirror') && !mirrorPosts('place-in-the-wave:tester').length, staged);
+  await commit.click();
+  got = await pending;
+  const kept = mirrorPosts('place-in-the-wave:tester').find((x) => x.body.new_lock);
+  check('committed, it founds the mirror whole, its opening line naming the person the page could not name', got.ok && got.founded === true && !!kept &&
+    kept.body.new_lock === SECRET && kept.body.content._.startsWith('MIRROR — tester’s place in the wave') && kept.body.content['5'] === '2009 — MySpace', kept && kept.body);
+  pending = page.evaluate((w) => window.beachButton.request({ kind: 'keep', field: 'place-in-the-wave', content: { _: w._, 1: w[1], 3: '1997 — dial-up, at last' } }), WAVE);
+  await armed(commit);
+  staged = await lastCard();
+  check('kept again, the card says what the keep takes away and what it changes', staged.includes('replacing what stands there. It takes away what you said at 5, and changes 3'), staged);
+  await commit.click();
+  got = await pending;
+  const replaced = mirrorPosts('place-in-the-wave:tester').pop();
+  check('…and replaces it whole, behind the confirm gate, under the person\'s words', got.ok && got.founded === false && replaced.body.confirm === true &&
+    replaced.body.secret === SECRET && !replaced.body.new_lock && !('5' in replaced.body.content), replaced.body);
+  const clock = await page.evaluate(() => window.beachButton.request({ kind: 'keep', field: 'clock', content: { 2026413439: 'a whole day' } }));
+  check('a family on the clock is never kept whole, its mirror being said a beat at a time', !clock.ok && /keeps time/.test(clock.error), clock);
+  const k0 = posts();
+  pending = page.evaluate((w) => window.beachButton.request({ kind: 'keep', field: 'place-in-the-wave', content: w }), WAVE);
+  await armed(commit);   // the card grew the window, and a frame that has just moved drops a tap
+  await frame.locator('.card button', { hasText: 'not now' }).click();
+  got = await within(pending, 5000, 'a keep declined');
+  check('not now keeps nothing', !got.ok && posts() === k0, got);
+  await page.evaluate(() => { document.querySelector('iframe[title="beach button"]').style.opacity = '0.2'; });
+  pending = page.evaluate((w) => window.beachButton.request({ kind: 'keep', field: 'place-in-the-wave', content: w }), WAVE);
+  await armed(commit);
+  await commit.click({ force: true });
+  got = await within(pending, 5000, 'a keep under a fade');
+  check('a page that fades the window gets no commit for a keep either', !got.ok && /covered/.test(got.error || '') && posts() === k0, got);
+  await page.evaluate(() => { document.querySelector('iframe[title="beach button"]').style.opacity = ''; });
+  await sleep(300);
+
+  await toView(page, 'prompt');
+  await frame.locator('#q').fill('a thought of my own');
+  await toView(page, 'closed');
+  const l0 = llmLog.length, a0 = posts();
+  got = await page.evaluate((t) => window.beachButton.request({ kind: 'ask', text: t }), ASKED);
+  await sleep(200);
+  g = await parts(page);
+  check('a question the page asks is put in the prompt, beneath what the person was writing, and the window opens to it',
+    got.ok && got.staged && (await frame.locator('#q').inputValue()) === 'a thought of my own\n\n' + ASKED && g.view === 'prompt', { got, q: await frame.locator('#q').inputValue(), view: g.view });
+  check('…without taking the keys from the page', g.focus !== 'frame', g.focus);
+  check('…and nothing is sent: no question to Anthropic, no write to the beach', llmLog.length === l0 && posts() === a0);
+  await page.evaluate((t) => window.beachButton.request({ kind: 'ask', text: t }), ASKED);
+  check('asked twice, the question stands in the prompt once', (await frame.locator('#q').inputValue()) === 'a thought of my own\n\n' + ASKED);
+  s = await spy(page);
+  check('the page is told only that it waits, never what the person had written', leaks(s, ['a thought of my own', SECRET, KEY]).length === 0, leaks(s, ['a thought of my own']));
+  await frame.locator('#q').fill('');
 
   console.log('\none site\'s button is not another\'s:');
   await settle();

@@ -22,6 +22,11 @@
  * for the person's own hand, and a line in a room — someone's open parlour — signed as them.
  * Each is staged whole, with where it will land, and goes only when the person commits it here,
  * where the page can neither see nor forge the tap.
+ *
+ * The page may ask too, and is answered the same way: who the person is (if they say it may
+ * know), a write to a block named for them, a reading in their own mirror of a family (say), that
+ * whole mirror kept at once (keep), and a question put in their prompt for them to ask or not
+ * (ask). Every write is staged here first; the question is sent only if they send it.
  */
 (function () {
   'use strict';
@@ -335,6 +340,9 @@
       });
     }
     if (op.kind === 'write') return write(id, op);
+    if (op.kind === 'say') return say(id, op);
+    if (op.kind === 'keep') return keep(id, op);
+    if (op.kind === 'ask') return askFor(id, op);
     reply(id, { ok: false, error: 'the button does not know "' + op.kind + '"' });
   }
 
@@ -363,6 +371,144 @@
         note(r.ok ? 'Written: ' + where + '.' : 'The beach refused that write: ' + (r.error || r.status) + (r.status === 403 ? ' — unlock again if your words were wrong.' : ''));
       });
     }, true);
+  }
+
+  /* ── a reader's own words, for a page that keeps them on the beach (folded from keel's stubs of
+   * 17 October 2026, for the reflexive charts): a reading at one address of a family (say), the
+   * person's whole mirror of a family kept at once (keep), and a question put in the prompt for
+   * them to ask or not (ask).
+   *
+   * A FAMILY is a spine on the beach, spine:<field>, and the mirrors of the people who answer it,
+   * <field>:<handle>, each holding its readings at the spine's own addresses. say and keep write
+   * only the person's own mirror, so they are writes named for the person, as mine() asks, and
+   * only of a family that stands: with no spine:<field>, <field>:<handle> is no mirror, and a page
+   * could otherwise call any of the person's own blocks a family (their passport, their history).
+   * Families live at the beach's root, so the writes go there unless the page asks where:'here'.
+   * A mirror not yet standing is founded locked to the person's own words, as a hand is. ── */
+  function familyOf(op) {
+    var field = String(op.field || '').trim().toLowerCase();
+    return /^[a-z0-9][a-z0-9-]{0,63}$/.test(field) ? field : '';
+  }
+  function mirrorIntro(field) {
+    return 'MIRROR — ' + me.handle + '’s readings on the ' + field + ' family (spine:' + field +
+      '), at the spine’s own addresses. Sovereign to them; silence at an address is honest absence.';
+  }
+  /* the spine's opening lines and the person's mirror, read together; a family with no spine is
+   * refused before the person is asked anything */
+  function family(field, block, base) {
+    return Promise.all([readRoot('spine:' + field, base, 0), readRoot(block, base)]).then(function (r) {
+      if (!r[0]) { var e = new Error('no family called ' + field + ' stands on the beach (there is no spine:' + field + ')'); e.refused = true; throw e; }
+      return { floor: +r[0].floor || 1, mirror: r[1] };
+    });
+  }
+  function unread(id) {
+    return function (e) { reply(id, { ok: false, error: e.refused ? e.message : 'the beach could not be read: ' + e.message }); };
+  }
+  /* what a mirror says at an address ('1.12' walks 1, 1, 2; a 0 walks the zero-slot, the
+   * underscore, as on the clock), followed down its underscores */
+  function lineAt(tree, at) {
+    var n = tree;
+    at.replace('.', '').split('').forEach(function (d) { n = n && typeof n === 'object' ? n[d === '0' ? '_' : d] : undefined; });
+    while (n && typeof n === 'object') n = n._;
+    return typeof n === 'string' ? n.trim() : '';
+  }
+  /* every line a mirror holds, by address, its own opening line aside (a keep voices that anew) */
+  function linesOf(node, path, out) {
+    out = out || {};
+    if (typeof node === 'string') { if (path && node.trim()) out[path] = node.trim(); return out; }
+    if (!node || typeof node !== 'object') return out;
+    Object.keys(node).forEach(function (k) { linesOf(node[k], k === '_' && typeof node._ === 'string' ? path : path + k, out); });
+    return out;
+  }
+  function clip(s) { return s.length > 120 ? s.slice(0, 119) + '…' : s; }
+  function some(addresses) {
+    var a = addresses.slice(0, 6).map(function (p) { return /^[0-9]{2,}$/.test(p) ? p[0] + '.' + p.slice(1) : p; });
+    return (a.length > 1 ? a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1] : a[0]) + (addresses.length > 6 ? ' and ' + (addresses.length - 6) + ' more' : '');
+  }
+
+  /* say: one reading at one address, in the person's own mirror; saying again there replaces it */
+  function say(id, op) {
+    if (!me || !me.secret) return reply(id, { ok: false, error: 'no passphrase is held here — the person has not unlocked the button' });
+    var field = familyOf(op);
+    if (!field) return reply(id, { ok: false, error: 'not a family name: ' + String(op.field || '') });
+    var at = String(op.at == null ? '' : op.at).trim();
+    if (!/^[1-9][0-9]*(\.[0-9]+)?$/.test(at)) return reply(id, { ok: false, error: 'not an address: ' + at });
+    var text = String(op.text || '').trim().slice(0, 2000);
+    if (!text) return reply(id, { ok: false, error: 'nothing to say' });
+    var base = op.where === 'here' ? SURFACE : BEACH, block = field + ':' + me.handle;
+    if (!mine(block)) return reply(id, { ok: false, error: 'the button writes only blocks named for the person (…:' + me.handle + ')' });
+    family(field, block, base).then(function (f) {
+      var m = f.mirror, was = m ? lineAt(m, at) : '';
+      var where = base.replace(/^https?:\/\//, '') + ' — ' + block + ' at ' + at +
+        (!m ? ' (this founds your mirror, locked with your passphrase)' : was ? ', replacing what you said there: “' + clip(was) + '”' : '');
+      decide(HOST + ' asks to add your reading to ' + field + ', in your own mirror, ' + where + ':', text, 'commit', function (yes, why) {
+        if (!yes) return reply(id, { ok: false, error: why || 'declined' });
+        (m ? Promise.resolve({ ok: true }) : found(block, { _: mirrorIntro(field) }, base)).then(function (w) {
+          // confirm_required: the mirror was founded a moment ago, from another tab, and stands
+          return w.ok || w.code === 'confirm_required' ? post({ block: block, spindle: at, content: text, secret: me.secret }, base) : w;
+        }).then(function (r) {
+          reply(id, { ok: r.ok, status: r.status, error: r.error, code: r.code, handle: me.handle, block: block, at: at, founded: !m });
+          note(r.ok ? 'Your reading stands in ' + block + ' at ' + at + '.' : 'The beach refused that reading: ' + (r.error || r.status) + (r.status === 403 ? ' — unlock again if your words were wrong.' : ''));
+        });
+      }, true);
+    }, unread(id));
+  }
+
+  /* keep: the person's whole mirror of a family, written at once (a page's own record of them, as
+   * Your place in the wave keeps a wave). Over a mirror that stands, the card says what the keep
+   * takes away and changes, so nothing goes that the person has not seen go. A family on the
+   * clock is never kept whole: its mirror grows a beat at a time, each line said where it falls,
+   * and a page could show only a few of those beats. */
+  function keep(id, op) {
+    if (!me || !me.secret) return reply(id, { ok: false, error: 'no passphrase is held here — the person has not unlocked the button' });
+    var field = familyOf(op);
+    if (!field) return reply(id, { ok: false, error: 'not a family name: ' + String(op.field || '') });
+    var content = op.content, shown;
+    if (!content || typeof content !== 'object' || Array.isArray(content)) return reply(id, { ok: false, error: 'nothing to keep' });
+    try { shown = JSON.stringify(content, null, 1); } catch (e) { return reply(id, { ok: false, error: 'nothing to keep' }); }
+    if (shown.length > 20000) return reply(id, { ok: false, error: 'too much to keep at once' });
+    content = JSON.parse(shown);
+    // a mirror's opening line names whose it is; a page that does not know the name writes 'a'
+    if (typeof content._ === 'string' && content._.trim()) content._ = content._.replace(/^MIRROR — a /, 'MIRROR — ' + me.handle + '’s ');
+    else if (!content._ || typeof content._ !== 'object') content._ = mirrorIntro(field);
+    var base = op.where === 'here' ? SURFACE : BEACH, block = field + ':' + me.handle;
+    if (!mine(block)) return reply(id, { ok: false, error: 'the button writes only blocks named for the person (…:' + me.handle + ')' });
+    family(field, block, base).then(function (f) {
+      if (f.floor >= 10) return reply(id, { ok: false, error: 'the ' + field + ' family keeps time, so its mirror is said a beat at a time, never kept whole' });
+      var m = f.mirror, was = m ? linesOf(m, '') : {}, will = linesOf(content, '');
+      var gone = Object.keys(was).filter(function (a) { return !(a in will); });
+      var moved = Object.keys(was).filter(function (a) { return a in will && will[a] !== was[a]; });
+      var where = base.replace(/^https?:\/\//, '') + ' — ' + block + (!m ? ', founding your mirror, locked with your passphrase'
+        : ', replacing what stands there' + (gone.length ? '. It takes away what you said at ' + some(gone) : '') +
+          (moved.length ? (gone.length ? ', and changes ' : '. It changes what you said at ') + some(moved) : ''));
+      decide(HOST + ' asks to keep this as yours, in ' + where + ':', JSON.stringify(content, null, 1), 'commit', function (yes, why) {
+        if (!yes) return reply(id, { ok: false, error: why || 'declined' });
+        function replace() { return post({ block: block, content: content, secret: me.secret, confirm: true }, base); }
+        (m ? replace() : found(block, content, base).then(function (w) { return w.code === 'confirm_required' ? replace() : w; })).then(function (r) {
+          reply(id, { ok: r.ok, status: r.status, error: r.error, code: r.code, handle: me.handle, block: block, founded: !m });
+          note(r.ok ? 'Kept: ' + block + '.' : 'The beach refused it: ' + (r.error || r.status) + (r.status === 403 ? ' — unlock again if your words were wrong.' : ''));
+        });
+      }, true);
+    }, unread(id));
+  }
+
+  /* ask: the page's question put in the prompt; the person asks it as it is, changes it, or clears
+   * it, and nothing is sent until they do. It opens the window without taking the keys from the
+   * page, as every request does, and never writes over what the person was writing there. */
+  function askFor(id, op) {
+    var text = String(op.text || '').replace(/[\u0000-\u0008\u000b-\u001f\u007f]+/g, ' ').trim().slice(0, 4000);
+    if (!text) return reply(id, { ok: false, error: 'nothing to ask' });
+    if (rec) { rec.onresult = null; rec.stop(); }
+    var el = $('q'), had = el.value.trim();
+    if (had.indexOf(text) < 0) el.value = had ? had + '\n\n' + text : text;
+    put(localStorage, DRAFT, el.value); grow();
+    tell({ type: 'open' });
+    if (!me || !me.key) {
+      note(HOST + ' put a question in your prompt. ' + (me ? 'Add a key' : 'Unlock, with a key,') + ' to ask it.');
+      return reply(id, { ok: false, staged: true, error: 'no key is held here, so the question waits in the prompt until the person adds one' });
+    }
+    note(HOST + ' put a question in your prompt' + (had && had.indexOf(text) < 0 ? ', beneath what you were writing' : '') + '. Ask it as it is, change it, or clear it.');
+    reply(id, { ok: true, staged: true });
   }
 
   /* Two guards against a page that tries to tap yes for the person: the answer is taken only
@@ -463,13 +609,18 @@
       return r.json();
     });
   }
-  function found(block) {
+  function handIntro() {
     var h = me.handle;
-    var content = { _: 'AHEAD — ' + h + "'s hand in their own now: cards held toward doing, each at the rung it is sized for, nine to a rung, " +
+    return { _: 'AHEAD — ' + h + "'s hand in their own now: cards held toward doing, each at the rung it is sized for, nine to a rung, " +
       'unordered within it, never arriving unless pulled into doing and landed as record in now:' + h + '. Sovereign; a rung is appetite, not sequence (function:ahead).' };
-    return post({ block: block, content: content, new_lock: me.secret }, BEACH).then(function (w) {
+  }
+  /* founding a block of the person's own (a hand, a mirror) locked to their own words; where they
+   * have a passport the beach takes no other words for their name (handle_bound), so the founding
+   * is made again proving those */
+  function found(block, content, base) {
+    return post({ block: block, content: content, new_lock: me.secret }, base || BEACH).then(function (w) {
       if (w.ok || w.code !== 'handle_bound') return w;
-      return post({ block: block, content: content, secret: me.secret, new_lock: me.secret }, BEACH);
+      return post({ block: block, content: content, secret: me.secret, new_lock: me.secret }, base || BEACH);
     });
   }
   function proposeCard(i) {
@@ -491,7 +642,7 @@
       var where = block + ', for today' + (hand ? '' : ' — this starts your hand, locked with your passphrase');
       return yesOrNo('Add this card to your hand (' + where + ')?', sentence + (PAGE ? '\n\nfrom ' + PAGE.href : ''), 'commit').then(function (d) {
         if (!d.yes) return 'Not written: ' + me.handle + ' said no' + (d.why ? ' (' + d.why + ')' : '') + '.';
-        return (hand ? Promise.resolve({ ok: true }) : found(block)).then(function (w) {
+        return (hand ? Promise.resolve({ ok: true }) : found(block, handIntro())).then(function (w) {
           return w.ok ? post({ block: block, spindle: spindle, content: content, secret: me.secret }, BEACH) : w;
         }).then(function (w) {
           note(w.ok ? 'Added to your hand: ' + block + ' at ' + addr + ', for today.'

@@ -340,6 +340,12 @@
      *   { kind: 'who' }  — their handle, if they say this page may know it
      *   { kind: 'write', block, spindle, content }  — a write AS them, to a block named for them,
      *                                                 at this page's place; they see it and commit it
+     *   { kind: 'say', field, at, text }  — a reading in their own mirror of a family, <field>:<handle>,
+     *                                       at one address of spine:<field>; founded on first use
+     *   { kind: 'keep', field, content }  — their whole mirror of a family, founded or replaced at once,
+     *                                       showing what a replace takes away
+     *   { kind: 'ask', text }  — a question put in their prompt; nothing is sent until they send it
+     * say and keep go to the beach's root, where families stand, unless the op says where: 'here'.
      * Resolves to { ok, ... }. Nothing the person types ever comes back. */
     request: function (op) {
       return new Promise(function (resolve) {
