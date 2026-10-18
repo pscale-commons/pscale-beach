@@ -1,6 +1,6 @@
 # The beach button
 
-A floating button any page can carry, served by the beach itself, holding the mirror's corner (handle, passphrase, API key) and a line to ask the beach. **Nothing typed into it is visible to the page it floats on.** Written by weft on 14 October 2026 to answer David's question: is a beach-served button, rather than a Chrome extension, safe enough to put passphrases in? (First served from happyseaurchin.com, happyseaurchin-home #454; moved onto the beach the same night. On 16 October it took the shape of xstream's construction button, tried as "next" in #85 and #86, and the first shape was retired. The ear came the same day: what reaches a person, set from the button, and what has moved shown in it. On 18 October it learned to keep a reader's own words for a page: a reading, a whole mirror, a question for their prompt.)
+A floating button any page can carry, served by the beach itself, holding the mirror's corner (handle, passphrase, API key) and a line to ask the beach. **Nothing typed into it is visible to the page it floats on.** Written by weft on 14 October 2026 to answer David's question: is a beach-served button, rather than a Chrome extension, safe enough to put passphrases in? (First served from happyseaurchin.com, happyseaurchin-home #454; moved onto the beach the same night. On 16 October it took the shape of xstream's construction button, tried as "next" in #85 and #86, and the first shape was retired. The ear came the same day: what reaches a person, set from the button, and what has moved shown in it. On 18 October it learned to keep a reader's own words for a page: a reading, a whole mirror, a question for their prompt; later that day, to hold such a request until the reader has unlocked it, so a page can simply ask.)
 
 **The short answer is yes, with one limit no button can remove (look-alikes, below).**
 
@@ -51,6 +51,7 @@ Every beach that deploys this package serves its own button at `<its address>/bu
   - `{kind:'ask', text}`: a question put in the prompt, under anything the person was already writing there. It is sent only if they send it, and the page learns only that it is waiting.
 
   A family is a spine on the beach and the mirrors of the people who answer it. So the button writes `<field>:<handle>` only where `spine:<field>` stands: with no spine, a page could call any of the person's own blocks a family (their passport, their history). A family on the clock (a spine at floor 10, as `now` is) is never kept whole, because its mirror is said a beat at a time. Families stand at the beach's root, so these writes go there unless the request says `where:'here'`.
+- **A write asked for before anyone has unlocked waits for them.** A `write`, `say` or `keep` that comes while the button holds no passphrase (a first visit, say) is held rather than refused. The window opens on a card naming the page, what it asks and the words, with **unlock** beside **not now**, and nothing reaches the beach. Once the person has unlocked, in the beach's own window as always, each held request is staged like any other and still lands only on commit, under the words of whoever unlocked. **Not now** answers the page with a no. So a page can simply ask, whether or not anyone is holding the button yet.
 
 ## Why the page can't see in
 
@@ -87,9 +88,10 @@ A mock beach and a mock Anthropic record where every secret actually went. The t
 - news not yet seen outlasts a reload, someone else unlocked in the same tab never sees it, and once seen it stays gone;
 - a reading and a whole mirror land only on commit, the mirror founded once under the person's own words and named as theirs, and a second reading or keep says what it replaces and takes away;
 - a "family" with no spine (the person's passport), an address with two points, a collective, and a whole keep of a family on the clock are all refused before anyone is asked, and a keep under a fade gets no commit;
-- a question the page asks waits in the prompt beneath the person's own words, once however often it is asked, with nothing sent to Anthropic or the beach and nothing told to the page.
+- a question the page asks waits in the prompt beneath the person's own words, once however often it is asked, with nothing sent to Anthropic or the beach and nothing told to the page;
+- a reading asked for in a tab where no one has unlocked waits on a card naming the page, the family and the words, with nothing written and the keys left with the page; not now answers no, and two held requests are each staged once the person unlocks from the card, landing on commit under that person's words.
 
-**156 checks, run twice** (with the browser's storage partitioning on, as browsers ship it, and off): all hold. It also runs the old way for contrast: a widget drawn *inside* the page, in a closed shadow root as the Chrome extension drew its `#` button. The page logs every key typed into it.
+**166 checks, run twice** (with the browser's storage partitioning on, as browsers ship it, and off): all hold. It also runs the old way for contrast: a widget drawn *inside* the page, in a closed shadow root as the Chrome extension drew its `#` button. The page logs every key typed into it.
 
 ```bash
 NODE_PATH=$(npm root -g) npm run smoke:button     # needs playwright + chromium
@@ -125,7 +127,7 @@ document.addEventListener('beachbutton:hello', e => { /* e.detail.handle, or nul
 
 ## For pages that keep their readers' words
 
-The reflexive charts at happyseaurchin.com/reflexive-charts (Murmuration as a motif, Your place in the wave) place a reader in a chart and keep their words on the beach, in families whose spines keel framed on 17 October (`spine:reflexive-reading`, `spine:place-in-the-wave`, `spine:murmuration-motif`). Each falls back to its own handle-and-key box when the button is not on the page, or answers that it does not know a request:
+The reflexive charts at happyseaurchin.com/reflexive-charts (Murmuration as a motif, Your place in the wave) place a reader in a chart and keep their words on the beach, in families whose spines keel framed on 17 October (`spine:reflexive-reading`, `spine:place-in-the-wave`, `spine:murmuration-motif`). Where the button is on the page they simply ask it, and it holds the request until the reader has unlocked. Where it is not, the reader gives a handle, and the browser asks for their key once and keeps it on that device, as happyseaurchin.com's own pages do:
 
 ```js
 const r = await beachButton.request({ kind: 'say', field: 'reflexive-reading', at: '1.12',
