@@ -1,6 +1,6 @@
 # The beach button
 
-A floating button any page can carry, served by the beach itself, holding the mirror's corner (handle, passphrase, API key) and a line to ask the beach. **Nothing typed into it is visible to the page it floats on.** Written by weft on 14 October 2026 to answer David's question: is a beach-served button, rather than a Chrome extension, safe enough to put passphrases in? (First served from happyseaurchin.com, happyseaurchin-home #454; moved onto the beach the same night. On 16 October it took the shape of xstream's construction button, tried as "next" in #85 and #86, and the first shape was retired. The ear came the same day: what reaches a person, set from the button, and what has moved shown in it.)
+A floating button any page can carry, served by the beach itself, holding the mirror's corner (handle, passphrase, API key) and a line to ask the beach. **Nothing typed into it is visible to the page it floats on.** Written by weft on 14 October 2026 to answer David's question: is a beach-served button, rather than a Chrome extension, safe enough to put passphrases in? (First served from happyseaurchin.com, happyseaurchin-home #454; moved onto the beach the same night. On 16 October it took the shape of xstream's construction button, tried as "next" in #85 and #86, and the first shape was retired. The ear came the same day: what reaches a person, set from the button, and what has moved shown in it. On 18 October it learned to keep a reader's own words for a page: a reading, a whole mirror, a question for their prompt.)
 
 **The short answer is yes, with one limit no button can remove (look-alikes, below).**
 
@@ -45,6 +45,12 @@ Every beach that deploys this package serves its own button at `<its address>/bu
   Each is staged whole, with where it will land, and is sent only when the person taps commit inside the button. A line goes only into a room that already stands, so a misspelt name never founds one. A line in an agent's room rings its doorbell where its keeper has one on (`ways:doorbell`).
 - **Dictation without echo.** A phone sends each revision of a phrase back again; the button rebuilds the spoken words from all of them every time instead of appending them (the fix written at `ways:dictation`).
 - **The page can ask; the person answers.** `beachButton.request({kind:'who'})` gets the handle only if the person says yes. `beachButton.request({kind:'write', block, spindle, content})` writes *as the person*, only to a block named for them (`…:<handle>`), at the page's place. The person sees exactly what will be written, and where, before committing it. A request opens the window without taking the keys from whatever the person is typing on the page.
+- **A page that keeps its readers' words** (the reflexive charts, 17 and 18 October) asks three more things, each answered the same way:
+  - `{kind:'say', field, at, text}`: a reading in the person's own mirror of a family, `<field>:<handle>`, at one address of `spine:<field>` (`'1.12'`). The mirror is founded on first use, locked to their own words; saying again at the address replaces what they said there, and the card quotes what it replaces.
+  - `{kind:'keep', field, content}`: the person's whole mirror of a family, founded or replaced at once, as a page keeps its own record of them (a year, a wave). Over a mirror that stands, the card says which addresses the keep takes away and which it changes.
+  - `{kind:'ask', text}`: a question put in the prompt, under anything the person was already writing there. It is sent only if they send it, and the page learns only that it is waiting.
+
+  A family is a spine on the beach and the mirrors of the people who answer it. So the button writes `<field>:<handle>` only where `spine:<field>` stands: with no spine, a page could call any of the person's own blocks a family (their passport, their history). A family on the clock (a spine at floor 10, as `now` is) is never kept whole, because its mirror is said a beat at a time. Families stand at the beach's root, so these writes go there unless the request says `where:'here'`.
 
 ## Why the page can't see in
 
@@ -78,9 +84,12 @@ A mock beach and a mock Anthropic record where every secret actually went. The t
 - the grip moves it exactly with a mouse or a finger, and "forget me" leaves no one held, even across a reload;
 - the ear window opens only from the button. It follows only a room that stands, founds the ear under the person's own words, and ends a watch whole behind the confirm gate, and the page hears none of it;
 - news shows inside the window and never reaches the page. The circle's mark comes only on a site told the name, and never for the person's own voice;
-- news not yet seen outlasts a reload, someone else unlocked in the same tab never sees it, and once seen it stays gone.
+- news not yet seen outlasts a reload, someone else unlocked in the same tab never sees it, and once seen it stays gone;
+- a reading and a whole mirror land only on commit, the mirror founded once under the person's own words and named as theirs, and a second reading or keep says what it replaces and takes away;
+- a "family" with no spine (the person's passport), an address with two points, a collective, and a whole keep of a family on the clock are all refused before anyone is asked, and a keep under a fade gets no commit;
+- a question the page asks waits in the prompt beneath the person's own words, once however often it is asked, with nothing sent to Anthropic or the beach and nothing told to the page.
 
-**135 checks, run twice** (with the browser's storage partitioning on, as browsers ship it, and off): all hold. It also runs the old way for contrast: a widget drawn *inside* the page, in a closed shadow root as the Chrome extension drew its `#` button. The page logs every key typed into it.
+**156 checks, run twice** (with the browser's storage partitioning on, as browsers ship it, and off): all hold. It also runs the old way for contrast: a widget drawn *inside* the page, in a closed shadow root as the Chrome extension drew its `#` button. The page logs every key typed into it.
 
 ```bash
 NODE_PATH=$(npm root -g) npm run smoke:button     # needs playwright + chromium
@@ -113,6 +122,20 @@ const r = await beachButton.request({ kind: 'write', block: 'standards:' + who.h
                                       spindle: '7', content: 'Partly — the minutes show it.' });
 document.addEventListener('beachbutton:hello', e => { /* e.detail.handle, or null */ });
 ```
+
+## For pages that keep their readers' words
+
+The reflexive charts at happyseaurchin.com/reflexive-charts (Murmuration as a motif, Your place in the wave) place a reader in a chart and keep their words on the beach, in families whose spines keel framed on 17 October (`spine:reflexive-reading`, `spine:place-in-the-wave`, `spine:murmuration-motif`). Each falls back to its own handle-and-key box when the button is not on the page, or answers that it does not know a request:
+
+```js
+const r = await beachButton.request({ kind: 'say', field: 'reflexive-reading', at: '1.12',
+                                      text: 'The Walkman, on the bus to school.' });   // { ok, handle, block, at, founded }
+await beachButton.request({ kind: 'keep', field: 'place-in-the-wave',
+                            content: { _: 'MIRROR — a place in the wave …', 1: '1979 — at my gran’s', 8: '1960s' } });
+await beachButton.request({ kind: 'ask', text: 'Who in place-in-the-wave came early, and who is most like me?' });
+```
+
+A page that does not know the person's name writes its mirror's opening line as `MIRROR — a …`, and the button makes it `MIRROR — <handle>’s …`.
 
 ## Next steps (proposed, not built)
 
