@@ -241,7 +241,9 @@
     if (on) show(true);
     var gone = function (r) { if (!on) show(false); return r; };
     return read(block).then(function (b) {
-      if (!on && (b ? at(b, SPOT) : undefined) !== true) return { ok: true, kept: 'device' };
+      var was = b ? at(b, SPOT) : undefined;
+      if (was === on) return { ok: true, kept: 'beach' };                 // their settings say so already
+      if (!on && was !== true) return { ok: true, kept: 'device' };
       if (!on && shown()) return through({ kind: 'write', block: block, spindle: SPOT, content: false }).then(function (r) { if (r.ok) r.kept = 'beach'; return r; });
       return signed(block, name, !b, function (key) {
         if (!b) return found(block, key, { _: settingsIntro(name), 9: { _: PAGES, 1: on } }).then(function (w) {
