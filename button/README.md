@@ -168,6 +168,39 @@ const k = await beachVoice.known(typed);                                   // 'p
 NODE_PATH=$(npm root -g) npm run smoke:voice     # needs playwright + chromium
 ```
 
+## The plug: a game's side of the beach
+
+The arcade's steps 4 and 5 (26 October; the maker's path at `spine:game-arcade` 1.1111114, the recipe at `ways:arcade`). A game made with an AI and kept on its maker's own page (GitHub Pages works) is a family on the beach: `spine:<game>` (its days on the clock, or its stops), its law (`function:<game>` with `mode: game`, or `game:<game>` as Matthew's Arcade keeps one), its room `pool:<game>`, and each player's results in their own mirror `<game>:<handle>` at the spine's own addresses. The board is the fold across the mirrors at one address. The maker founds the family under their own key, adds two tags, and makes three calls; nothing of theirs passes through anyone's hands.
+
+```html
+<script src="https://beach.happyseaurchin.com/button/voice.js"></script>
+<script src="https://beach.happyseaurchin.com/button/game.js" data-game="ghost-wire"></script>
+```
+
+```js
+const at = beachGame.today();                                                    // the day's address on the beach's clock: eight digits, then 00
+const r = await beachGame.result({ at, line: 'FINISHED 2.38s', proof, name });   // { ok, name, address, slot, said, made } — a newcomer named and keyed in one tap
+const b = await beachGame.top({ at, n: 10, verify: p => GW.rerun(p.proof, wire).ok });   // { top: [{ name, line, score, proof, checked }], players, through }
+const room = await beachGame.room({ n: 5 });   await beachGame.note({ text, name });     // the room's last lines, and one left in it
+const here = await beachGame.here();           await beachGame.present(true);            // who is playing now; this player is, while the page is open
+const wave = await beachGame.wave();                                                     // who came when, in three parts, ranking nobody
+const said = beachGame.made();                                                           // the newcomer's name and key, once, to say at the end
+```
+
+Or the ready-made elements, and no code at all: `<beach-board n="10" verify="checkRun"></beach-board>` and `<beach-room n="5"></beach-room>`. They wear the page's own font and colour, refresh every half minute while in view, and the room's form leaves a line.
+
+- **The law decides the board, not the page.** One line in the law, `board: FINISHED, lowest first, best per player`, names the word a result opens with, the order, and whether a player's best or last stands; `room: pool:<game>` and `page: https://…` name the rest, and a law at `game:<name>` with neither is read for its first address and `pool:<game>`. The plug reads the law once at load, which also sets its clock from the beach's own stamp (`X-Pscale-Now`), so `today()` is the beach's day even on a phone whose clock is wrong.
+- **The proof stands in the room, the signed line in the mirror.** `result` appends the run to the room first, in the shape Ghost Wire keeps ({_: the line, 1: '<name>, a visitor', 2: the address, 3: when, 6: who brought them, 7: the proof, 8: which try}; `function:arcade` 6), then says the line in the player's own mirror at the address through the voice, naming the proof's slot (`FINISHED 2.38s · proof pool:ghost-wire 143`). Why there and not beneath the line: a said line is capped at 2,000 characters, twelve seconds of a Ghost Wire replay; a proof is never trusted, only re-run, so where it stands changes nothing about an honest board; the room is open, so the run lands even where the browser has not been given the player's key; the mirror's digits stay the clock's; and Ghost Wire's page keeps reading its room as before. Where the law keeps each player's best, a slower run goes into the room and leaves the standing line.
+- **A newcomer is named and keyed in one tap** (`beachVoice.enter`): a device that knows no name keeps a result as a starling and four digits, its mirror founded under a key made by the voice; a typed name is a claim, and one already on the beach is asked its key by the browser, so without it the line never lands in that person's mirror (the run still stands in the open room, as a visitor's).
+- **The board counts only what it can check.** `top` reads every player's mirror once (through the fold, `/api/mirrors` on happyseaurchin.com for this beach, or `data-fold`; the beach's own index and mirrors where a beach has none), takes each player's line at the address or their best beneath it (so the week's address gathers its days), reads the proofs from the room in one read, and hands each to the page's `verify`; a proof that fails is dropped, and without a verify every line is shown as a claim and says so (`checked: null`). Reads are kept fifteen seconds on the page.
+- **On any beach.** Served by a beach, the plug talks to that beach alone; a script served from a builder's own computer may name the beach with `data-beach`, as the voice does, and the fold with `data-fold`.
+
+`scripts/smoke-game.cjs` proves it against a mock beach: a game founded as the recipe says; a result kept at the day's address, the proof in the room past the cap and the line at the day's digits; best per player kept, a faster run replacing the line; the board folded from three players' mirrors through a fold and straight from the beach, a failing proof dropped by the page's verify, the week's board gathering its days; the wave, presence, and this player's slot in it; the room's lines and a note; the two elements drawing and leaving a line; a newcomer with no name keeping a result in one tap and the key said once; a typed name on the beach asked its key; a law at `game:<name>` read the same. **35 checks**, all hold.
+
+```bash
+NODE_PATH=$(npm root -g) npm run smoke:game     # needs playwright + chromium
+```
+
 ## Next steps (proposed, not built)
 
 - **The go menu in the button:** the place's doors (its `lighthouse`) and the person's own (their `lists:<handle>` go-menu branch) as two tabs, so a person's menu travels with them to any page.
@@ -183,6 +216,7 @@ NODE_PATH=$(npm root -g) npm run smoke:voice     # needs playwright + chromium
 | `button.js` | the host page | nothing sensitive: draws the circle, its grip and the widening edge, places the window, relays layout and requests |
 | `frame.html` · `frame.js` · `frame.css` | the iframe (the beach's origin) | the window: the handle, passphrase and key for this tab; the ask; the staged writes and their commits; settings |
 | `unlock.html` · `unlock.js` | a top-level window (the beach's origin) | where words are typed; "remember on this device" |
+| `game.js` | a game's page | the plug: today, result, top, room, note, here, present, wave, and the two elements; writes through the voice |
 | `ear.html` · `ear.js` | a top-level window (the beach's origin) | the person's ear, watch by watch; following and ending, under their own words |
 | `voice.js` | the host page | the page's side: one call for a person's words, through the button where it is, else the page's own text entry (the key the browser keeps for it, in the page's storage); the person's choice of button, in their settings on the beach |
 
