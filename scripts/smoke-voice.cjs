@@ -4,7 +4,10 @@
 // browser keeps or asks for once. Turned on, the button stands on the page and the same call goes
 // through it, and the person's choice is kept in their own settings on the beach (settings:<handle>
 // 9.1), so another device that knows their name shows it too. A mock beach holds the blocks and
-// refuses a wrong key, and a name with a passport takes only the passport's key (handle_bound).
+// refuses a wrong key, and a name with a passport takes only the passport's key (handle_bound). A mirror is
+// founded at its family's floor (a family on the clock: ten deep, so a day's line lands under the day's
+// digits; the arcade's step 1), and a newcomer is given a name and a key in one tap (propose, enter, made,
+// known; the arcade's step 2, moved here from the premiere page).
 //
 // Runs offline in headless Chromium (Playwright). CommonJS (.cjs), as this package is ESM:
 //   NODE_PATH=$(npm root -g) npm run smoke:voice
@@ -48,17 +51,22 @@ function site(req, res) {
 }
 
 // ── the mock beach ──
-const BLOCKS = {}, LOCKS = {}, FLOORS = { 'spine:clock': 10 };
+const BLOCKS = {}, LOCKS = {};
 const log = [];
+// the floor is the depth of a block's own underscore chain, as the handler reads it (floorDepth)
+function floorOf(b) { let d = 0; while (b && typeof b === 'object' && '_' in b) { d++; b = b._; if (typeof b === 'string') return d; } return d; }
+const nested = (line, floor) => { let n = line; for (let i = 0; i < floor; i++) n = { _: n }; return n; };
 function seed() {
   Object.keys(BLOCKS).forEach((k) => { delete BLOCKS[k]; delete LOCKS[k]; });
   BLOCKS['passport:tester'] = { _: 'tester — a person testing the voice' }; LOCKS['passport:tester'] = SECRET;
   BLOCKS['spine:reflexive-reading'] = { _: 'Reading this reflexively.', 1: { _: 'Most charts ask you to take in information…' } };
-  BLOCKS['spine:clock'] = { _: 'A family on the clock.' };
+  BLOCKS['spine:clock'] = nested('A family on the clock.', 10);          // floor 10: the sundial's day is 2026414500
+  BLOCKS['spine:table'] = nested('A floor-3 tabletop world.', 3);         // floor 3: a stop is 311
   log.length = 0;
 }
+// a point-write as the handler makes it: trailing zeros are floor padding, an interior 0 steps into the underscore
 function setAt(tree, spindle, value) {
-  const p = String(spindle).replace('.', '').split('');
+  const p = String(spindle).replace('.', '').replace(/0+$/, '').split('').map((d) => (d === '0' ? '_' : d));
   let n = tree;
   p.slice(0, -1).forEach((d) => { if (typeof n[d] === 'string') n[d] = { _: n[d] }; else if (!n[d] || typeof n[d] !== 'object') n[d] = {}; n = n[d]; });
   const last = p[p.length - 1];
@@ -80,7 +88,7 @@ function beach(req, res) {
     if (req.method === 'GET') {
       const b = BLOCKS[name];
       if (!b) return say(404, { error: 'not found', code: 'not_found' });
-      return say(200, url.searchParams.has('pscale') ? { floor: FLOORS[name] || 1, shape: 'disc', entries: [] } : b);
+      return say(200, url.searchParams.has('pscale') ? { floor: floorOf(b), shape: 'disc', entries: [] } : b);
     }
     // a block named for a handle with a passport takes only the passport's key
     const hand = /:([^:]+)$/.exec(name || ''), bound = hand && BLOCKS['passport:' + hand[1]] && name !== 'passport:' + hand[1] ? LOCKS['passport:' + hand[1]] : null;
@@ -143,6 +151,21 @@ const writes = (block) => log.filter((x) => x.method !== 'GET' && (!block || x.b
   check('saying again asks nothing, takes the kept name, and replaces the reading', r.ok && asked.length === 0 && BLOCKS['reflexive-reading:tester']['1']['2'] === 'Said again, it replaces.', r);
   r = await p.evaluate(() => beachVoice.keep({ field: 'clock', content: { 1: 'a whole day' } }));
   check('a family on the clock is never kept whole', !r.ok && /keeps time/.test(r.error), r);
+
+  console.log('\na mirror stands at its family\'s floor');
+  asked.length = 0;
+  r = await p.evaluate(() => beachVoice.say({ field: 'clock', at: '2026414500', text: 'Monday: the arcade\'s door.' }));
+  m = BLOCKS['clock:tester'];
+  check('said at a day on the clock, the mirror is founded ten deep, as the spine stands', r.ok && asked.length === 0 && m && floorOf(m) === 10 && LOCKS['clock:tester'] === SECRET, { r, floor: m && floorOf(m) });
+  const dayLine = (((((((m['2'] || {})._ || {})['2'] || {})['6'] || {})['4'] || {})['1'] || {})['4'] || {})['5'];
+  check('…so the day\'s line stands under the day\'s own digits, 2026414500 read as 2 _ 2 6 4 1 4 5', dayLine === 'Monday: the arcade\'s door.', m);
+  let line = m; while (line && typeof line === 'object') line = line._;
+  check('…and its opening line, ten underscores down, names whose readings these are', /^MIRROR — tester’s readings on the clock family/.test(line || ''), line);
+  r = await p.evaluate(() => beachVoice.keep({ field: 'table', content: { _: 'MIRROR — a table, kept whole.', 3: { 1: { 1: 'the first stop' } } } }));
+  m = BLOCKS['table:tester'];
+  check('kept whole on a floor-3 family, the mirror stands three deep with its stops at 311', r.ok && m && floorOf(m) === 3 && m['3']['1']['1'] === 'the first stop' && m._._._ === 'MIRROR — tester’s table, kept whole.', m);
+  r = await p.evaluate(() => beachVoice.say({ field: 'table', at: '312', text: 'the second stop' }));
+  check('…and a later say lands beside them', r.ok && BLOCKS['table:tester']['3']['1']['2'] === 'the second stop', r);
   r = await p.evaluate(() => beachVoice.ask('who came early?'));
   check('a question has nowhere to go without the button, and says so', !r.ok && r.unsupported, r);
 
@@ -197,6 +220,40 @@ const writes = (block) => log.filter((x) => x.method !== 'GET' && (!block || x.b
   const inner = nameless.p.frames().find((f) => f.url().endsWith('/__test/page.html'));
   check('…nor a page in a frame, whose owner has its own', !!inner && (await inner.evaluate(() => document.querySelectorAll('iframe').length)) === 0);
   await nameless.context.close();
+
+  console.log('\na newcomer: a name proposed, a key made here, said once at the end');
+  const fresh = await device();
+  asked.length = 0;
+  const proposed = await fresh.p.evaluate(() => beachVoice.propose());
+  check('a device that knows no name is proposed a starling and four digits no block on the beach is named for', /^starling-\d{4}$/.test(proposed) && !Object.keys(BLOCKS).some((b) => b.endsWith(':' + proposed)), proposed);
+  check('…the same one while it stands free', (await fresh.p.evaluate(() => beachVoice.propose())) === proposed);
+  let kn = await fresh.p.evaluate((h) => Promise.all([beachVoice.known('tester'), beachVoice.known(h), beachVoice.known('nobody-yet')]), proposed);
+  check('known says what the beach has under a name: a passport, blocks, or nothing', kn.join() === 'passport,,', kn);
+  BLOCKS['reflexive-reading:' + proposed] = { _: 'taken since it was proposed' };   // someone else took it first
+  r = await fresh.p.evaluate(() => beachVoice.enter({ field: 'reflexive-reading', intro: 'MIRROR — a premiere of reflexive-reading, first seen today.' }));
+  const bornAs = r.name, bornBlock = 'reflexive-reading:' + bornAs;
+  check('one tap with no name: a proposed name taken since is passed over for another, without asking', r.ok && r.born && r.made && bornAs !== proposed && /^starling-\d{4}$/.test(bornAs) && asked.length === 0, r);
+  const madeKey = await fresh.p.evaluate((b) => localStorage.getItem('next-latch:' + b), bornBlock);
+  check('…the mirror is founded under a key made here, three words and two digits, kept where the voice looks first', !!BLOCKS[bornBlock] && /^[a-z]+-[a-z]+-[a-z]+-\d\d$/.test(madeKey || '') && LOCKS[bornBlock] === madeKey, { madeKey, lock: LOCKS[bornBlock] });
+  check('…with the intro the page gave, the name in a\'s place', BLOCKS[bornBlock]._ === 'MIRROR — ' + bornAs + '’s premiere of reflexive-reading, first seen today.' && (await fresh.p.evaluate(() => beachVoice.name())) === bornAs, BLOCKS[bornBlock]);
+  r = await fresh.p.evaluate(() => beachVoice.say({ field: 'reflexive-reading', at: '1.1', text: 'My first answer.' }));
+  check('…and the newcomer\'s answers follow, asking nothing', r.ok && asked.length === 0 && BLOCKS[bornBlock]['1']['1'] === 'My first answer.', r);
+  let madeOnce = await fresh.p.evaluate(() => beachVoice.made({ field: 'reflexive-reading' }));
+  check('made hands back the name and the key once', madeOnce && madeOnce.name === bornAs && madeOnce.key === madeKey, madeOnce);
+  madeOnce = await fresh.p.evaluate(() => beachVoice.made({ field: 'reflexive-reading' }));
+  check('…and never again', madeOnce === null, madeOnce);
+  r = await fresh.p.evaluate((h) => beachVoice.enter({ field: 'reflexive-reading', name: h }), bornAs);
+  check('entering again finds the mirror standing, and writes nothing', r.ok && r.standing && r.mirror && r.mirror['1']['1'] === 'My first answer.' && !r.made, r);
+  r = await fresh.p.evaluate(() => beachVoice.enter({ field: 'reflexive-reading', name: 'tester' }));
+  check('a name with a passport whose mirror stands is handed it without a key', r.ok && r.standing && asked.length === 0, r);
+  delete BLOCKS['table:tester']; delete LOCKS['table:tester'];   // taken down elsewhere, so the founding is asked of this device
+  fresh.p.__answers = [SECRET];
+  r = await fresh.p.evaluate(() => beachVoice.enter({ field: 'table', name: 'tester' }));
+  check('…and where its mirror does not stand, the browser asks for the passport\'s key, as say does; no key is made', r.ok && r.born && !r.made && asked.length === 1 && /passport/.test(asked[0]) && LOCKS['table:tester'] === SECRET, { r, asked });
+  r = await fresh.p.evaluate(() => beachVoice.enter({ field: 'no-such-family', name: 'anyone' }));
+  check('a family that does not stand is refused before any name is made', !r.ok && /no family called no-such-family/.test(r.error) && !Object.keys(BLOCKS).some((b) => b.endsWith(':anyone')), r);
+  check('the index was read once for the whole visit', log.filter((x) => x.method === 'GET' && !x.block).length <= 1, log.filter((x) => x.method === 'GET' && !x.block).length);
+  await fresh.context.close();
 
   console.log('\ntaken down');
   asked.length = 0;

@@ -396,6 +396,10 @@
     return 'MIRROR — ' + me.handle + '’s readings on the ' + field + ' family (spine:' + field +
       '), at the spine’s own addresses. Sovereign to them; silence at an address is honest absence.';
   }
+  /* a mirror stands at its family's floor: its opening line nested as deep as the spine's own (ten
+   * underscores on the clock), as /walk and the voice found one, so a day's line lands under the day's
+   * digits (orientation:weft 9.24). The root is the first underscore; this makes the rest. */
+  function floored(line, floor) { var n = line; for (var i = 1; i < (+floor || 1); i++) n = { _: n }; return n; }
   /* the spine's opening lines and the person's mirror, read together; a family with no spine is
    * refused before the person is asked anything */
   function family(field, block, base) {
@@ -420,7 +424,8 @@
     out = out || {};
     if (typeof node === 'string') { if (path && node.trim()) out[path] = node.trim(); return out; }
     if (!node || typeof node !== 'object') return out;
-    Object.keys(node).forEach(function (k) { linesOf(node[k], k === '_' && typeof node._ === 'string' ? path : path + k, out); });
+    // an underscore voices its position, never a position of its own: the floor's chain of them is the opening line
+    Object.keys(node).forEach(function (k) { linesOf(node[k], k === '_' ? path : path + k, out); });
     return out;
   }
   function clip(s) { return s.length > 120 ? s.slice(0, 119) + '…' : s; }
@@ -446,7 +451,7 @@
         (!m ? ' (this founds your mirror, locked with your passphrase)' : was ? ', replacing what you said there: “' + clip(was) + '”' : '');
       decide(HOST + ' asks to add your reading to ' + field + ', in your own mirror, ' + where + ':', text, 'commit', function (yes, why) {
         if (!yes) return reply(id, { ok: false, error: why || 'declined' });
-        (m ? Promise.resolve({ ok: true }) : found(block, { _: mirrorIntro(field) }, base)).then(function (w) {
+        (m ? Promise.resolve({ ok: true }) : found(block, { _: floored(mirrorIntro(field), f.floor) }, base)).then(function (w) {
           // confirm_required: the mirror was founded a moment ago, from another tab, and stands
           return w.ok || w.code === 'confirm_required' ? post({ block: block, spindle: at, content: text, secret: me.secret }, base) : w;
         }).then(function (r) {
@@ -478,6 +483,7 @@
     if (!mine(block)) return reply(id, { ok: false, error: 'the button writes only blocks named for the person (…:' + me.handle + ')' });
     family(field, block, base).then(function (f) {
       if (f.floor >= 10) return reply(id, { ok: false, error: 'the ' + field + ' family keeps time, so its mirror is said a beat at a time, never kept whole' });
+      if (typeof content._ === 'string') content._ = floored(content._, f.floor);
       var m = f.mirror, was = m ? linesOf(m, '') : {}, will = linesOf(content, '');
       var gone = Object.keys(was).filter(function (a) { return !(a in will); });
       var moved = Object.keys(was).filter(function (a) { return a in will && will[a] !== was[a]; });

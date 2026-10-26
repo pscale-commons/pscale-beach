@@ -145,6 +145,17 @@ beachVoice.onButton(on => nameField.hidden = on);                               
 await beachVoice.set('9.2', 'light');  const t = await beachVoice.setting('9.2');             // a page setting of the person's own
 ```
 
+A mirror the voice founds stands at its family's floor, as `/walk` founds one: on the clock, ten underscores down, so a day's line lands under the day's digits (26 October, the arcade's step 1; `orientation:weft` 9.24). And a newcomer is given a name and a key in one tap, the same way on every game and premiere (the arcade's step 2, moved here from the premiere page, where keel made it for the Brighton room at FLIRT 2026):
+
+```js
+const h = await beachVoice.propose();                                     // starling-4821: no block on the beach is named for it
+const r = await beachVoice.enter({ field: 'spot-it', name: typed, intro });  // { ok, name, made, born } or { ok, name, standing, mirror }
+const said = beachVoice.made({ field: 'spot-it', name: r.name });          // { name, key } once, to say at the end; then null
+const k = await beachVoice.known(typed);                                   // 'passport' | 'blocks' | ''
+```
+
+`enter` takes the name given, else the proposed one; a name new to the beach is given its key by the voice (three words and two digits), kept where the voice looks first (`next-latch:<field>:<name>`), so nobody chooses a key or reuses a password as one, and the browser asks only for the key of a name already on the beach. A proposed name taken since it was proposed is passed over for another without asking, since the person did not choose it.
+
 - **Where the person has the button on the page,** `say`, `keep` and `ask` go through it (`{kind:'say'}`, `{kind:'keep'}`, `{kind:'ask'}` above): it holds the request until they have unlocked, shows the words where they will stand, and writes only on commit. The page never holds their passphrase.
 - **Where they have not,** the call is the page's own text entry, as happyseaurchin.com's o-pages have always taken words: the name the page passes (or the one the device signs with, `render:who`), and the key the device keeps for it (`next-latch:<block>`, or the passport's), else the one they give the browser's own prompt, asked again while the beach refuses it and kept once it lands. The writes are the button's own, by its rules: only a family whose spine stands, a mirror founded locked to the person's words (the passport's, where they have one), a family on the clock never kept whole.
 - **The page draws its box the same either way** and hides only its name field while the button is there: `beachVoice.button.shown()` says whether it is, and `beachVoice.onButton(fn)` calls `fn(shown)` whenever it comes or goes, including when the person puts it away.
