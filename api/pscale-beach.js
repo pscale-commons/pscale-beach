@@ -315,28 +315,112 @@ function formatAddress(digits, floor) {
 }
 
 // Lock-key derivation. Empty spindle (or a spindle addressing the underscore
-// via '0' / '_') always maps to the '_' lock — that's whole-block replace and
-// underscore-of-root writes. Otherwise the lock is per-position: for sed:/grain:
-// the first dotted segment names the registrant/side position (multi-digit
-// like '11', '12', '111'); for ordinary blocks the first digit of the
-// FLOOR-AWARE-PARSED path names the branch. After parseSpindle's floor pad,
-// "34.5" at floor 2 keeps lock key '3'; the same address at floor 3 (block
-// has grown an underscore layer) locks at '_' because the walk now starts
-// with '_' '3' '4' '5'. Locks follow the walk.
+// via '0') always maps to the '_' lock — that's whole-block replace and
+// underscore-of-root writes. Otherwise the lock is per-position, named from the
+// FLOOR-AWARE-PARSED path: for ordinary blocks its first digit names the
+// branch; for sed:/grain: the whole walk names the position, because a place
+// or a side sits deeper than a first digit — place 11 is the node 1→1, place
+// 111 the node 1→1→1 beneath it, a line of side 1 the node 1→5 — so '1.1' and
+// '11' are one position and take one lock. (Read off the spindle as typed, the
+// first dotted segment gave one node as many locks as it had spellings: '9.1'
+// and '91' were the payway's issuer line under two, '1.5' and '15' a line of
+// side 1 — 2026-10-27.) After parseSpindle's floor pad, "34.5" at floor 2
+// keeps lock key '3'; the same address at floor 3 (block has grown an
+// underscore layer) locks at '_' because the walk now starts with '_' '3' '4'
+// '5'. Locks follow the walk.
 function lockKeyForWrite(blockName, spindle, block) {
   if (!spindle) return '_';
   const cleaned = String(spindle).replace(/\*$/, '');
-  if (blockName.startsWith('sed:') || blockName.startsWith('grain:')) {
-    const firstSegment = cleaned.split('.')[0];
-    if (!firstSegment || firstSegment === '0' || firstSegment === '_') return '_';
-    return firstSegment;
-  }
   const fl = floorDepth(block ?? {});
   const { digits } = parseSpindle(cleaned, fl);
   if (!digits.length) return '_';
   const firstDigit = digits[0];
   if (firstDigit === '0' || firstDigit === '_') return '_';
+  if (blockName.startsWith('sed:') || blockName.startsWith('grain:')) return digits.join('');
   return firstDigit;
+}
+
+// THE LATCH THAT GOVERNS A WRITE — the nearest one on the walk: the position's
+// own if it carries one, else the nearest latched position above it (proposal
+// 2026-07-26-lock-inheritance). An ordinary block's positions are its first
+// digits, so the nearest above any of them is the root. A sed's places and a
+// grain's sides sit deeper and the walk passes through them, so a line beneath
+// place 11 is 11's, a line beneath side 1 is side 1's, and place 111 keeps its
+// own latch beneath 11. A sed's root latch is its founder's and governs what no
+// registrant holds — its underscore, its containers, its metadata at 9 — never
+// a member's place, which would put every member under the founder's key. A
+// grain has no root latch: its sides are latched by the reach, and nothing else
+// in it is anyone's to write (substrateWriteRefusal). Null: nothing governs.
+function governingKey(blockName, lockKey, hashes) {
+  if (hashes[lockKey] !== undefined) return lockKey;
+  if (lockKey === '_') return null;
+  if (blockName.startsWith('sed:') || blockName.startsWith('grain:')) {
+    for (let n = lockKey.length - 1; n >= 1; n--) {
+      if (hashes[lockKey.slice(0, n)] !== undefined) return lockKey.slice(0, n);
+    }
+    if (blockName.startsWith('grain:')) return null;
+  }
+  return hashes['_'] !== undefined ? '_' : null;
+}
+
+// A place of a sed is a walk of two digits or more, none of them 0, never
+// beneath 9: block-conventions 7.3 keeps position 9 for the collective's
+// metadata, and in a floor-1 sed a payway's issuer at 9.1 IS the node of 91.
+function isPlacePath(digits) {
+  return digits.length >= 2 && digits[0] !== '9' && !digits.includes('0');
+}
+
+// WHAT A SED OR A GRAIN TAKES BY HAND (2026-10-27 — the holes the coloured-
+// stigmergy proposal named on 26 October, and the rest of their class). Their
+// positions are born by their own actions, a place by settling and a side by
+// reaching, so a write by hand lands only where a latch already governs it, and
+// never removes or moves a position a different latch holds: fine locks bind
+// the coarse, as the grain gate below says. Before this, a write at a sed's 1,
+// which nobody latches, replaced the places 11 to 19; a place's holder replaced
+// the places beneath their own; a sed born by its first settle, with no root
+// latch, could be replaced whole; and a grain's 9, the record of who holds
+// which side that the connector seals to, stood open to any hand.
+function substrateWriteRefusal(blockName, { digits, governing, content, newLock, existing, hashes }) {
+  if (blockName.startsWith('grain:')) {
+    if (existing == null) {
+      return { status: 405, body: { error: `"${blockName}" does not exist, and a grain is born by a reach (the reach action, pscale_grain_reach), never by a write — a grain made by hand would name its own parties at 9.`, code: 'grain_reach_only' } };
+    }
+    if (governing !== '1' && governing !== '2') {
+      return { status: 405, body: { error: `"${blockName}" is written by its two holders, each at their own side under that side's key. Its 8 (a reach not yet accepted), its 9 (who holds which side) and its underscore are the reach action's, and a side nobody has accepted is taken by accepting the reach, never by a write.`, code: 'grain_reach_only' } };
+    }
+    return null;
+  }
+  const where = digits.length ? `position "${digits.join('')}" of "${blockName}"` : `"${blockName}"`;
+  // A latch here is set by settling (a place) or by founding (the root); by
+  // hand it only rotates or delegates under a latch that already governs.
+  if (newLock !== undefined && digits.length && governing === null) {
+    return { status: 405, body: { error: `${where} answers to no latch, and a sed's positions are latched by settling (pscale_settle), its root by founding — not by hand.`, code: 'sed_settle_only' } };
+  }
+  if (content === undefined) return null;
+  const held = Object.keys(hashes).filter((k) => k !== '_');
+  if (!digits.length) {
+    if (existing != null && held.length) {
+      return { status: 405, body: { error: `"${blockName}" holds places, each latched to its own registrant for life, and a whole-block write answers to none of those latches — write one position at a time under the key that governs it.`, code: 'whole_block_replace_unsupported' } };
+    }
+    return null;
+  }
+  if (digits[0] === '0') {
+    if (held.length && (digits.length > 1 || (content !== null && typeof content === 'object'))) {
+      return { status: 409, body: { error: `"${blockName}" holds places, and a write into its root's underscore chain beyond a line at 0 would raise its floor and move every place beneath it — re-voice the underscore with a string at 0.`, code: 'sed_floor_held' } };
+    }
+    return null;
+  }
+  if (governing === null && isPlacePath(digits)) {
+    return { status: 403, body: { error: `${where} is a place nobody has settled — pscale_settle hands out places, and a place is written by its holder.`, code: 'place_unsettled' } };
+  }
+  if (content !== null && typeof content === 'object') {
+    const at = digits.join('');
+    const beneath = held.filter((k) => k.length > at.length && k.startsWith(at)).sort();
+    if (beneath.length) {
+      return { status: 409, body: { error: `${where} holds ${beneath.length === 1 ? 'the place' : 'the places'} ${beneath.join(', ')} beneath it, each latched to its own registrant, and an object written here would replace ${beneath.length === 1 ? 'it' : 'them'} — re-voice this position with a string, or write the part you hold.`, code: 'places_beneath' } };
+    }
+  }
+  return null;
 }
 
 function hashByBlockName(origin, blockName, position, secret) {
@@ -1064,13 +1148,17 @@ function blockParamFromBody(body) {
 
 // ── Sed: substrate — atomic position allocation ──
 //
-// Floor-2 minimum. Valid positions contain digits 1-9 only (no 0). Sequence:
-// 11, 12, ..., 19, 21, ..., 99, 111, 112, ..., 999, 1111, ...
-function nextValidPosition(positionHashes) {
+// Floor-2 minimum. Valid positions contain digits 1-9 only (no 0), are never
+// beneath 9 (isPlacePath: the collective's metadata stands there), and are never
+// where something already stands: a place's own lines sit at the addresses of
+// the places beneath it (a ticket's grain at 11's 1 is the node of 111), so a
+// settle that landed there would write over them. Sequence: 11, 12, ..., 19,
+// 21, ..., 89, 111, 112, ..., 889, 1111, ...
+function nextValidPosition(positionHashes, block) {
   let n = 11;
   while (n < 1_000_000) {
     const s = String(n);
-    if (!s.includes('0') && !positionHashes[s]) return s;
+    if (isPlacePath([...s]) && !positionHashes[s] && readAt(block, s) == null) return s;
     n++;
   }
   throw new Error('No valid position found below 1,000,000.');
@@ -1097,7 +1185,7 @@ async function handleSedRegister(origin, collective, body) {
   const hashes = await loadHashes(origin, blockName);
   let position;
   try {
-    position = nextValidPosition(hashes);
+    position = nextValidPosition(hashes, block);
   } catch (e) {
     return { status: 500, body: { error: String(e.message || e), code: 'no_position' } };
   }
@@ -1518,12 +1606,19 @@ async function handleAppendAtSpindle(origin, blockName, spindle, content, secret
   // inheritance as the ordinary write path at this spindle.
   const hashes = await loadHashes(origin, blockName);
   const lockKey = lockKeyForWrite(blockName, spindle, preBlock);
-  const inherits = !blockName.startsWith('sed:') && !blockName.startsWith('grain:');
-  let authKey = lockKey;
-  let stored = hashes[lockKey];
-  if (inherits && stored === undefined && lockKey !== '_' && hashes['_'] !== undefined) {
-    authKey = '_';
-    stored = hashes['_'];
+  const governing = governingKey(blockName, lockKey, hashes);
+  const authKey = governing ?? lockKey;
+  const stored = governing === null ? undefined : hashes[governing];
+  // On a sed or a grain an append lands only beneath a node a latch governs: a
+  // grain's lines beneath a side, a sed's beneath a place or a position its
+  // founder holds. The slot it takes is the address of a place nobody has
+  // settled yet (beneath 11 the next free is 112's), so an append no latch
+  // stands behind would write where a newcomer is later placed.
+  if (blockName.startsWith('grain:') && governing !== '1' && governing !== '2') {
+    return { status: 405, body: { error: `appends to "${blockName}" land beneath a side, under that side's key — "${spindle}" is not inside a side anyone holds`, code: 'grain_reach_only' } };
+  }
+  if (blockName.startsWith('sed:') && governing === null) {
+    return { status: 403, body: { error: `"${spindle}" of "${blockName}" answers to no latch, and a sed takes an append only beneath a position a latch governs — a place's holder beneath their place, a founder beneath what no place holds`, code: 'lock_required' } };
   }
   if (stored) {
     if (!secret) {
@@ -1658,6 +1753,14 @@ async function handleStandardWrite(origin, blockName, body) {
     const appendSpindle = spindle == null ? '' : String(spindle);
     if (appendSpindle !== '') {
       return handleAppendAtSpindle(origin, blockName, appendSpindle, content, secret, resolve_window);
+    }
+    // Neither a sed nor a grain is an accumulator at its root: a sed's places are
+    // handed out by settling, and a grain's lines go beneath a side. A root append
+    // lands at a container (a sed's 3 holds the places 31 to 39), and the tenth
+    // wraps the whole block, moving every place, or the record at 9 of who holds
+    // which side, beneath the underscore.
+    if (blockName.startsWith('sed:') || blockName.startsWith('grain:')) {
+      return { status: 405, body: { error: `"${blockName}" takes no append at its root — ${blockName.startsWith('sed:') ? 'a sed\'s places are handed out by settling (pscale_settle)' : 'a grain\'s lines are appended beneath a side, at spindle "1" or "2", under that side\'s key'}`, code: 'substrate_append_unsupported' } };
     }
     // Whole-accumulator authority: the `_` lock governs append (an accumulator
     // is locked or open as a unit; per-slot locks don't fit an append stream).
@@ -1827,10 +1930,11 @@ async function handleStandardWrite(origin, blockName, body) {
   // A grain's lifecycle is reach-creates, sides-own-their-halves. There is no
   // legitimate replace-the-whole-grain operation: writing a side is a spindled
   // write under that side's key, and re-voicing your own reach is the reach
-  // action's own-side rewrite. Creation is untouched — the gate only fires when
-  // the block already exists. sed: is untouched too: a sed: root DOES carry a
-  // '_' lock from founding, so there the lock genuinely protects and refusing
-  // would remove a real admin capability.
+  // action's own-side rewrite. Creation is refused below as well, since a grain
+  // is born by a reach (substrateWriteRefusal). sed: is gated there too, once
+  // its latches are read: a sed born by its first settle carries no root latch
+  // at all, and a founder's root latch does not stand for its members, so a sed
+  // holding places is never replaced whole either (2026-10-27).
   if (content !== undefined && !spindle && existing != null && blockName.startsWith('grain:')) {
     return {
       status: 405,
@@ -1851,9 +1955,10 @@ async function handleStandardWrite(origin, blockName, body) {
     return { status: 400, body: { error: 'whole-block replace requires {confirm: true}', code: 'confirm_required' } };
   }
   const hashes = await loadHashes(origin, blockName);
-  let lockKey;
+  let lockKey, digits;
   try {
     lockKey = lockKeyForWrite(blockName, spindle, block);
+    digits = spindle ? parseSpindle(String(spindle).replace(/\*$/, ''), floorDepth(block ?? {})).digits : [];
   } catch (e) {
     if (e instanceof InvalidAddressError) {
       return { status: 400, body: { error: e.message, code: 'invalid_address' } };
@@ -1878,19 +1983,20 @@ async function handleStandardWrite(origin, blockName, body) {
   // carrying its own lock still wins, so a position may be delegated to a
   // different holder.
   //
-  // ORDINARY BLOCKS ONLY. sed: and grain: are registration substrates whose
-  // positions ARE their identities — a registrant's position-of-arrival, a
-  // grain party's side — allocated and locked together by their own state
-  // machines. Their root lock is the founder's, and letting it bind the
-  // registrants' positions would put every member under the founder's key.
-  // They keep flat per-position authority.
+  // sed: AND grain: INHERIT ALONG THE WALK, NEVER FROM A ROOT INTO A PLACE.
+  // They are registration substrates whose positions ARE their identities — a
+  // registrant's position-of-arrival, a grain party's side — allocated and
+  // locked together by their own state machines, and those positions sit
+  // deeper than a first digit, so the nearest latch on the walk governs
+  // (governingKey). A sed's root lock is the founder's and governs only what no
+  // registrant holds; letting it bind the registrants' positions would put
+  // every member under the founder's key. Until 2026-10-27 these blocks kept
+  // flat per-position authority, which left every position nobody had latched
+  // one by one open to any hand, and a place's own lines open beneath it.
   const inherits = !blockName.startsWith('sed:') && !blockName.startsWith('grain:');
-  let authKey = lockKey;
-  let stored = hashes[lockKey];
-  if (inherits && stored === undefined && lockKey !== '_' && hashes['_'] !== undefined) {
-    authKey = '_';
-    stored = hashes['_'];
-  }
+  const governing = governingKey(blockName, lockKey, hashes);
+  const authKey = governing ?? lockKey;
+  const stored = governing === null ? undefined : hashes[governing];
 
   // R5 — relinquish. new_lock null or '' returns the position to its PRE-lock
   // state: the hash entry is deleted, the position is open again as if never
@@ -1910,6 +2016,10 @@ async function handleStandardWrite(origin, blockName, body) {
         code: 'invalid_shape'
       }
     };
+  }
+  if (!inherits) {
+    const refused = substrateWriteRefusal(blockName, { digits, governing, content, newLock: new_lock, existing, hashes });
+    if (refused) return refused;
   }
 
   // A handle founds under its own key — setting a lock where none stands, on a block
