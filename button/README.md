@@ -201,6 +201,34 @@ Or the ready-made elements, and no code at all: `<beach-board n="10" verify="che
 NODE_PATH=$(npm root -g) npm run smoke:game     # needs playwright + chromium
 ```
 
+## The room plug: introduced on the beach, played player to player
+
+The first piece of the relay (27 October; `spine:tronic-glass` 1.1.1.1.3, David's GO; the scope in bsp-mcp `proposals/2026-10-22-the-relay-for-live-play.md`). The beach is where a room is found and where play is kept; the bytes of play go player to player. `room.js`, a third script beside the voice and the plug, introduces the players of a game's room over the room's **wire** and opens one `RTCPeerConnection` between each pair with two data channels — **state**, unordered and never retransmitted (a late position is dropped, the next supersedes it), and **events**, ordered (a move, a finish, a word). A pair the direct path cannot join is carried by the wire instead, so the room always plays, only slower. Each pair's ping is measured both ways, direct and relayed.
+
+```html
+<script src="https://beach.happyseaurchin.com/button/room.js" data-game="ghost-wire"></script>
+```
+
+```js
+const r = await beachRoom.join({ name });                      // { ok, id, name, room, wire: 'vapour' | 'beach', named, turn }
+beachRoom.on('peer', p => …);  beachRoom.on('direct', p => …);  // who arrived; whose channel opened
+beachRoom.on('message', m => …);                                // { from, name, kind, body, via: 'direct' | 'relayed' }
+beachRoom.on('ping', p => …);                                   // p.ping = { direct, relayed, theirs: { direct, relayed } } in ms
+beachRoom.send('moves', { i, m }, { reliable: true });          // to all, or { to: id }; returns where it went
+beachRoom.peers();   await beachRoom.leave();
+```
+
+- **The wire is the relay the beach names.** A beach says at its own address where its introductions go (the fourth decision at `tronic-glass` 1.1.1.1.5): in its `settings` block under 1, the vapour subsystem, `1.3 vapour_url=<the realtime host>` and `1.4 vapour_key=<its publishable key>` — the mirror's Supabase Realtime, which `room.js` speaks over one raw WebSocket in the Phoenix shape (join the room's topic, a heartbeat, every message a broadcast), with no library; and `1.5 turn_url=<a route answering { iceServers }>` for the pairs that cannot connect without TURN. STUN is Google's public server until then.
+- **Where the beach names no vapour, the room's own liquid carries the introductions:** `liquid:pool:<game>`, one slot per player, overwriting (block-conventions 4.5), each slot a pending intention in words (`ann is in the room, reaching bob`) with the player's mailbox at 7 (base64url of `{ id, name, out, seen }`: a message waits in `out` until the other's `seen` says they took it), polled every second while a pair is unjoined, every four once all are direct. A hop takes a second or two, so a relayed ping there is slow by design and a direct one is the real thing; the ping page says so. A slot is blanked on leaving, and nothing of what crossed the wire is kept.
+- **Who offers:** of a pair, the lower id offers and the higher answers (the voice's perfect negotiation, the polite side by name); candidates are gathered before the offer is sent, so an introduction is one offer and one answer over any wire — eight or so slot writes on the liquid for a pair. A side with the direct path off (`join({ direct: false })`) answers "refused", and the pair stands relayed.
+- **The ping page**, `ping.html`, is the small working piece two phones can try: `https://beach.happyseaurchin.com/button/ping.html?room=ghost-wire`. Each enters with a name, sees the other and their ping both ways, and races the day's Ghost Wire live: each player's moves stream as the engine records them (sixty a second, sent ten times a second over the events channel), and the other page re-runs them as a ghost a few frames behind, the finished run re-run and checked. Nobody collides with anybody, so ping changes nothing about who wins. The engine is Matthew's `ghost-wire.js` from his page; nothing is kept — the room's record is Ghost Wire's own page's business.
+
+`scripts/smoke-room.cjs` proves it with two pages in one headless Chromium against a mock beach: introduced over the liquid and joined by real data channels over loopback; pings both ways, direct in milliseconds and relayed at the beach's poll; a message direct over events and over state; a race whose moves re-run as the other's ghost to a checked finish; a countdown; a page with the direct path off carried by the wire, its race arriving relayed; a leave blanking the slot; and the same over a mock vapour in the Phoenix shape, as the beach would name it at `settings` 1.3 and 1.4. **30 checks**, all hold. Probed once live against beach.happyseaurchin.com on 27 October: two headless pages in `liquid:pool:ghost-wire`, direct in five seconds, direct ping 1 ms, relayed 2.2 s, slots blanked on leaving.
+
+```bash
+NODE_PATH=$(npm root -g) npm run smoke:room     # needs playwright + chromium
+```
+
 ## Next steps (proposed, not built)
 
 - **The go menu in the button:** the place's doors (its `lighthouse`) and the person's own (their `lists:<handle>` go-menu branch) as two tabs, so a person's menu travels with them to any page.
@@ -217,6 +245,8 @@ NODE_PATH=$(npm root -g) npm run smoke:game     # needs playwright + chromium
 | `frame.html` · `frame.js` · `frame.css` | the iframe (the beach's origin) | the window: the handle, passphrase and key for this tab; the ask; the staged writes and their commits; settings |
 | `unlock.html` · `unlock.js` | a top-level window (the beach's origin) | where words are typed; "remember on this device" |
 | `game.js` | a game's page | the plug: today, result, top, room, note, here, present, wave, and the two elements; writes through the voice |
+| `room.js` | a game's page | the room plug: join, peers, send, on, ping, leave — players introduced over the wire the beach names (or the room's liquid), two data channels per pair, the wire carrying a pair that cannot connect |
+| `ping.html` | a top-level page (the beach's origin) | the ping page: two phones in one room, their ping both ways, and a live Ghost Wire race |
 | `ear.html` · `ear.js` | a top-level window (the beach's origin) | the person's ear, watch by watch; following and ending, under their own words |
 | `voice.js` | the host page | the page's side: one call for a person's words, through the button where it is, else the page's own text entry (the key the browser keeps for it, in the page's storage); the person's choice of button, in their settings on the beach |
 
