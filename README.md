@@ -12,8 +12,10 @@ A beach is a URL surface that hosts named pscale blocks (marks, pools, `sed:` co
 pscale-beach/
 ├── api/
 │   ├── pscale-beach.js          — the /.well-known/pscale-beach endpoint
-│   └── floor.js                 — pure floor-invariant helpers, shared by the
-│                                   handler and the one-shot scripts
+│   ├── floor.js                 — pure floor-invariant helpers, shared by the
+│   │                               handler and the one-shot scripts
+│   └── turn.js                  — /api/turn, a TURN pass for live games from the
+│                                   owner's own Cloudflare key (no part of the wire)
 ├── seeds/
 │   ├── library/                 — reference blocks (10): reflexive, spore,
 │   │                               vision, grit, rpg, state, systemic-kernel,
@@ -104,6 +106,8 @@ curl https://your-vercel-url.vercel.app/.well-known/pscale-beach
 | `KV_REST_API_URL` | yes | Upstash dashboard | The REST URL. Upstash labels it `UPSTASH_REDIS_REST_URL`; same value, different name. |
 | `KV_REST_API_TOKEN` | yes | Upstash dashboard | The REST token (full, not read-only). Treat as secret. |
 | `BEACH_ORIGIN` | optional | you choose | Bare hostname (no scheme), e.g. `beach.idiothuman.com`. Defaults to Vercel's project URL on Vercel deploys. Set this when you have a custom domain — **recommended form is `beach.<your-domain>`** so federation clients can route `agent_id="https://<your-domain>"` to it by convention. Part of the lock salt namespace AND scopes Redis keys (so one Upstash can host multiple beaches with distinct origins). **Changing it after blocks are locked or written breaks lock verification and orphans the existing keys**. Pick once, keep stable. |
+| `TURN_KEY_ID`, `TURN_KEY_API_TOKEN` | optional | Cloudflare dashboard → Realtime → TURN Server | A TURN key on your own Cloudflare account, its Turn Token ID and API token. With both set, `/api/turn` hands each player of a live game a pass that runs out, so a pair whose networks block a direct link still plays through Cloudflare's relay; name it in your `settings` at 1.5 as `turn_url=https://<your beach>/api/turn`. Unset, live games keep to STUN alone. The token is a secret: it stays in these settings and never reaches a page. Cloudflare's first 1,000 GB a month are free. `npm run smoke:turn` proves the route offline. |
+| `TURN_TTL` | optional | you choose | How long a TURN pass lasts, in seconds. 14400 (four hours) unless set; held between 300 and 86400. |
 
 ### Manual deploy (alternative)
 
@@ -362,7 +366,7 @@ A latch-holder is an author and is never throttled by the first three. The accep
 
 ## Architecture notes
 
-- **The handler is one file.** [api/pscale-beach.js](api/pscale-beach.js) is ~1,600 lines covering ordinary blocks, `sed:` registration, `grain:` reach/accept, lock semantics and inheritance, the shape gate, atomic append with supernesting, path-based world routing, and presence sweeping. Its one extracted companion is [api/floor.js](api/floor.js) — pure floor-invariant helpers with no side effects, so the scripts can import them too.
+- **The handler is one file.** [api/pscale-beach.js](api/pscale-beach.js) is ~1,600 lines covering ordinary blocks, `sed:` registration, `grain:` reach/accept, lock semantics and inheritance, the shape gate, atomic append with supernesting, path-based world routing, and presence sweeping. Its one extracted companion is [api/floor.js](api/floor.js) — pure floor-invariant helpers with no side effects, so the scripts can import them too. Beside them, [api/turn.js](api/turn.js) is no part of the wire and touches no block: an operator's service that turns the owner's Cloudflare TURN key into a short-lived pass for the room plug (`button/room.js`).
 
 - **Lock salt namespaces match bsp-mcp.** Locks set under one client verify under any other — the salt formulas are in [`docs/protocol-pscale-beach-v2.md`](https://github.com/pscale-commons/bsp-mcp-server/blob/main/docs/protocol-pscale-beach-v2.md). Don't change `BEACH_ORIGIN` after locking blocks.
 

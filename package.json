@@ -31,7 +31,8 @@
     "smoke:button": "node scripts/smoke-button.cjs",
     "smoke:voice": "node scripts/smoke-voice.cjs",
     "smoke:game": "node scripts/smoke-game.cjs",
-    "smoke:room": "node scripts/smoke-room.cjs"
+    "smoke:room": "node scripts/smoke-room.cjs",
+    "smoke:turn": "node scripts/smoke-turn.mjs"
   },
   "dependencies": {
     "@upstash/redis": "^1.34.0"
