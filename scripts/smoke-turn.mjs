@@ -80,10 +80,10 @@ check('an unknown key: Cloudflare\'s words, and a check naming TURN_KEY_ID and i
 
 process.env.TURN_KEY_ID = 'ab'.repeat(32); process.env.TURN_KEY_API_TOKEN = 'cd'.repeat(16);
 r = await call();
-check('an API token\'s length in TURN_KEY_ID: the check says the two may be the wrong way round', /has 64\./.test(r.body.check) && /wrong way round/.test(r.body.check) && !JSON.stringify(r.body).includes('ab'.repeat(32)), r.body);
+check('an API token\'s length in TURN_KEY_ID: the check says the two may be the wrong way round', /has 64, ending abab\./.test(r.body.check) && /wrong way round/.test(r.body.check) && !JSON.stringify(r.body).includes('ab'.repeat(32)), r.body);
 process.env.TURN_KEY_ID = 'ef'.repeat(16);
 r = await call();
-check('a 32-character ID Cloudflare does not know: the check names an SFU app\'s ID or a deleted key', /has 32\./.test(r.body.check) && /SFU/.test(r.body.check), r.body);
+check('a 32-character ID Cloudflare does not know: the check names an SFU app\'s ID or a deleted key', /has 32, ending efef\./.test(r.body.check) && /SFU/.test(r.body.check), r.body);
 
 answer = () => new Response('<html>bad gateway</html>', { status: 500 });
 r = await call();
@@ -95,7 +95,7 @@ calls = [];
 r = await call();
 check('values pasted with spaces, a line break or quotes are read without them', r.status === 200 && calls[0] && calls[0].url.includes('/keys/key-abc/') && calls[0].init.headers.Authorization === 'Bearer secret-token-xyz', calls[0] && calls[0].url);
 check('cleaned leaves a plain value alone, and only a matching pair of quotes is taken off', cleaned('abc') === 'abc' && cleaned(' "abc" ') === 'abc' && cleaned("'abc") === "'abc" && cleaned(undefined) === '' && cleaned('   ') === '');
-check('checkFor never repeats a value it is given', !checkFor(404, 'zz-the-id-zz', 'yy-the-token-yy').includes('zz-the-id-zz') && !checkFor(401, 'zz-the-id-zz', 'yy-the-token-yy').includes('yy-the-token-yy'));
+check('checkFor shows the ID\'s last four characters and never the ID whole, nor anything of the token', /ending d-zz,/.test(checkFor(404, 'zz-the-id-zz', 'yy-the-token-yy')) && !checkFor(404, 'zz-the-id-zz', 'yy-the-token-yy').includes('zz-the-id-zz') && !/n-yy|yy-the/.test(checkFor(401, 'zz-the-id-zz', 'yy-the-token-yy')));
 process.env.TURN_KEY_ID = 'key-abc'; process.env.TURN_KEY_API_TOKEN = 'secret-token-xyz';
 
 answer = () => new Response(JSON.stringify({ iceServers: [{ urls: ['stun:stun.cloudflare.com:53'] }] }), { status: 201 });

@@ -51,12 +51,14 @@ export function cleaned(value) {
 
 // What an owner looks at when Cloudflare refuses, naming the setting and never its value. A TURN key's Turn Token
 // ID is 32 characters of 0-9 and a-f, its API token 64, and Cloudflare answers 404 'cannot find specified key' to
-// an ID it does not know, whatever the token.
+// an ID it does not know, whatever the token. The ID is no secret, and its last four characters tell an owner
+// which key the deployment holds, as a card's last four digits do; nothing of the token is ever shown.
 const HEX = /^[0-9a-f]+$/i;
 export function checkFor(status, id, token) {
   if (status === 404) {
     return 'TURN_KEY_ID is not a TURN key Cloudflare knows: it should be the Turn Token ID beside the key under '
       + 'Realtime → TURN Server, 32 characters of 0-9 and a-f, and this one has ' + id.length
+      + (id.length >= 8 ? ', ending ' + id.slice(-4) : '')
       + (HEX.test(id) ? '.' : ', not all of them 0-9 and a-f.')
       + (id.length === 64 && HEX.test(id) ? ' That is an API token\'s length, so the two values may be the wrong way round.' : '')
       + (id.length === 32 && HEX.test(id) ? ' The right length, so it may be an SFU app\'s ID, or a key since deleted.' : '');
