@@ -2,9 +2,11 @@
 // No key → 404 and an empty list, so the room plug keeps to STUN; a key → one POST to Cloudflare's
 // generate-ice-servers with the key's token as a bearer and the pass's ttl, its answer handed on with port 53
 // dropped; Cloudflare's older single-object shape read the same; Cloudflare refusing or unreachable → 502 and an
-// empty list; the token never in an answer; TURN_TTL held between five minutes and a day.
+// empty list, Cloudflare's own words and a check naming the setting to look at (never its value); a value pasted
+// with spaces or quotes around it read without them; the token never in an answer; TURN_TTL held between five
+// minutes and a day.
 //   npm run smoke:turn
-import handler, { normalise, ttlOf } from '../api/turn.js';
+import handler, { normalise, ttlOf, cleaned, checkFor } from '../api/turn.js';
 
 let pass = true;
 const check = (label, ok, detail) => {
@@ -66,6 +68,35 @@ check('Cloudflare\'s older single-object shape reads as a list', r.status === 20
 answer = () => new Response(JSON.stringify({ error: 'unauthorised' }), { status: 401 });
 r = await call();
 check('Cloudflare refusing: 502 and an empty list', r.status === 502 && r.body.iceServers.length === 0 && !JSON.stringify(r.body).includes('secret-token-xyz'), r.body);
+check('a refused token: Cloudflare\'s words, and a check naming TURN_KEY_API_TOKEN and its length', r.body.error === 'Cloudflare answered 401: unauthorised' && /TURN_KEY_API_TOKEN/.test(r.body.check) && /has 16\./.test(r.body.check), r.body);
+
+answer = () => new Response(JSON.stringify({ error: 'bad token secret-token-xyz for key-abc' }), { status: 403 });
+r = await call();
+check('Cloudflare\'s words never carry the token back out', r.status === 502 && !JSON.stringify(r.body).includes('secret-token-xyz') && r.body.error.includes('…'), r.body);
+
+answer = () => new Response(JSON.stringify({ error: 'cannot find specified key' }), { status: 404 });
+r = await call();
+check('an unknown key: Cloudflare\'s words, and a check naming TURN_KEY_ID and its length', r.body.error === 'Cloudflare answered 404: cannot find specified key' && /^TURN_KEY_ID is not a TURN key/.test(r.body.check) && /has 7, not all of them/.test(r.body.check), r.body);
+
+process.env.TURN_KEY_ID = 'ab'.repeat(32); process.env.TURN_KEY_API_TOKEN = 'cd'.repeat(16);
+r = await call();
+check('an API token\'s length in TURN_KEY_ID: the check says the two may be the wrong way round', /has 64\./.test(r.body.check) && /wrong way round/.test(r.body.check) && !JSON.stringify(r.body).includes('ab'.repeat(32)), r.body);
+process.env.TURN_KEY_ID = 'ef'.repeat(16);
+r = await call();
+check('a 32-character ID Cloudflare does not know: the check names an SFU app\'s ID or a deleted key', /has 32\./.test(r.body.check) && /SFU/.test(r.body.check), r.body);
+
+answer = () => new Response('<html>bad gateway</html>', { status: 500 });
+r = await call();
+check('a refusal with no words of Cloudflare\'s: the status alone, and try again', r.body.error === 'Cloudflare answered 500' && /try again/.test(r.body.check), r.body);
+
+process.env.TURN_KEY_ID = '  "key-abc"\n'; process.env.TURN_KEY_API_TOKEN = "\n'secret-token-xyz' ";
+answer = () => new Response(JSON.stringify(SERVERS), { status: 201 });
+calls = [];
+r = await call();
+check('values pasted with spaces, a line break or quotes are read without them', r.status === 200 && calls[0] && calls[0].url.includes('/keys/key-abc/') && calls[0].init.headers.Authorization === 'Bearer secret-token-xyz', calls[0] && calls[0].url);
+check('cleaned leaves a plain value alone, and only a matching pair of quotes is taken off', cleaned('abc') === 'abc' && cleaned(' "abc" ') === 'abc' && cleaned("'abc") === "'abc" && cleaned(undefined) === '' && cleaned('   ') === '');
+check('checkFor never repeats a value it is given', !checkFor(404, 'zz-the-id-zz', 'yy-the-token-yy').includes('zz-the-id-zz') && !checkFor(401, 'zz-the-id-zz', 'yy-the-token-yy').includes('yy-the-token-yy'));
+process.env.TURN_KEY_ID = 'key-abc'; process.env.TURN_KEY_API_TOKEN = 'secret-token-xyz';
 
 answer = () => new Response(JSON.stringify({ iceServers: [{ urls: ['stun:stun.cloudflare.com:53'] }] }), { status: 201 });
 r = await call();
