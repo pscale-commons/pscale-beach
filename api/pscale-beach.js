@@ -1,5 +1,5 @@
 import { Redis } from '@upstash/redis';
-import { createHash } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { hasFloor, defaultIdentity, repairFloor, appendWithSupernest, appendAtNode, owedSummaries } from './floor.js';
 import { NOW_HEADER, nowHeader, renderNow } from '../lib/temporal.js';
 
@@ -530,7 +530,8 @@ async function saveBlock(origin, name, block, born = false) {
   await redis.set(blockKey(origin, name), block);
   // What this instance had heard from `settings` is stale the moment settings is
   // written; other warm instances catch up within the cache's minute.
-  if (name === 'settings') _settingsCache.delete(origin);
+  if (name === 'settings') { _settingsCache.delete(origin); _settingsLatchCache.delete(origin); }
+  if (name.startsWith('index:')) _indexCache.delete(`${origin}|${name}`);
   // The surface remembers the touch. saveBlock is the one persist path every
   // write takes — position write, append, whole-block, sed, grain — so the
   // stamp is physics, not client courtesy: every door is covered, none is
@@ -572,7 +573,8 @@ async function loadHashes(origin, name) {
 async function saveHashes(origin, name, hashes) {
   await redis.set(locksKey(origin, name), hashes);
   // Latching (or relinquishing) the root of `settings` changes whether it is heard at all.
-  if (name === 'settings') _settingsCache.delete(origin);
+  if (name === 'settings') { _settingsCache.delete(origin); _settingsLatchCache.delete(origin); }
+  if (name.startsWith('index:')) _indexCache.delete(`${origin}|${name}`);
 }
 
 async function listBlockNames(origin) {
@@ -1361,6 +1363,148 @@ async function withAppendLock(origin, blockName, fn) {
 const SETTINGS_CACHE_TTL_MS = 60_000;
 const _settingsCache = new Map(); // origin -> { lines: Map<string,string>, at: ms }
 
+// ── THE MEMBERS' GATE ──
+// (bsp-mcp proposals/2026-11-02-leros-on-the-commons-the-build-to-completion.md §4.2;
+// docs/protocol-pscale-beach-v2.md 2.8.) A beach an organisation runs for its members
+// stands behind a READ GATE. It is OFF unless the deploy says BEACH_GATE=members, carries
+// BEACH_GATE_SECRET, and its own `settings` block stands behind a root latch — the rule
+// the webhook line and the caps already keep (no latch, no steering) — so the open
+// commons is byte-for-byte unchanged. A MEMBER is a handle whose passport stands latched
+// here; proving that latch once (POST {block: 'passport:<handle>', secret}, no content)
+// mints a PASS — an HMAC over the handle and an expiry under the deploy's secret, twelve
+// hours — sent as Authorization: Bearer on every request. No session store, no cookie,
+// no new block. A STRANGER is served only what a holder's index marks beyond
+// (shell-indexes 1.111113: index:<holder>, the entry naming the block, its card's 5), the
+// index as that subset, and one plain refusal for everything else — the same whether the
+// block exists or not, since what the gate hides is that a thing exists. The holder of
+// <x>:<handle> is that handle when it keeps an index, else the keepers (BEACH_KEEPERS).
+// Writes need a pass under the latch rules as ever, save the proof itself and a passport
+// founded with an INVITE a member minted (seven days). What the gate hides a seal cannot
+// (existence, place, size, time); what it cannot hide the seal does (the words from the
+// operator) — the two compose.
+const GATE_ON = process.env.BEACH_GATE === 'members';
+const GATE_SECRET = process.env.BEACH_GATE_SECRET || '';
+const GATE_KEEPERS = String(process.env.BEACH_KEEPERS || '').split(',').map((h) => h.trim()).filter(Boolean);
+const PASS_TTL_MS = 12 * 60 * 60 * 1000;
+const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+if (GATE_ON && !GATE_SECRET) console.error('[pscale-beach] BEACH_GATE=members but no BEACH_GATE_SECRET — the gate stays OFF');
+const b64u = (t) => Buffer.from(String(t), 'utf8').toString('base64url');
+const unb64u = (t) => Buffer.from(String(t), 'base64url').toString('utf8');
+function gateSign(kind, handle, exp) {
+  return createHmac('sha256', GATE_SECRET).update(`${kind}|${handle}|${exp}`).digest('base64url');
+}
+function gateMint(kind, handle, ttlMs) {
+  const exp = Date.now() + ttlMs;
+  return { token: `${kind}.${b64u(handle)}.${exp}.${gateSign(kind, handle, exp)}`, expires: new Date(exp).toISOString() };
+}
+// Whose token this is — {kind: 'm' | 'i', handle} — or null: a forged, expired or malformed one is nobody.
+function gateVerify(token) {
+  if (!GATE_SECRET || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 4) return null;
+  const [kind, h, expRaw, sig] = parts;
+  if (kind !== 'm' && kind !== 'i') return null;
+  const exp = Number(expRaw);
+  if (!Number.isFinite(exp) || exp < Date.now()) return null;
+  let handle = '';
+  try { handle = unb64u(h); } catch { return null; }
+  if (!handle) return null;
+  const want = Buffer.from(gateSign(kind, handle, exp));
+  const got = Buffer.from(String(sig));
+  if (want.length !== got.length || !timingSafeEqual(want, got)) return null;
+  return { kind, handle };
+}
+const _settingsLatchCache = new Map(); // origin -> { latched, at }
+async function settingsLatched(origin) {
+  const c = _settingsLatchCache.get(origin);
+  if (c && Date.now() - c.at < SETTINGS_CACHE_TTL_MS) return c.latched;
+  let latched = false;
+  try { latched = (await loadHashes(origin, 'settings'))['_'] !== undefined; } catch { latched = false; }
+  _settingsLatchCache.set(origin, { latched, at: Date.now() });
+  return latched;
+}
+// Who stands at the door: whether the gate is up for this deploy, and the pass or invite the request carries.
+async function gateFor(req) {
+  const nobody = { on: false, member: null, invite: null };
+  if (!GATE_ON || !GATE_SECRET) return nobody;
+  if (!(await settingsLatched(BASE_ORIGIN))) return nobody;
+  const auth = String((req.headers && (req.headers.authorization || req.headers.Authorization)) || '');
+  const m = auth.match(/^Bearer\s+(\S+)$/i);
+  const who = m ? gateVerify(m[1]) : null;
+  return { on: true, member: who && who.kind === 'm' ? who.handle : null, invite: who && who.kind === 'i' ? who.handle : null };
+}
+function membersOnly(origin) {
+  return {
+    error: `${origin} is its members' beach: a member proves their passport once for a pass (POST {block: 'passport:<handle>', secret}, no content) and sends it as Authorization: Bearer on every request; what the keepers mark beyond is served to anyone`,
+    code: 'members_only',
+  };
+}
+const _indexCache = new Map(); // `${origin}|index:<holder>` -> { block, at }
+async function holderIndex(origin, holder) {
+  const key = `${origin}|index:${holder}`;
+  const c = _indexCache.get(key);
+  if (c && Date.now() - c.at < SETTINGS_CACHE_TTL_MS) return c.block;
+  let block = null;
+  try { block = await loadBlock(origin, `index:${holder}`); } catch { block = null; }
+  _indexCache.set(key, { block, at: Date.now() });
+  return block;
+}
+// An index is an accumulator: at floor 1 its digits are the entries, at floor 2 its underscore and
+// its digits are eras whose digits are the entries, and so on — an entry stands at depth = floor.
+function indexEntries(index) {
+  if (!index || typeof index !== 'object') return [];
+  let floor = 0, n = index;
+  while (n && typeof n === 'object' && '_' in n) { floor++; n = n['_']; if (typeof n === 'string') break; }
+  if (floor === 0) floor = 1;
+  const out = [];
+  const walk = (node, depth) => {
+    if (!node || typeof node !== 'object') return;
+    if (depth === floor) { out.push(node); return; }
+    for (const k of ['_', '1', '2', '3', '4', '5', '6', '7', '8', '9']) if (node[k] && typeof node[k] === 'object') walk(node[k], depth + 1);
+  };
+  walk(index, 0);
+  return out;
+}
+// The entry whose line IS the block's name, or opens with it; its card's 5 is the visibility.
+function indexSays(index, blockName) {
+  for (const e of indexEntries(index)) {
+    const line = typeof e['_'] === 'string' ? e['_'] : '';
+    if (line === blockName || line.startsWith(blockName + ' ') || line.startsWith(blockName + '\u00a0')) {
+      const v = e['5'];
+      return typeof v === 'string' ? v.trim().toLowerCase() : (v && typeof v === 'object' && typeof v['_'] === 'string' ? v['_'].trim().toLowerCase() : '');
+    }
+  }
+  return null;
+}
+const GATE_HOLDER_EXEMPT = ['sed:', 'grain:', 'archive:', 'probe:', 'index:'];
+// Whether a block is marked beyond by its holder's index — the handle it is named for when that
+// handle keeps an index here, else the keepers. Nothing listed, nothing beyond.
+async function beyondOf(origin, blockName) {
+  const cut = blockName.lastIndexOf(':');
+  const handle = cut > 0 && cut < blockName.length - 1 && !GATE_HOLDER_EXEMPT.some((p) => blockName.startsWith(p)) ? blockName.slice(cut + 1) : null;
+  if (blockName.startsWith('index:')) {
+    // an index decides for itself: index:<h> is beyond only if it lists itself so
+    const own = await holderIndex(origin, blockName.slice('index:'.length));
+    return own ? indexSays(own, blockName) === 'beyond' : false;
+  }
+  if (handle) {
+    const own = await holderIndex(origin, handle);
+    if (own) return indexSays(own, blockName) === 'beyond';
+  }
+  for (const keeper of GATE_KEEPERS) {
+    const idx = await holderIndex(origin, keeper);
+    if (!idx) continue;
+    const says = indexSays(idx, blockName);
+    if (says !== null) return says === 'beyond';
+  }
+  return false;
+}
+async function beyondNames(origin, names) {
+  const out = [];
+  for (const n of names) if (await beyondOf(origin, n)) out.push(n);
+  return out;
+}
+
 async function latchedSettings(origin) {
   const c = _settingsCache.get(origin);
   if (c && Date.now() - c.at < SETTINGS_CACHE_TTL_MS) return c.lines;
@@ -2148,7 +2292,7 @@ async function handleStandardWrite(origin, blockName, body) {
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept, Authorization');
   res.setHeader('Access-Control-Expose-Headers', NOW_HEADER);
 
   if (req.method === 'OPTIONS') {
@@ -2178,8 +2322,15 @@ export default async function handler(req, res) {
 
   const blockName = ((req.method === 'POST' || req.method === 'DELETE') && blockParamFromBody(req.body)) || blockParam(req.query);
   const origin = originFromRequest(req);
+  const gate = await gateFor(req);
 
   if (req.method === 'GET') {
+    if (gate.on && !gate.member) {
+      // A stranger at a members' beach: the tables are members-only, and a block is served only
+      // where its holder marks it beyond — one refusal, the same whether it exists or not.
+      if (!blockName && req.query && 'tables' in req.query) return res.status(401).json(membersOnly(origin));
+      if (blockName && !(await beyondOf(origin, blockName))) return res.status(401).json(membersOnly(origin));
+    }
     // ?tables — the worlds played here (listPlayedTables). Answered at the
     // beach's own origin, where its /w/ worlds hang; a world or a sub-beach
     // has no tables beneath it.
@@ -2201,7 +2352,9 @@ export default async function handler(req, res) {
       // store supports STRLEN) maps each block to its stored-JSON size, so a
       // reader picks an aperture before paying for a read — weighed below,
       // once touched is read, so only what moved is weighed again.
-      const { names: blocks, prefix } = await listBlockNames(origin);
+      let { names: blocks, prefix } = await listBlockNames(origin);
+      const gated = gate.on && !gate.member;
+      if (gated) blocks = await beyondNames(origin, blocks);
       // `touched` rides beside `bytes` as a second additive sibling — block
       // name → ISO of its last content write, so one GET answers "what
       // changed since I last looked" and a reader refetches only what moved.
@@ -2227,7 +2380,7 @@ export default async function handler(req, res) {
       try { born = listed(await redis.hgetall(bornKey(origin))); } catch { /* the index stands without it */ }
       const bytes = await blockBytes(origin, prefix, blocks, stamps && typeof stamps === 'object' ? stamps : {});
       return res.status(200).json({
-        _: `URL surface at ${origin}. Named sibling blocks listed below; address each via ?block=<name>${bytes ? '; bytes maps each block to its stored size — pick an aperture before the read' : ''}${touched ? '; touched maps each block to when it last changed — fetch only what moved' : ''}${born ? '; born maps each block to when it first arrived — absent means before the stamp existed' : ''}; now is the moment this was served — ISO, its ten-digit sundial address (the year first), its voicing — the stamp every response also carries as X-Pscale-Now.${blocks.includes('lighthouse') ? ' First visit: start at ?block=lighthouse — the compass for this surface.' : ''} Substrate-wide conventions at bsp(agent_id='pscale', block='block-conventions').`,
+        _: `${gated ? `${origin} is its members' beach; listed here is what its keepers mark beyond, and a member proves their passport once for a pass (POST {block: 'passport:<handle>', secret}). ` : ''}URL surface at ${origin}. Named sibling blocks listed below; address each via ?block=<name>${bytes ? '; bytes maps each block to its stored size — pick an aperture before the read' : ''}${touched ? '; touched maps each block to when it last changed — fetch only what moved' : ''}${born ? '; born maps each block to when it first arrived — absent means before the stamp existed' : ''}; now is the moment this was served — ISO, its ten-digit sundial address (the year first), its voicing — the stamp every response also carries as X-Pscale-Now.${blocks.includes('lighthouse') ? ' First visit: start at ?block=lighthouse — the compass for this surface.' : ''} Substrate-wide conventions at bsp(agent_id='pscale', block='block-conventions').`,
         origin,
         blocks,
         ...(bytes ? { bytes } : {}),
@@ -2282,6 +2435,33 @@ export default async function handler(req, res) {
     }
     const body = req.body || {};
 
+    if (gate.on) {
+      // THE PROOF: a passport's latch proved once, no content, mints a pass.
+      if (isPassport(blockName) && body.content === undefined && body.new_lock === undefined && body.append !== true && body.invite !== true && typeof body.secret === 'string' && body.secret !== '') {
+        const held = await loadHashes(origin, blockName);
+        if (Object.keys(held).length === 0) return res.status(404).json({ error: `no latched passport "${blockName}" stands at ${origin}`, code: 'not_found' });
+        const capped = await wrongKeysRefusal(origin, blockName);
+        if (capped) return res.status(capped.status).json(capped.body);
+        if (passportKeyAmong(origin, blockName, held, [body.secret]) === null) {
+          await noteWrongKey(origin, blockName);
+          return res.status(403).json({ error: 'secret does not match', code: 'lock_required' });
+        }
+        const handle = blockName.slice('passport:'.length);
+        const { token, expires } = gateMint('m', handle, PASS_TTL_MS);
+        return res.status(200).json({ _: `a pass for ${handle} at ${origin} until ${expires}: send it as Authorization: Bearer on every request`, pass: token, handle, expires });
+      }
+      // THE INVITE: a member mints one; the newcomer's first write founds their passport with it.
+      if (body.invite === true) {
+        if (!gate.member) return res.status(401).json(membersOnly(origin));
+        const { token, expires } = gateMint('i', gate.member, INVITE_TTL_MS);
+        return res.status(200).json({ _: `an invitation from ${gate.member} to ${origin} until ${expires}: the newcomer's first write, founding passport:<their name> with new_lock, carries it as Authorization: Bearer`, invite: token, by: gate.member, expires });
+      }
+      if (!gate.member) {
+        const founding = !!gate.invite && isPassport(blockName) && typeof body.new_lock === 'string' && body.new_lock !== '' && body.append !== true && (await loadBlock(origin, blockName)) == null;
+        if (!founding) return res.status(401).json(membersOnly(origin));
+      }
+    }
+
     // Substrate-action dispatch (sed:/grain: state machines).
     let result;
     if (blockName.startsWith('sed:') && body.action === 'register') {
@@ -2298,6 +2478,7 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'DELETE') {
+    if (gate.on && !gate.member) return res.status(401).json(membersOnly(origin));
     if (!blockName) {
       return res.status(400).json({
         error: 'block name required (pass ?block=<name> or "block" in body)',
