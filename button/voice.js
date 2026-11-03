@@ -24,6 +24,19 @@
  *                                               end (a show's last slide), then forgotten; null where none was
  *   beachVoice.known(name)                      what the beach has under a name: 'passport', 'blocks' or ''
  *
+ * A MEMBERS' BEACH (README, "The members' gate"; bsp-mcp docs/protocol-pscale-beach-v2.md 2.8) answers a
+ * stranger 401 members_only for everything but what its keepers mark beyond. A member proves their passport
+ * once for a pass, twelve hours, which every read and write made here then carries as Authorization: Bearer:
+ *
+ *   beachVoice.prove({ name, ask })             the pass earned with the passport's key: the key this page holds or
+ *                                               this device keeps, else the one the browser asks for (ask: false
+ *                                               never asks). The pass is kept on this device for this beach alone,
+ *                                               with its expiry; the key is not, save as a write keeps it. A write
+ *                                               refused at the door is proved once more with its own key and made
+ *                                               once again, so a page need not call this before a say
+ *   beachVoice.pass()                           the pass this device holds for this beach, { name, pass, expires }, or null
+ *   beachVoice.leave()                          the pass given up
+ *
  * Where the person has the beach button on the page, say, keep and ask go through it: they unlock
  * it once, see the words where they will stand, and commit them there, and the page never holds
  * their passphrase. Where they have not, the call is the page's own text entry, as o-pages have
@@ -86,21 +99,89 @@
     return n;
   }
 
+  // ── the members' gate (README, "The members' gate"; bsp-mcp docs/protocol-pscale-beach-v2.md 2.8) ──
+  /* a beach an organisation runs for its members answers a stranger 401 members_only for everything but what its
+   * keepers mark beyond. A member proves their passport once (POST {block: 'passport:<name>', secret}, no content)
+   * for a pass, twelve hours, sent as Authorization: Bearer on every request. The pass is kept on this device for
+   * this beach alone, with its expiry, under the name it is for; the key that earned it is held in this page's
+   * memory only, and kept on the device only as a write keeps it, the same on every beach. */
+  var PASS = 'beach-pass:' + ROOT, HELD = {};
+  function pass() {
+    try { var p = JSON.parse(get(PASS) || 'null'); return p && p.pass && p.name && Date.parse(p.expires) - Date.now() > 60000 ? { name: p.name, pass: p.pass, expires: p.expires } : null; }
+    catch (e) { return null; }
+  }
+  function leave() { del(PASS); }
+  function headers(h) { var p = pass(); if (p) h.Authorization = 'Bearer ' + p.pass; return h; }
+  function atTheDoor(r, d) { return r.status === 401 && !!d && d.code === 'members_only'; }
+  function answer(r, d) { return { ok: r.ok && !(d && d.error), status: r.status, code: d && d.code, error: d && (d.error || d.message), found: d && d.found }; }
+  /* the proof itself: the passport's latch, no content, answered with the pass */
+  function proof(name, key) {
+    return fetch(BEACH, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ block: 'passport:' + name, secret: key }) })
+      .then(function (r) {
+        return r.json().catch(function () { return null; }).then(function (d) {
+          if (r.ok && d && d.pass) { put(PASS, JSON.stringify({ name: name, pass: d.pass, expires: d.expires })); HELD[name] = key; put(NAME, name); return { ok: true, name: name, expires: d.expires }; }
+          if (r.ok) return { ok: false, open: true, error: ROOT + ' has no members’ gate: it is open to anyone' };
+          return answer(r, d);
+        });
+      });
+  }
+  /* the pass for a member's name: the one this device holds while it lasts, else earned with the key this page holds
+   * or the device keeps, else the one the browser asks for (again, twice at most, while the beach refuses it); op.ask
+   * false never asks. Resolves { ok, name, expires } or { ok: false, error, quiet?, needKey?, needName? } */
+  function prove(op) {
+    op = op || {};
+    var name = nameFor(op); if (!name) return Promise.resolve(NEED);
+    var held = pass();
+    if (held && held.name === name) return Promise.resolve({ ok: true, name: name, expires: held.expires });
+    var key = HELD[name] || keyFor('passport:' + name, name), asked = 0, last = null;
+    function attempt() {
+      if (!key) {
+        if (op.ask === false) return Promise.resolve({ ok: false, needKey: true, error: name + '’s key is not on this device' });
+        if (asked++ === 2) return Promise.resolve(last);
+        var v = window.prompt(last ? 'That key is not the one ' + name + '’s passport uses. Enter it again (' + KEPT + '):'
+          : 'This beach is its members’. Enter the key ' + name + '’s passport uses (' + KEPT + '):');
+        if (v === null || !v.trim()) return Promise.resolve({ ok: false, quiet: true });
+        key = v.trim();
+      }
+      return proof(name, key).then(function (r) {
+        if (r.ok) return r;
+        if (r.status === 404) return { ok: false, code: 'not_found', error: 'no member called ' + name + ' on this beach' };
+        if (!refused(r)) return r;
+        last = r; key = '';
+        return attempt();
+      });
+    }
+    return attempt().catch(failed);
+  }
+
   // ── the beach ──
   function read(block, pscale) {
     var u = BEACH + '?block=' + encodeURIComponent(block) + (pscale == null ? '' : '&pscale=' + pscale);
-    return fetch(u, { cache: 'no-store', headers: { Accept: 'application/json' } }).then(function (r) {
+    return fetch(u, { cache: 'no-store', headers: headers({ Accept: 'application/json' }) }).then(function (r) {
       if (r.status === 404) return null;
-      if (!r.ok) throw new Error('the beach answered ' + r.status);
-      return r.json();
+      if (r.ok) return r.json();
+      return r.json().catch(function () { return null; }).then(function (d) {
+        // a members' beach, to someone it does not know: its own words, and its code for the page to say its own
+        if (atTheDoor(r, d)) throw refusal(d.error, 'members_only');
+        throw new Error('the beach answered ' + r.status);
+      });
     });
   }
-  function send(method, block, body) {
+  function send(method, block, body, again) {
     return fetch(method === 'DELETE' ? BEACH + '?block=' + encodeURIComponent(block) : BEACH, {
-      method: method, cache: 'no-store', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body)
+      method: method, cache: 'no-store', headers: headers({ 'Content-Type': 'application/json', Accept: 'application/json' }), body: JSON.stringify(body)
     }).then(function (r) {
       return r.json().catch(function () { return null; }).then(function (d) {
-        return { ok: r.ok && !(d && d.error), status: r.status, code: d && d.code, error: d && (d.error || d.message) };
+        /* a members' beach refusing the write at its door (no pass, or one run out): the passport proved once more
+         * with the write's own key, and the write made once again; a key the proof refuses is handed back as the
+         * refusal it is, to be asked for again */
+        var key = typeof body.secret === 'string' && body.secret ? body.secret : typeof body.new_lock === 'string' ? body.new_lock : '';
+        if (atTheDoor(r, d) && !again && key && block.lastIndexOf(':') > 0) {
+          return proof(block.slice(block.lastIndexOf(':') + 1), key).then(function (p) {
+            return p.ok ? send(method, block, body, true) : refused(p) || p.status === 404 ? p : answer(r, d);
+          });
+        }
+        return answer(r, d);
       });
     });
   }
@@ -112,21 +193,37 @@
       return w.ok || w.code !== 'handle_bound' ? w : post({ block: block, content: content, secret: key, new_lock: key });
     });
   }
-  /* the family's spine (it must stand, and says the family's floor) and the person's mirror */
-  function family(field, block) {
+  /* the family's spine (it must stand, and says the family's floor) and the person's mirror; at a members' beach
+   * refusing the read at its door, the passport proved once more with a key at hand, and the read made once again */
+  function family(field, block, name, again) {
     return Promise.all([read('spine:' + field, 0), read(block)]).then(function (r) {
       if (!r[0]) throw refusal('no family called ' + field + ' stands on the beach (there is no spine:' + field + ')');
       return { floor: +r[0].floor || 1, mirror: r[1] };
+    }, function (e) {
+      if (!(e && e.code === 'members_only' && name && !again)) throw e;
+      return admitted(block, name).then(function (ok) { if (!ok) throw e; return family(field, block, name, true); });
     });
   }
-  function refusal(msg) { var e = new Error(msg); e.refused = true; return e; }
-  function failed(e) { return { ok: false, error: e && e.refused ? e.message : 'the beach could not be reached: ' + ((e && e.message) || e) }; }
+  /* the pass earned without a question, from the key this page holds or this device keeps for the name; false where
+   * neither has one, so the door's own refusal stands and the page offers the way in */
+  function admitted(block, name) {
+    var key = HELD[name] || keyFor(block, name);
+    if (!key) return Promise.resolve(false);
+    return proof(name, key).then(function (r) { return !!r.ok; }, function () { return false; });
+  }
+  function refusal(msg, code) { var e = new Error(msg); e.refused = true; if (code) e.code = code; return e; }
+  function failed(e) {
+    var r = { ok: false, error: e && e.refused ? e.message : 'the beach could not be reached: ' + ((e && e.message) || e) };
+    if (e && e.code) r.code = e.code;
+    return r;
+  }
 
   // ── a write under the person's own key, where no button is on the page ──
-  /* a key this device already keeps for the name: the block's own, else the passport's (every block
-   * named for a handle with a passport is bound to that key), else one kept for another of their blocks */
+  /* a key this page holds for the name (its proof at a members' beach), else one this device already keeps: the
+   * block's own, else the passport's (every block named for a handle with a passport is bound to that key), else
+   * one kept for another of their blocks */
   function keyFor(block, name) {
-    var k = get('next-latch:' + block) || get('mirror-latch:' + block) || get('passport-latch:' + name) || get('lists-latch:' + name) || get('now-latch:' + name);
+    var k = HELD[name] || get('next-latch:' + block) || get('mirror-latch:' + block) || get('passport-latch:' + name) || get('lists-latch:' + name) || get('now-latch:' + name);
     if (k) return k;
     try {
       for (var i = 0; i < localStorage.length; i++) {
@@ -188,7 +285,7 @@
     if (shown()) return through({ kind: 'say', field: field, at: addr, text: text });
     var name = nameFor(op); if (!name) return Promise.resolve(NEED);
     var block = field + ':' + name;
-    return family(field, block).then(function (f) {
+    return family(field, block, name).then(function (f) {
       return signed(block, name, !f.mirror, function (key) {
         return (f.mirror ? Promise.resolve({ ok: true }) : found(block, key, { _: floored(op.intro || intro(field, name), f.floor) })).then(function (w) {
           // confirm_required: the mirror was founded a moment ago, from another tab, and stands
@@ -208,7 +305,7 @@
     // a mirror's opening line names whose it is; a page that does not know the name writes 'a'
     if (typeof tree._ === 'string' && tree._.trim()) tree._ = tree._.replace(/^MIRROR — a /, 'MIRROR — ' + name + '’s ');
     else if (!tree._ || typeof tree._ !== 'object') tree._ = intro(field, name);
-    return family(field, block).then(function (f) {
+    return family(field, block, name).then(function (f) {
       if (f.floor >= 10) return { ok: false, error: 'the ' + field + ' family keeps time, so its mirror is said a beat at a time, never kept whole' };
       if (typeof tree._ === 'string') tree._ = floored(tree._, f.floor);
       return signed(block, name, !f.mirror, function (key) {
@@ -291,7 +388,7 @@
     if (given && given.length > 32) return Promise.resolve(NEED);
     function attempt(name) {
       var block = field + ':' + name;
-      return family(field, block).then(function (f) {
+      return family(field, block, name).then(function (f) {
         if (f.mirror) {
           if (!given && name === PROPOSED) { TAKEN[name] = 1; PROPOSED = ''; return propose().then(attempt); }
           put(NAME, name);
@@ -437,6 +534,7 @@
   window.beachVoice = {
     say: say, keep: keep, ask: ask, drop: drop,
     propose: propose, enter: enter, made: made, known: known,
+    prove: prove, pass: pass, leave: leave,
     name: who,
     button: { shown: shown, set: setButton },
     setting: setting, set: set,
