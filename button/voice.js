@@ -37,6 +37,23 @@
  *   beachVoice.pass()                           the pass this device holds for this beach, { name, pass, expires }, or null
  *   beachVoice.leave()                          the pass given up
  *
+ * A NEWCOMER COMES IN BY INVITATION (3 Nov 2026, the SALT portal): a member mints one under their pass, the page makes a link
+ * of it, and the link founds one passport, the newcomer's, which is proved at once for their pass:
+ *
+ *   beachVoice.invite({ name, for, ask })      an invitation to this beach from the member named (the one this device signs
+ *                                               with, else op.name), minted under their pass, earned first where none is held:
+ *                                               seven days, founding one passport, for the name op.for where the member says
+ *                                               who it is for, else any name not yet a member's. { ok, name, invite, by, for,
+ *                                               expires }. The beach keeps no record of it; the page makes the link
+ *   beachVoice.invited(invite)                  what an invitation says of itself, read here and the beach not asked:
+ *                                               { by, for, expires }, or null where it is not one
+ *   beachVoice.join({ invite, name, key, passport })   the newcomer's passport founded with the invitation as the bearer,
+ *                                               its opening line op.passport, locked to a key of their own: op.key, else one
+ *                                               made here as enter makes one, kept where this script looks first and said
+ *                                               once by made({ field: 'passport', name }); then proved at once for the pass.
+ *                                               { ok, name, expires, made } or { ok: false, error, code? }: an invitation run
+ *                                               out or for another name is refused here, a name that stands by the beach
+ *
  * Where the person has the beach button on the page, say, keep and ask go through it: they unlock
  * it once, see the words where they will stand, and commit them there, and the page never holds
  * their passphrase. Where they have not, the call is the page's own text entry, as o-pages have
@@ -152,6 +169,70 @@
       });
     }
     return attempt().catch(failed);
+  }
+  /* what an invitation says of itself: its four parts are the kind, the member who minted it (and after > who it is for),
+   * when it runs out, and the beach's own signature, which only the beach can check */
+  function invited(token) {
+    var p = String(token || '').split('.');
+    if (p.length !== 4 || p[0] !== 'i' || !/^\d+$/.test(p[2])) return null;
+    var who = '';
+    try {
+      var b = p[1].replace(/-/g, '+').replace(/_/g, '/'); b += '==='.slice((b.length + 3) % 4);
+      who = new TextDecoder().decode(Uint8Array.from(atob(b), function (c) { return c.charCodeAt(0); }));
+    } catch (e) { return null; }
+    if (!who) return null;
+    var cut = who.indexOf('>');
+    return { by: cut < 0 ? who : who.slice(0, cut), for: cut < 0 ? '' : who.slice(cut + 1), expires: new Date(Number(p[2])).toISOString() };
+  }
+  /* a member's invitation to this beach, minted under their pass (earned first where none is held, as prove earns it), for
+   * the name op.for where they say who it is for; seven days; the beach keeps no record. Resolves { ok, name, invite, by,
+   * for, expires } or prove's own refusals, or { ok: false, open: true } where the beach has no gate */
+  function invite(op) {
+    op = op || {};
+    var to = clean(op.for);
+    if (op.for && (!to || to.length > 32)) return Promise.resolve({ ok: false, error: 'A name: up to 32 letters, digits, - or _.' });
+    return prove({ name: op.name, ask: op.ask }).then(function (p) {
+      if (!p.ok) return p;
+      var body = { block: 'passport:' + p.name, invite: true };
+      if (to) body.for = to;
+      return fetch(BEACH, { method: 'POST', cache: 'no-store', headers: headers({ 'Content-Type': 'application/json', Accept: 'application/json' }), body: JSON.stringify(body) })
+        .then(function (r) {
+          return r.json().catch(function () { return null; }).then(function (d) {
+            if (r.ok && d && d.invite) return { ok: true, name: p.name, invite: d.invite, by: d.by || p.name, for: d.for || '', expires: d.expires };
+            if (r.ok) return { ok: false, open: true, error: ROOT + ' has no members’ gate: anyone may come in' };
+            return answer(r, d);
+          });
+        });
+    }).catch(failed);
+  }
+  /* a newcomer's passport founded with an invitation as the bearer (README, "The members' gate"): one write, its opening
+   * line op.passport (else a plain one), locked to op.key or a key made here, kept as every write keeps one; then the
+   * passport proved for the pass. The beach founds with an invitation a passport that does not yet stand and nothing else,
+   * and with one minted for a name that name's alone, so its refusal is the door's own (members_only); the guard's, where
+   * the line carries what the beach keeps out of plain words, names the kind found. What can be told here is told here. */
+  function join(op) {
+    op = op || {};
+    var token = String(op.invite || '').trim(), name = clean(op.name);
+    var says = invited(token);
+    if (!says) return Promise.resolve({ ok: false, code: 'invite', error: 'That is not an invitation to this beach.' });
+    if (Date.parse(says.expires) < Date.now()) return Promise.resolve({ ok: false, code: 'expired', by: says.by, error: 'This invitation ran out on ' + new Date(says.expires).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) + ': ask ' + says.by + ' for another.' });
+    if (!name || name.length > 32) return Promise.resolve(NEED);
+    if (says.for && says.for !== name) return Promise.resolve({ ok: false, code: 'for', by: says.by, for: says.for, error: 'This invitation is for ' + says.for + ', not ' + name + '.' });
+    var block = 'passport:' + name, key = String(op.key || '').trim(), made = false;
+    if (!key) { key = makeKey(); made = true; }
+    var line = typeof op.passport === 'string' ? op.passport.trim() : '';
+    var content = op.passport && typeof op.passport === 'object' ? op.passport
+      : { _: line || (name + ' — joined ' + ROOT.replace(/^https?:\/\//, '') + ' on ' + new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) + ' at ' + says.by + '’s invitation.') };
+    return fetch(BEACH, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ block: block, content: content, new_lock: key }) })
+      .then(function (r) {
+        return r.json().catch(function () { return null; }).then(function (d) {
+          var a = answer(r, d);
+          if (!a.ok) { a.by = says.by; return a; }
+          put('next-latch:' + block, key); if (made) put('made-key:' + block, key);
+          HELD[name] = key; put(NAME, name);
+          return proof(name, key).then(function (p) { p.name = name; p.made = made; p.founded = true; return p; });
+        });
+      }).catch(failed);
   }
 
   // ── the beach ──
@@ -535,6 +616,7 @@
     say: say, keep: keep, ask: ask, drop: drop,
     propose: propose, enter: enter, made: made, known: known,
     prove: prove, pass: pass, leave: leave,
+    invite: invite, invited: invited, join: join,
     name: who,
     button: { shown: shown, set: setButton },
     setting: setting, set: set,

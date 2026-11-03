@@ -1381,7 +1381,8 @@ const _settingsCache = new Map(); // `${origin}|${block}` -> { lines: Map<string
 // block exists or not, since what the gate hides is that a thing exists. The holder of
 // <x>:<handle> is that handle when it keeps an index, else the keepers (BEACH_KEEPERS).
 // Writes need a pass under the latch rules as ever, save the proof itself and a passport
-// founded with an INVITE a member minted (seven days). What the gate hides a seal cannot
+// founded with an INVITE a member minted (seven days; one minted FOR a name founds that
+// name's passport alone, so a link that travels founds nothing else). What the gate hides a seal cannot
 // (existence, place, size, time); what it cannot hide the seal does (the words from the
 // operator) — the two compose.
 const GATE_ON = process.env.BEACH_GATE === 'members';
@@ -1395,11 +1396,13 @@ const unb64u = (t) => Buffer.from(String(t), 'base64url').toString('utf8');
 function gateSign(kind, handle, exp) {
   return createHmac('sha256', GATE_SECRET).update(`${kind}|${handle}|${exp}`).digest('base64url');
 }
-function gateMint(kind, handle, ttlMs) {
-  const exp = Date.now() + ttlMs;
-  return { token: `${kind}.${b64u(handle)}.${exp}.${gateSign(kind, handle, exp)}`, expires: new Date(exp).toISOString() };
+// An invite minted for a name carries it after > in the signed name: a handle never holds a >.
+const INVITEE_RE = /^[A-Za-z0-9_][A-Za-z0-9_ -]{0,31}$/;
+function gateMint(kind, handle, ttlMs, to) {
+  const exp = Date.now() + ttlMs, who = to ? `${handle}>${to}` : handle;
+  return { token: `${kind}.${b64u(who)}.${exp}.${gateSign(kind, who, exp)}`, expires: new Date(exp).toISOString() };
 }
-// Whose token this is — {kind: 'm' | 'i', handle} — or null: a forged, expired or malformed one is nobody.
+// Whose token this is — {kind: 'm' | 'i', handle, to} — or null: a forged, expired or malformed one is nobody.
 function gateVerify(token) {
   if (!GATE_SECRET || typeof token !== 'string') return null;
   const parts = token.split('.');
@@ -1414,7 +1417,8 @@ function gateVerify(token) {
   const want = Buffer.from(gateSign(kind, handle, exp));
   const got = Buffer.from(String(sig));
   if (want.length !== got.length || !timingSafeEqual(want, got)) return null;
-  return { kind, handle };
+  const cut = kind === 'i' ? handle.indexOf('>') : -1;
+  return cut < 0 ? { kind, handle, to: '' } : { kind, handle: handle.slice(0, cut), to: handle.slice(cut + 1) };
 }
 const _settingsLatchCache = new Map(); // origin -> { latched, at }
 async function settingsLatched(origin) {
@@ -1427,13 +1431,14 @@ async function settingsLatched(origin) {
 }
 // Who stands at the door: whether the gate is up for this deploy, and the pass or invite the request carries.
 async function gateFor(req) {
-  const nobody = { on: false, member: null, invite: null };
+  const nobody = { on: false, member: null, invite: null, invited: '' };
   if (!GATE_ON || !GATE_SECRET) return nobody;
   if (!(await settingsLatched(BASE_ORIGIN))) return nobody;
   const auth = String((req.headers && (req.headers.authorization || req.headers.Authorization)) || '');
   const m = auth.match(/^Bearer\s+(\S+)$/i);
   const who = m ? gateVerify(m[1]) : null;
-  return { on: true, member: who && who.kind === 'm' ? who.handle : null, invite: who && who.kind === 'i' ? who.handle : null };
+  const invite = who && who.kind === 'i' ? who : null;
+  return { on: true, member: who && who.kind === 'm' ? who.handle : null, invite: invite ? invite.handle : null, invited: invite ? invite.to : '' };
 }
 function membersOnly(origin) {
   return {
@@ -2521,14 +2526,19 @@ export default async function handler(req, res) {
         const { token, expires } = gateMint('m', handle, PASS_TTL_MS);
         return res.status(200).json({ _: `a pass for ${handle} at ${origin} until ${expires}: send it as Authorization: Bearer on every request`, pass: token, handle, expires });
       }
-      // THE INVITE: a member mints one; the newcomer's first write founds their passport with it.
+      // THE INVITE: a member mints one; the newcomer's first write founds their passport with it. Minted FOR a name
+      // (body.for, a handle), it founds that name's passport and no other: a link that travels then founds nothing else.
       if (body.invite === true) {
         if (!gate.member) return res.status(401).json(membersOnly(origin));
-        const { token, expires } = gateMint('i', gate.member, INVITE_TTL_MS);
-        return res.status(200).json({ _: `an invitation from ${gate.member} to ${origin} until ${expires}: the newcomer's first write, founding passport:<their name> with new_lock, carries it as Authorization: Bearer`, invite: token, by: gate.member, expires });
+        const to = body.for === undefined ? '' : String(body.for).trim();
+        if (body.for !== undefined && !INVITEE_RE.test(to)) return res.status(400).json({ error: 'for names who the invite is for: a handle, up to 32 letters, digits, spaces, - or _', code: 'invalid_shape' });
+        const { token, expires } = gateMint('i', gate.member, INVITE_TTL_MS, to);
+        const whom = to ? `passport:${to}` : 'passport:<their name>';
+        return res.status(200).json({ _: `an invitation from ${gate.member} to ${origin}${to ? ` for ${to}` : ''} until ${expires}: the newcomer's first write, founding ${whom} with new_lock, carries it as Authorization: Bearer`, invite: token, by: gate.member, ...(to ? { for: to } : {}), expires });
       }
       if (!gate.member) {
-        const founding = !!gate.invite && isPassport(blockName) && typeof body.new_lock === 'string' && body.new_lock !== '' && body.append !== true && (await loadBlock(origin, blockName)) == null;
+        const founding = !!gate.invite && isPassport(blockName) && (!gate.invited || blockName === `passport:${gate.invited}`) &&
+          typeof body.new_lock === 'string' && body.new_lock !== '' && body.append !== true && (await loadBlock(origin, blockName)) == null;
         if (!founding) return res.status(401).json(membersOnly(origin));
       }
     }

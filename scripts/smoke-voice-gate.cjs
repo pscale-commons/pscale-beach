@@ -10,7 +10,10 @@
 // ever; the pass given up, or run out, a write refused at the door is proved once more with its own key and made
 // once again; the guard's refusal comes back with the kind found and never the value; a name with no passport
 // is told so; a key not on the device is asked for only when asking is allowed; a reload still proves silently
-// from the key the write kept; a newcomer cannot found a mirror; and on an open beach nothing changes.
+// from the key the write kept; a newcomer cannot found a mirror; a member mints an invitation and a newcomer joins
+// with it (their passport founded, a key made and said once, the pass earned, a say landing with no question), one run
+// out or for another name refused here, a forged one and a standing name refused at the door, the guard's refusal
+// naming the kind; and on an open beach nothing changes.
 const http = require('http');
 const fs = require('fs');
 const os = require('os');
@@ -145,6 +148,66 @@ function site(req, res) {
     check('and the number itself never comes back', !/900123/.test(JSON.stringify(r)));
     check('nothing stood there', (await g('GET', `${W}?block=string:ada`, null, { Authorization: 'Bearer ' + held.pass })).body && at((await g('GET', `${W}?block=string:ada`, null, { Authorization: 'Bearer ' + held.pass })).body, '2026421365.114') === undefined);
 
+    console.log('\n— an invitation: a member mints, a newcomer joins —');
+    r = await voice(`beachVoice.invite()`);
+    check('ada, holding her pass, mints an invitation with no question', r && r.ok && r.name === 'ada' && r.by === 'ada' && r.for === '' && typeof r.invite === 'string' && asked.length === 2, r);
+    const inv = r && r.invite;
+    let says = await voice(`beachVoice.invited(${JSON.stringify(inv)})`);
+    check('what it says of itself, the beach not asked: from ada, for anyone, seven days', says && says.by === 'ada' && says.for === '' && Date.parse(says.expires) - Date.now() > 6.9 * 864e5, says);
+    check('a pass or a stray string is not an invitation', await voice(`beachVoice.invited(${JSON.stringify(held.pass)})`) === null && await voice(`beachVoice.invited('nonsense')`) === null);
+    const ctxN = await browser.newContext(), pn = await ctxN.newPage(), nAsked = [];
+    pn.on('dialog', (d) => { nAsked.push(d.message()); d.accept(''); });
+    await pn.goto(`http://127.0.0.1:${SITE}/__test/gated.html`);
+    await pn.waitForFunction(() => !!window.beachVoice);
+    const newcomer = (code) => pn.evaluate(code);
+    r = await newcomer(`beachVoice.join({ invite: ${JSON.stringify(inv)}, name: 'newbie', passport: 'newbie — joined at ada’s invitation.' })`);
+    check('a newcomer joins on their own device: the passport founded with the invitation, a key made here, the pass earned at once', r && r.ok && r.name === 'newbie' && r.made === true && r.founded === true && /T/.test(r.expires || ''), r);
+    keys = await newcomer(`Object.keys(localStorage)`);
+    check('the key is kept where every write keeps one, and the pass beside it', keys.includes('next-latch:passport:newbie') && keys.includes('beach-pass:' + beachAt(GATED)), keys);
+    const madeKey = await newcomer(`beachVoice.made({ field: 'passport', name: 'newbie' })`);
+    check('the key made here is said once, three words and a number', madeKey && madeKey.name === 'newbie' && /^[a-z]+-[a-z]+-[a-z]+-\d\d$/.test(madeKey.key), madeKey);
+    check('and never twice', await newcomer(`beachVoice.made({ field: 'passport', name: 'newbie' })`) === null);
+    const nPass = await newcomer(`beachVoice.pass()`);
+    const pp = await g('GET', `${W}?block=passport:newbie`, null, { Authorization: 'Bearer ' + nPass.pass });
+    check('the passport stands in the words the page gave, read with the new pass', pp.status === 200 && pp.body && pp.body._ === 'newbie — joined at ada’s invitation.', pp.body);
+    r = await newcomer(`beachVoice.say({ field: 'string', at: '2026421365.115', text: 'SHARE https://example.org/n — newbie’s first', name: 'newbie' })`);
+    check('newbie shares with no further question: the mirror founded under the passport’s key', r && r.ok && r.name === 'newbie' && nAsked.length === 0, { r, nAsked });
+    r = await newcomer(`beachVoice.join({ invite: ${JSON.stringify(inv)}, name: 'ada' })`);
+    check('a name that stands is refused at the door, in the door’s own words', r && r.ok === false && r.code === 'members_only' && r.by === 'ada', r);
+    const b64 = (t) => Buffer.from(t, 'utf8').toString('base64url');
+    r = await newcomer(`beachVoice.join({ invite: 'i.${b64('ada')}.${Date.now() - 1000}.AAAA', name: 'late' })`);
+    check('an invitation run out is said so here, with whom to ask, and the beach never asked', r && r.ok === false && r.code === 'expired' && /ran out on .* ask ada/.test(r.error), r);
+    r = await newcomer(`beachVoice.join({ invite: 'i.${b64('ada')}.${Date.now() + 100000}.AAAA', name: 'forger' })`);
+    check('a forged one is nobody at the door', r && r.ok === false && r.code === 'members_only', r);
+    r = await newcomer(`beachVoice.join({ invite: 'nonsense', name: 'x' })`);
+    check('a string that is not an invitation', r && r.ok === false && r.code === 'invite', r);
+    r = await newcomer(`beachVoice.join({ invite: ${JSON.stringify(inv)}, name: '' })`);
+    check('no name, no join', r && r.ok === false && r.needName === true, r);
+    r = await newcomer(`beachVoice.join({ invite: ${JSON.stringify(inv)}, name: 'caller', passport: 'caller — ring me on 07700 900123' })`);
+    check('a passport line with a phone number is refused by the guard, the kind named and never the number', r && r.ok === false && r.code === 'people_keeping' && r.found === 'a phone number' && !/900123/.test(JSON.stringify(r)), r);
+    check('and nothing stood for caller', (await g('POST', `${W}?block=passport:caller`, { secret: 'x' })).status === 404);
+    r = await voice(`beachVoice.invite({ for: 'pearl' })`);
+    check('ada mints an invitation for pearl', r && r.ok && r.for === 'pearl', r);
+    const forPearl = r && r.invite;
+    says = await voice(`beachVoice.invited(${JSON.stringify(forPearl)})`);
+    check('it says who it is for', says && says.by === 'ada' && says.for === 'pearl', says);
+    r = await newcomer(`beachVoice.join({ invite: ${JSON.stringify(forPearl)}, name: 'other' })`);
+    check('it founds no other name, said here before the beach is asked', r && r.ok === false && r.code === 'for' && /for pearl, not other/.test(r.error), r);
+    const ctxP = await browser.newContext(), pq = await ctxP.newPage();
+    pq.on('dialog', (d) => d.accept(''));
+    await pq.goto(`http://127.0.0.1:${SITE}/__test/gated.html`);
+    await pq.waitForFunction(() => !!window.beachVoice);
+    r = await pq.evaluate(`beachVoice.join({ invite: ${JSON.stringify(forPearl)}, name: 'pearl', key: 'P-own' })`);
+    check('pearl joins with it under a key of her own choosing, none made', r && r.ok && r.name === 'pearl' && r.made === false, r);
+    check('her key is kept, and made() has nothing to say', await pq.evaluate(`localStorage.getItem('next-latch:passport:pearl')`) === 'P-own' && await pq.evaluate(`beachVoice.made({ field: 'passport', name: 'pearl' })`) === null);
+    r = await voice(`beachVoice.invite({ for: 'no>good' })`);
+    check('a name is cleaned here as every name is, before the beach sees it', r && r.ok && r.for === 'nogood', r);
+    r = await voice(`beachVoice.invite({ for: 'a name far too long to be anyone on the beach at all' })`);
+    check('and one too long mints nothing', r && r.ok === false && /32/.test(r.error), r);
+    r = await pq.evaluate(`beachVoice.leave(); beachVoice.invite({ name: 'bob', ask: false })`);
+    check('with no pass and no key at hand, and asking not allowed, nothing is minted', r && r.ok === false && r.needKey === true, r);
+    await ctxN.close(); await ctxP.close();
+
     console.log('\n— names and keys —');
     answers.push('x');
     r = await voice(`beachVoice.prove({ name: 'nobody' })`);
@@ -170,6 +233,8 @@ function site(req, res) {
     r = await q.evaluate(`beachVoice.say({ field: 'string', at: '2026421365.111', text: 'SHARE https://example.org/a — open', name: 'ada' })`);
     check('a say lands there as it always has', r && r.ok, r);
     check('no pass is held there', await q.evaluate(`beachVoice.pass()`) === null);
+    r = await q.evaluate(`beachVoice.invite({ name: 'ada' })`);
+    check('an invitation to an open beach is nothing: anyone may come in', r && r.ok === false && r.open === true, r);
     check('and the open read carries no Authorization header: string:ada reads back plainly', at((await o('GET', `${W}?block=string:ada`)).body, '2026421365.111') === 'SHARE https://example.org/a — open');
   } finally {
     if (browser) await browser.close();
