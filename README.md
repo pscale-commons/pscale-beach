@@ -42,9 +42,11 @@ pscale-beach/
 ├── init/seed-beach.js           — one-time wizard: substitutes placeholders,
 │                                   POSTs blocks to your deployed beach
 ├── scripts/                     — smoke tests, pack seed/reset/dump, key
-│                                   migration, backup/restore, set-aside (the
-│                                   owner's tidy), a file-backed local beach
-│                                   for offline work
+│                                   migration, backup/restore (images sealed at
+│                                   rest), set-aside (the owner's tidy), the
+│                                   tombstone (the keeper's logged redaction),
+│                                   copy-world (a place moved behind a gate),
+│                                   a file-backed local beach for offline work
 ├── vercel.json                  — rewrites for /.well-known/... and /w/:world/...
 ├── package.json                 — Node ESM, single dep (@upstash/redis)
 └── .env.example                 — env-var template
@@ -115,6 +117,17 @@ curl https://your-vercel-url.vercel.app/.well-known/pscale-beach
 ### The members' gate
 
 A beach an organisation runs for its members can stand behind a **read gate** — the protocol is bsp-mcp's `docs/protocol-pscale-beach-v2.md` §2.8, the design its `proposals/2026-11-02-leros-on-the-commons-the-build-to-completion.md` §4.2. Set `BEACH_GATE=members`, `BEACH_GATE_SECRET` and `BEACH_KEEPERS`, redeploy, then **latch `settings` at its root** from your own session (a write with `new_lock` and no spindle): until that latch stands the gate stays off, as the webhook and the caps do. Behind it a **member** — anyone whose `passport:<handle>` stands latched here — proves that latch once (`POST {block: "passport:<handle>", secret}`, no content) for a twelve-hour pass, sent as `Authorization: Bearer` on every request, and reads and writes as on any beach. A **stranger** sees the index as the subset a keeper's index marks `beyond`, is served only those blocks, and gets one plain `401 members_only` for everything else, the same whether a block exists or not. Writes need a pass, save the proof and a passport founded with an **invite** a member minted (`POST {block: "passport:<their handle>", invite: true}` under their pass; the newcomer's first write, founding `passport:<name>` with `new_lock`, carries it as the bearer). `npm run smoke:gate` proves all of it against two local beaches. The gate hides that a thing exists; sealing (gray) hides its words from you, the operator — use both.
+
+**The guard.** Behind the same switch the handler reads one formulaic line from the deploy's own `notice` block — heard, like every `settings` line, only from behind the notice's root latch — and enforces it at every door, whatever wrote (the router, an app, curl): `people_keeping=passport:,history:,now:,pool:` names the places where a person's own words are kept (name prefixes, comma-joined; a prefix without its colon names a bare block; `*` is every block), and a plain write into one of them that carries an email address, a UK phone number, a National Insurance number or an NHS number is refused `422 people_keeping`, the kind named and the value never echoed, with the way through in the line: seal it, or leave it out. A gray envelope passes, since ciphertext carries no words; the request's own `gray` flag is a claim and is not asked. Names are a judgement and stay with the model that writes — the notice's words are for it (who-answers 1.11, 1.1112). The backup's mirror hears the same line (below), so what the notice says, the beach does in every copy. `npm run smoke:guard` proves it against four local beaches.
+
+**Copying a place behind the gate.** `scripts/copy-world.mjs` moves a world's blocks from one beach to another with the gate already up at the destination, so nothing copied is open to a stranger's homestead: the law and the pages and every holder's open mirror come, locks never do, and passports, archives, probes and indexes stay behind — a member re-enters by invite and founds their own passport, and a copied mirror re-latches on its holder's first visit, as the app's door already does. `--beyond` founds the keeper's `index:<handle>` in the destination world with those names marked beyond, which is what a stranger then sees there. A dry run until `--confirm`; `npm run smoke:copy-world` proves it.
+
+```bash
+BEACH_KEY=<the keeper's passphrase> node scripts/copy-world.mjs \
+  --from https://beach.happyseaurchin.com/w/community-recovery \
+  --to https://beach.bringingtheflavour.com/w/community-recovery \
+  --as davidmpinto --beyond lighthouse,policies,constitution --confirm
+```
 
 ### Manual deploy (alternative)
 
@@ -343,6 +356,24 @@ node scripts/set-aside.mjs --last marks --day 2026-09-21 --confirm
 ```
 
 If the name was re-minted meanwhile — even under a stranger's latch — what stands there is set aside first, and the kept copy returns open, with the per-position latches it had. `npm run smoke:born` proves it. What this does **not** cover: a position write on an unlatched block can still replace a branch; the daily image is the way back for that.
+
+### Tombstone — the logged redaction
+
+Set-aside keeps a copy; a redaction keeps none. When words must stand nowhere the operator holds them — a person asked, someone else was named, health or contact detail stood in the open, something unlawful was reported — the keeper's hand is [scripts/tombstone.mjs](scripts/tombstone.mjs) (who-answers 1.1113, on the shape of Wikimedia's oversight: a few named people, a reason code, a private log). One act reaches the live store (the block, the day-copies the door kept, the archive copies set-aside made), every nightly image on the operator's drives, and the git mirror — the file now and its every version, the repository's history rewritten with git's own `filter-branch` and force-pushed. A **node** is replaced in place by one visible line (`REMOVED <day> — … (<code>: <why>)`) and the block keeps its latches, since its name was public already; a **whole block** goes with its name, since a name alone can be the detail that had to go, and the public line at `beach-log` gives the day, the code and the keeper and no name. The private line — the name, whom it concerned, the keeper, the code, which copies were reached — is a storage hash (`<ns>:<origin>:tombstones`) the keeper reads with the store's token, never a block. A dry run until `--confirm`; `npm run smoke:tombstone` proves it against a store, two images (one sealed) and a mirror with a remote.
+
+```bash
+set -a; . .env.local; set +a
+node scripts/tombstone.mjs --block pool:somewhere --at 7 --why named --for <handle> --confirm
+node scripts/tombstone.mjs --block passport:somename --why asked --for somename --confirm
+```
+
+`--at` names the node as the stored JSON shows it (digits and underscores joined by dots: `7`, `1.2`, `_.11.3` — read it raw at `?block=<name>` with no pscale). The codes: `asked` · `named` · `health` · `contact` · `unlawful` · `safeguarding`. A hosted remote keeps unreachable objects for a while after a force-push, which is why a notice says "within a month" and the keeper may ask the host to purge them.
+
+## Backups — the nightly image and the mirror
+
+[scripts/beach-backup.sh](scripts/beach-backup.sh) (bash, curl and jq — nothing else, so it runs under launchd) writes a complete image of the store — every block, every lock hash, the stamps — gzipped and timestamped into `OUT`, copies it to an external drive when one is mounted (`CORSAIR_DIR`), and keeps the newest `KEEP_IMAGES` (400 unless set). Set **`BEACH_IMAGE_KEY`** and every image is **sealed at rest** in OpenSSL's own envelope (`beach-<ts>.json.gz.enc`; `openssl enc -d -aes-256-cbc -pbkdf2 -pass env:BEACH_IMAGE_KEY` opens one anywhere, as [scripts/image-seal.mjs](scripts/image-seal.mjs) does for the restore and the tombstone); the plain working copy `beach-latest.json` then stays in `OUT` alone and never reaches the external drive. Unset, the images are plain and each run says so: an image carries every block and every lock hash of the beach. [scripts/beach-restore.mjs](scripts/beach-restore.mjs) puts an image back, sealed or not, whole or `--only` what it names; `npm run smoke:backup-restore` proves the round trip.
+
+With `SPLIT` set the same run writes one content file per block (no locks) into a folder kept as a git repository — the mirror, whose history keeps every version. **People-keeping blocks leave the mirror**: the run hears the apex notice's `people_keeping=` line (the guard's line, above, and only from behind the notice's root latch) and writes none of the blocks it names, removing any already there; `SPLIT_EXCLUDE` (a regex of block names) overrides it. Their past versions stay in the repository's history until the tombstone rewrites them. The split is one pass over the image and its files are compact JSON, so the first run after this change rewrites every file once. Retention, then, as a notice states it: the door's day-copy of a replaced open block thirty days; the nightly images `KEEP_IMAGES` days, sealed; the mirror's history until it is rewritten.
 
 ## Settings that steer the door — only from behind a root latch
 

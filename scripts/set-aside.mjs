@@ -103,7 +103,7 @@ function stable(v) {
   return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stable(v[k])}`).join(',')}}`;
 }
 
-async function logLine(door, line, by, passphrase) {
+export async function logLine(door, line, by, passphrase) {
   if ((await door('GET', 'beach-log')).status === 404) {
     await door('POST', 'beach-log', { content: { _: LOG_UNDERSCORE } });
   }
@@ -249,6 +249,10 @@ async function main() {
 
   // The handler reads its origin and its store at module load — set both BEFORE the import.
   process.env.BEACH_ORIGIN = apex;
+  // The members' gate stands at the network door; this hand is the owner's, in-process, through the
+  // storage the owner owns — so the handler is imported with the gate OFF, or the owner's own archive
+  // copies and beach-log lines would be refused as a stranger's writes.
+  delete process.env.BEACH_GATE;
   let redis;
   if (DIR) {
     process.env.KV_REST_API_URL ||= 'https://local.invalid';

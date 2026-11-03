@@ -3,7 +3,7 @@
 // DRY-RUN by default; --confirm actually writes (overwriting current values).
 //
 //   set -a; . <clone>/.env.local; set +a
-//   node scripts/beach-restore.mjs --in <beach-*.json[.gz]> [--only <substr>] [--confirm]
+//   node scripts/beach-restore.mjs --in <beach-*.json[.gz][.enc]> [--only <substr>] [--confirm]   (a sealed image opens under BEACH_IMAGE_KEY)
 //   node scripts/beach-restore.mjs --block-file <f> --origin <domain> --name <block> [--confirm]   (Mode B, below)
 //
 //   --only <substr>  restore only keys containing <substr> (e.g. an origin, or a block name) —
@@ -16,7 +16,7 @@
 
 import { Redis } from '@upstash/redis';
 import { promises as fs } from 'node:fs';
-import { gunzipSync } from 'node:zlib';
+import { readImage } from './image-seal.mjs';
 
 const arg = (n, d) => { const i = process.argv.indexOf(`--${n}`); return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : d; };
 const has = (n) => process.argv.includes(`--${n}`);
@@ -52,9 +52,8 @@ if (BLOCKFILE) {
 
 if (!IN) { console.error('usage: --in <beach-*.json|.gz> [--only <substr>] [--confirm]  OR  --block-file <f> --origin <domain> --name <block> [--confirm]'); process.exit(1); }
 
-const raw = await fs.readFile(IN);
-const text = IN.endsWith('.gz') ? gunzipSync(raw).toString() : raw.toString();
-const snap = JSON.parse(text);
+// Plain, gzipped, or sealed under BEACH_IMAGE_KEY (scripts/image-seal.mjs) — the image opens as it was kept.
+const snap = await readImage(IN, process.env.BEACH_IMAGE_KEY);
 let keys = Object.keys(snap.data || {});
 let hashKeys = Object.keys(snap.hashes || {});
 if (ONLY) { keys = keys.filter((k) => k.includes(ONLY)); hashKeys = hashKeys.filter((k) => k.includes(ONLY)); }
