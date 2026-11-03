@@ -11,9 +11,30 @@
 # OUT   (env, default /Volumes/CORSAIR/pscale/beach-backups) complete image, gzipped + timestamped.
 #       Skipped gracefully if its volume is not mounted. Carries locks — keep it private.
 # SPLIT (env, optional) per-block CONTENT files (no locks) for a git mirror — safe to make public.
+#
+# THE TRIMS (who-answers 1.1116; bsp-mcp #564 §4.5 item 3) — retention stated and kept:
+# BEACH_IMAGE_KEY  (env, optional) set, and every image is SEALED at rest (OpenSSL's own envelope,
+#                  aes-256-cbc, pbkdf2: scripts/image-seal.mjs opens it, so does `openssl enc -d`),
+#                  named beach-<ts>.json.gz.enc; the plain working copy beach-latest.json then stays in
+#                  OUT alone and never reaches CORSAIR_DIR. Unset, images are plain, and the run says so:
+#                  an image carries every block and every lock hash of the beach.
+# KEEP_IMAGES      (env, default 400) the newest N images are kept in OUT and CORSAIR_DIR; older go.
+# SPLIT_EXCLUDE    (env, optional) a bash regex of block NAMES the mirror never carries. Unset, the
+#                  apex notice's own line is heard — `people_keeping=passport:,history:,pool:` (name
+#                  prefixes, comma-joined; a prefix without its colon names a bare block; `*` is every
+#                  block) — and only from behind the notice's root latch, as the handler hears it
+#                  (the notice is the gate, who-answers 1.11). A people-keeping block already in the
+#                  mirror is removed from it; its past versions stay in the repository's history until
+#                  scripts/tombstone.mjs rewrites them.
+# The split is ONE jq pass over the image (two per block, one re-parsing the whole image, is what
+# the scheduled run's watchdog kept killing); its files are compact JSON, so the first run after
+# this change rewrites every file once.
 set -uo pipefail
 OUT="${OUT:-/Volumes/CORSAIR/pscale/beach-backups}"
 SPLIT="${SPLIT:-}"
+KEEP_IMAGES="${KEEP_IMAGES:-400}"
+IMAGE_KEY="${BEACH_IMAGE_KEY:-}"
+SPLIT_EXCLUDE="${SPLIT_EXCLUDE:-}"
 : "${KV_REST_API_URL:?source your beach clone .env.local first}"
 : "${KV_REST_API_TOKEN:?source your beach clone .env.local first}"
 
@@ -89,10 +110,17 @@ if [[ "$OUT" == /Volumes/* ]] && [ ! -d "$vol" ]; then
   echo "… skipped complete image — $vol not mounted (SPLIT mirror still runs)"
 else
   mkdir -p "$OUT"
-  gzip -c "$TMP/snap.json" > "$OUT/beach-$ts.json.gz"
+  if [ -n "$IMAGE_KEY" ]; then
+    img="$OUT/beach-$ts.json.gz.enc"
+    gzip -c "$TMP/snap.json" | BEACH_IMAGE_KEY="$IMAGE_KEY" openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:BEACH_IMAGE_KEY -out "$img" || { echo "sealing the image failed"; exit 1; }
+  else
+    img="$OUT/beach-$ts.json.gz"
+    gzip -c "$TMP/snap.json" > "$img"
+    echo "  (this image is PLAIN, and carries every block and every lock hash — set BEACH_IMAGE_KEY and each image is sealed at rest)"
+  fi
   cp "$TMP/snap.json" "$OUT/beach-latest.json"
-  echo "✓ complete image: $kc keys → $OUT/beach-$ts.json.gz ($(du -h "$OUT/beach-$ts.json.gz" | cut -f1))"
-  ls -1t "$OUT"/beach-*.json.gz 2>/dev/null | tail -n +401 | while read -r f; do rm -f "$f"; done
+  echo "✓ complete image: $kc keys → $img ($(du -h "$img" | cut -f1)); the newest $KEEP_IMAGES are kept"
+  ls -1t "$OUT"/beach-*.json.gz "$OUT"/beach-*.json.gz.enc 2>/dev/null | tail -n +$((KEEP_IMAGES + 1)) | while read -r f; do rm -f "$f"; done
 
   # Opportunistic copy to an external DR volume (CORSAIR) when it is mounted AND writable.
   # launchd cannot write external volumes without Full Disk Access, so this skips silently there
@@ -101,8 +129,14 @@ else
     cvol="/Volumes/$(echo "$CORSAIR_DIR" | cut -d/ -f3)"
     if [ -d "$cvol" ] && mkdir -p "$CORSAIR_DIR" 2>/dev/null && ( : > "$CORSAIR_DIR/.wtest" ) 2>/dev/null; then
       rm -f "$CORSAIR_DIR/.wtest"
-      cp "$OUT/beach-$ts.json.gz" "$OUT/beach-latest.json" "$CORSAIR_DIR/" && echo "  → also copied to $CORSAIR_DIR"
-      ls -1t "$CORSAIR_DIR"/beach-*.json.gz 2>/dev/null | tail -n +401 | while read -r f; do rm -f "$f"; done
+      if [ -n "$IMAGE_KEY" ]; then
+        # sealed images only on the external drive: the plain working copy stays in OUT
+        rm -f "$CORSAIR_DIR/beach-latest.json"
+        cp "$img" "$CORSAIR_DIR/" && echo "  → also copied to $CORSAIR_DIR (sealed)"
+      else
+        cp "$img" "$OUT/beach-latest.json" "$CORSAIR_DIR/" && echo "  → also copied to $CORSAIR_DIR"
+      fi
+      ls -1t "$CORSAIR_DIR"/beach-*.json.gz "$CORSAIR_DIR"/beach-*.json.gz.enc 2>/dev/null | tail -n +$((KEEP_IMAGES + 1)) | while read -r f; do rm -f "$f"; done
     else
       echo "  ($CORSAIR_DIR not writable from here — copy skipped; grant Full Disk Access for launchd, else it copies on manual runs)"
     fi
@@ -111,14 +145,35 @@ fi
 
 # ── optional per-block content mirror (no locks) → SPLIT ──
 if [ -n "$SPLIT" ]; then
-  n=0
-  while IFS= read -r k; do
+  # The apex notice's people-keeping line, heard only from behind its root latch (as the handler hears it).
+  if [ -z "$SPLIT_EXCLUDE" ] && [ -n "${BEACH_ORIGIN:-}" ]; then
+    pk=$(jq -r --arg b "pscale-beach-v2:$BEACH_ORIGIN:block:notice" --arg l "pscale-beach-v2:$BEACH_ORIGIN:locks:notice" '
+      if ((.data[$l] // {}) | has("_")) then ([.data[$b] // {} | .. | strings | select(test("^\\s*people_keeping="))] | .[0] // "") else "" end' "$TMP/snap.json" \
+      | sed -n 's/^[[:space:]]*people_keeping=\([^[:space:]]*\).*/\1/p')
+    if [ "$pk" = "*" ]; then SPLIT_EXCLUDE='.'
+    elif [ -n "$pk" ]; then
+      alts=""
+      IFS=',' read -ra prefixes <<< "$pk"
+      for pre in "${prefixes[@]}"; do
+        [ -n "$pre" ] || continue
+        esc=$(printf '%s' "$pre" | sed 's/[][\.*^$+?(){}|]/\\&/g')
+        alts="${alts:+$alts|}${esc}"
+        case "$pre" in *:) alts="$alts|${esc%:}\$" ;; esac
+      done
+      [ -n "$alts" ] && SPLIT_EXCLUDE="^($alts)"
+    fi
+    [ -n "$SPLIT_EXCLUDE" ] && echo "  split: the notice's people-keeping line is heard — leaving out $pk"
+  fi
+  n=0; x=0
+  while IFS=$'\t' read -r k enc v; do
     origin=${k#pscale-beach-v2:}; origin=${origin%%:block:*}; origin=${origin#https://}
     name=${k##*:block:}
-    enc=$(jq -rn --arg s "$name" '$s|@uri')
+    if [ -n "$SPLIT_EXCLUDE" ] && [[ $name =~ $SPLIT_EXCLUDE ]]; then
+      rm -f "$SPLIT/$origin/$enc.json"; x=$((x+1)); continue
+    fi
     mkdir -p "$SPLIT/$origin"
-    jq --arg k "$k" '.data[$k]' "$TMP/snap.json" > "$SPLIT/$origin/$enc.json"
+    printf '%s\n' "$v" > "$SPLIT/$origin/$enc.json"
     n=$((n+1))
-  done < <(jq -r '.data | keys[] | select(contains(":block:"))' "$TMP/snap.json")
-  echo "  split: $n per-block content files → $SPLIT (locks excluded)"
+  done < <(jq -r '.data | to_entries[] | select(.key | contains(":block:")) | "\(.key)\t\(.key | sub(".*:block:"; "") | @uri)\t\(.value | tojson)"' "$TMP/snap.json")
+  echo "  split: $n per-block content files → $SPLIT (locks excluded$([ "$x" -gt 0 ] && echo "; $x people-keeping blocks left out"))"
 fi

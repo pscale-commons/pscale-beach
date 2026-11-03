@@ -530,7 +530,8 @@ async function saveBlock(origin, name, block, born = false) {
   await redis.set(blockKey(origin, name), block);
   // What this instance had heard from `settings` is stale the moment settings is
   // written; other warm instances catch up within the cache's minute.
-  if (name === 'settings') { _settingsCache.delete(origin); _settingsLatchCache.delete(origin); }
+  if (name === 'settings' || name === 'notice') _settingsCache.delete(`${origin}|${name}`);
+  if (name === 'settings') _settingsLatchCache.delete(origin);
   if (name.startsWith('index:')) _indexCache.delete(`${origin}|${name}`);
   // The surface remembers the touch. saveBlock is the one persist path every
   // write takes — position write, append, whole-block, sed, grain — so the
@@ -573,7 +574,8 @@ async function loadHashes(origin, name) {
 async function saveHashes(origin, name, hashes) {
   await redis.set(locksKey(origin, name), hashes);
   // Latching (or relinquishing) the root of `settings` changes whether it is heard at all.
-  if (name === 'settings') { _settingsCache.delete(origin); _settingsLatchCache.delete(origin); }
+  if (name === 'settings' || name === 'notice') _settingsCache.delete(`${origin}|${name}`);
+  if (name === 'settings') _settingsLatchCache.delete(origin);
   if (name.startsWith('index:')) _indexCache.delete(`${origin}|${name}`);
 }
 
@@ -1361,7 +1363,7 @@ async function withAppendLock(origin, blockName, fn) {
 // its defaults, and the bus goes quiet rather than ringing for someone else.
 // Latch the root (a write with new_lock and no spindle) and the lines are heard.
 const SETTINGS_CACHE_TTL_MS = 60_000;
-const _settingsCache = new Map(); // origin -> { lines: Map<string,string>, at: ms }
+const _settingsCache = new Map(); // `${origin}|${block}` -> { lines: Map<string,string>, at: ms }
 
 // ── THE MEMBERS' GATE ──
 // (bsp-mcp proposals/2026-11-02-leros-on-the-commons-the-build-to-completion.md §4.2;
@@ -1505,13 +1507,81 @@ async function beyondNames(origin, names) {
   return out;
 }
 
-async function latchedSettings(origin) {
-  const c = _settingsCache.get(origin);
+// ── THE GUARD ──
+// (who-answers 1.11: the notice is the gate — the handler reads its formulaic rules and enforces
+// them; 1.1112: the guard in the handler; bsp-mcp #564 §4.4 item 2.) Behind the members' switch,
+// the deploy's own `notice` block, standing behind a root latch as `settings` must, may carry one
+// line:
+//     people_keeping=passport:,history:,now:,pool:
+// name prefixes, comma-joined; a prefix without its colon names a bare block; `*` is every block.
+// A PLAIN write into a block named so — its content as sent, not sealed — is refused when any
+// string in it carries what the notice says goes in no block: an email address, a UK phone
+// number, a National Insurance number, an NHS number. The kind found is named, never the value,
+// and the refusal says what to do instead: seal it, or leave it out. A sealed write passes — any
+// node that is a gray envelope (its 9 says so), since ciphertext carries no words; a claim that a
+// write is sealed is not a seal, so the request's own gray flag is not asked. Whatever door the write came through — the router, an app, curl — it is this
+// one door, so the rule holds for all of them. Names are a judgement, not a formula, and stay
+// with the model that writes (1.11); the notice's words are for it. Off the gate nothing here
+// runs, and with no line heard nothing is a people-keeping place. The backup's mirror hears the
+// same line (scripts/beach-backup.sh): what the notice says, the beach does, in every copy.
+const GUARD_SCREENS = [
+  ['an email address', (s) => /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/.test(s)],
+  // spaces, hyphens and brackets between digits are how a number is written; a dot is not (an address is 1.1111)
+  ['a phone number', (s) => /(?:^|[^\d+])(?:\+44\d{9,11}|0\d{9,10})(?!\d)/.test(s.replace(/\(0\)/g, '0').replace(/(?<=\d)[\s()-]+(?=\d)/g, ''))],
+  ['a National Insurance number', (s) => /\b[A-CEGHJ-PR-TW-Z]{2}\s?\d{2}\s?\d{2}\s?\d{2}\s?[A-D]\b/i.test(s)],
+  ['an NHS number', (s) => nhsNumberIn(s)],
+];
+// Ten digits, 3-3-4 with one separator, passing the NHS check digit (weights 10 to 2, mod 11); bare
+// ten digits only when the words say NHS nearby, since a sundial address is ten digits too.
+function nhsNumberIn(s) {
+  const re = /(?:^|\D)(\d{3})([\s-]?)(\d{3})\2(\d{4})(?!\d)/g;
+  let m;
+  while ((m = re.exec(s))) {
+    if (!m[2] && !/nhs/i.test(s.slice(Math.max(0, m.index - 24), m.index))) continue;
+    const d = (m[1] + m[3] + m[4]).split('').map(Number);
+    let check = 11 - (d.slice(0, 9).reduce((a, x, i) => a + x * (10 - i), 0) % 11);
+    if (check === 11) check = 0;
+    if (check !== 10 && check === d[9]) return true;
+  }
+  return false;
+}
+function isGrayNode(n) {
+  return !!n && typeof n === 'object' && typeof n['1'] === 'string' && typeof n['2'] === 'string' && !!n['9'] && typeof n['9'] === 'object' && n['9']['_'] === 'gray';
+}
+function plainStrings(v, out = []) {
+  if (typeof v === 'string') out.push(v);
+  else if (Array.isArray(v)) for (const x of v) plainStrings(x, out);
+  else if (v && typeof v === 'object' && !isGrayNode(v)) for (const k of Object.keys(v)) plainStrings(v[k], out);
+  return out;
+}
+async function peopleKeeping(blockName) {
+  const line = (await latchedLines(BASE_ORIGIN, 'notice')).get('people_keeping');
+  if (!line) return false;
+  if (line === '*') return true;
+  return line.split(',').map((p) => p.trim()).filter(Boolean).some((p) => blockName.startsWith(p) || (p.endsWith(':') && blockName === p.slice(0, -1)));
+}
+async function guardRefusal(origin, blockName, content) {
+  if (content === undefined || !(await peopleKeeping(blockName))) return null;
+  for (const str of plainStrings(content)) {
+    for (const [kind, hit] of GUARD_SCREENS) {
+      if (hit(str)) {
+        return { status: 422, body: { error: `"${blockName}" is a people-keeping place at ${origin}, and this write carries ${kind} in plain words — the notice (?block=notice) says none goes in any block here: seal it, or leave it out`, code: 'people_keeping', found: kind } };
+      }
+    }
+  }
+  return null;
+}
+
+// The lines a steering block carries, heard only from behind its root latch: `settings` (the
+// webhook, the caps, the wires) and `notice` (the guard's people_keeping line, below).
+async function latchedLines(origin, name) {
+  const ck = `${origin}|${name}`;
+  const c = _settingsCache.get(ck);
   if (c && Date.now() - c.at < SETTINGS_CACHE_TTL_MS) return c.lines;
   const lines = new Map();
   try {
-    const hashes = await loadHashes(origin, 'settings');
-    const settings = hashes['_'] !== undefined ? await loadBlock(origin, 'settings') : null;
+    const hashes = await loadHashes(origin, name);
+    const settings = hashes['_'] !== undefined ? await loadBlock(origin, name) : null;
     if (settings && typeof settings === 'object') {
       const lineOf = (v) => typeof v === 'string' ? v
         : (v && typeof v === 'object' && typeof v['_'] === 'string' ? v['_'] : '');
@@ -1536,9 +1606,10 @@ async function latchedSettings(origin) {
       }
     }
   } catch { /* unreadable — treat as undeclared */ }
-  _settingsCache.set(origin, { lines, at: Date.now() });
+  _settingsCache.set(ck, { lines, at: Date.now() });
   return lines;
 }
+const latchedSettings = (origin) => latchedLines(origin, 'settings');
 
 async function poolAppendWebhookUrl() {
   const url = (await latchedSettings(BASE_ORIGIN)).get('pool_append_webhook');
@@ -2460,6 +2531,11 @@ export default async function handler(req, res) {
         const founding = !!gate.invite && isPassport(blockName) && typeof body.new_lock === 'string' && body.new_lock !== '' && body.append !== true && (await loadBlock(origin, blockName)) == null;
         if (!founding) return res.status(401).json(membersOnly(origin));
       }
+    }
+    // THE GUARD: behind the gate, a plain write into a people-keeping place is screened (its rule is above, by the gate's).
+    if (gate.on && body.action === undefined) {
+      const guarded = await guardRefusal(origin, blockName, body.content);
+      if (guarded) return res.status(guarded.status).json(guarded.body);
     }
 
     // Substrate-action dispatch (sed:/grain: state machines).
