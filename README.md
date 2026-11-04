@@ -131,6 +131,12 @@ BEACH_KEY=<the keeper's passphrase> node scripts/copy-world.mjs \
   --as davidmpinto --beyond lighthouse,policies,constitution --confirm
 ```
 
+**Every holder's index.** `scripts/index-check.mjs` measures each holder's `index:<handle>` against what the beach holds (bsp-mcp's `proposals/2026-11-03-shell-indexes-one-index-per-holder.md`: one index per holder, the thing's card beneath its entry, card field 5 the one place a holder says who may see the thing). Keyless on any beach, it reads the surface once and each index once and reports, per holder, UNLISTED (blocks named for the handle by the last-word rule that the index does not name, in born order), GONE (entries whose block does not stand and whose 6 says nothing of its leaving), OWED (the summaries the index owes) and ODD (an `index:` block that is not one, an entry whose line is not a block's name, a card holding copied state); at a members' beach `--as <handle>` with `BEACH_KEY` proves the passport once and reads as that member; `--latches`, with the store, hashes the key against every root latch and names what it opens under other names, writing nothing and noting no wrong key. A holder founds theirs with `--confirm` and their own key in the environment: one write latched under it, the four organs and the index itself at 1 to 5, then every unlisted name appended in born order (`--take` the latched-elsewhere names they choose) and every owed summary paid from the names; it writes no 5 and no 9, which are the holder's, save the index's own 5 at a members' beach, founded self, and never lists a `colour:` name in the clear. A report until `--confirm`, and a report never gates anything; `npm run smoke:index-check` proves it against two local beaches.
+
+```bash
+BEACH_KEY=<your passphrase> node scripts/index-check.mjs --beach https://beach.happyseaurchin.com --handle <you> --confirm
+```
+
 ### Manual deploy (alternative)
 
 If you'd rather clone locally and deploy via CLI:
