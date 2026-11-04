@@ -17,7 +17,7 @@
  *   beachVoice.propose()                        a name no block on the beach is named for (starling-1234)
  *   beachVoice.enter({ field, name, intro })    their mirror of a family founded for the name given, else the
  *                                               proposed one; a name new to the beach is given its key here,
- *                                               kept where this script looks first (next-latch:<field>:<name>),
+ *                                               kept on this device, wrapped (beach-key:<field>:<name>),
  *                                               so nobody chooses a key or reuses a password as one; a name
  *                                               already on the beach has a key, and the browser asks for it
  *   beachVoice.made({ field, name })            the name and key made here, handed back once to be said at the
@@ -31,7 +31,8 @@
  *   beachVoice.prove({ name, ask })             the pass earned with the passport's key: the key this page holds or
  *                                               this device keeps, else the one the browser asks for (ask: false
  *                                               never asks). The pass is kept on this device for this beach alone,
- *                                               with its expiry; the key is not, save as a write keeps it. A write
+ *                                               with its expiry, and the key beside it, wrapped (THE SEAL, below), so
+ *                                               sealed lines open for them after a reload while the pass lasts. A write
  *                                               refused at the door is proved once more with its own key and made
  *                                               once again, so a page need not call this before a say
  *   beachVoice.pass()                           the pass this device holds for this beach, { name, pass, expires }, or null
@@ -53,6 +54,41 @@
  *                                               once by made({ field: 'passport', name }); then proved at once for the pass.
  *                                               { ok, name, expires, made } or { ok: false, error, code? }: an invitation run
  *                                               out or for another name is refused here, a name that stands by the beach
+ *
+ * THE SEAL (4 Nov 2026, coloured stigmergy step 4; bsp-mcp proposals/2026-11-03-coloured-stigmergy-the-design.md §4.1,
+ * §4.2): a line is sealed before it leaves and opened after it arrives, here, with the beach's own seal (seal.js, loaded
+ * beside this script; the four modes byte for byte as the connector seals them, proved by one set of vectors). The pair a
+ * person seals with is derived once from their ONE WORD — the key their passport uses — with their name as the salt, the
+ * same pair pscale_key_publish derives, and is held in this page's memory for the tab; the beach never sees it.
+ *
+ *   beachVoice.say({ field, at, text, name, gray })   gray: true seals the line to the person alone (self); 'colour:<name>'
+ *                                               seals it in that colour, with the current turn's key opened from their own
+ *                                               copy — or as a letter to the colour where they hold none; the reply says
+ *                                               which (sealed: 'self' | 'colour' | 'letter', and the turn). keep takes no
+ *                                               gray: a mirror is never sealed whole, as the connector refuses it too
+ *   beachVoice.open(node, { name, with, ring })  the words of a sealed line this tab can open — the node an envelope, or
+ *                                               one at its underscore (a line with fields of its own): self under the
+ *                                               person's word, a grain line with the other party (op.with, else the one
+ *                                               the envelope names), a group line with op.ring, a colour line with the
+ *                                               turn's key, opened from their copy the first time this tab meets that
+ *                                               turn and worn from then on; null where it cannot, and never a question
+ *   beachVoice.grey(node)                       the one line shown for a sealed line that does not open, as the router
+ *                                               draws it: 'sealed · colour · salt · turn 3', 'sealed · grain · for bob'
+ *   beachVoice.colours({ name })                the colours this tab holds: every colour:<name> on the beach whose
+ *                                               current turn holds a copy the person's word opens, [{ name, block, turn }]
+ *   beachVoice.seal(text, { gray, name })       the envelope alone, for a page that writes its own block (a grain's side):
+ *                                               gray as say takes it, or { grain: <partner> }; { ok, envelope, how }
+ *   beachVoice.wear({ name, ask })              the person's word put on for this tab, on an open beach: the key held or
+ *                                               kept for the name, else asked for, tried against the halves published at
+ *                                               passport:<name> 9 — or published there now where none stand. At a members'
+ *                                               beach prove does this as the member keys in.
+ *
+ * A KEY IS NEVER KEPT IN PLAIN TEXT (Matthew's condition, coloured-stigmergy 1.18): what this script keeps on the device —
+ * the key a write kept, beach-key:<block>, and a key made here until it is said, beach-made:<block> — is wrapped under a
+ * key the browser will not hand out (seal.js keep: a non-extractable key in this origin's IndexedDB), and held plain in
+ * this page's memory only; where the browser offers no such key, nothing is kept and the browser asks again next time.
+ * A key the site's own pages kept plain under next-latch:<block> (their convention, before this) is read here as theirs
+ * and never written. A pass is not a key, and is kept as before.
  *
  * Where the person has the beach button on the page, say, keep and ask go through it: they unlock
  * it once, see the words where they will stand, and commit them there, and the page never holds
@@ -80,7 +116,7 @@
  *
  * The name this device signs with is the one happyseaurchin.com's pages have always kept,
  * render:who, set when a write lands under a name or the button says whose it is; a key kept is
- * kept as /walk keeps a mirror's, next-latch:<block>. Nothing here reads what is typed into the
+ * kept wrapped, beach-key:<block> (a key /walk and the site's pages keep plain, next-latch:<block>, is read too). Nothing here reads what is typed into the
  * button: the frame is the beach's own, and keeps its words to itself. */
 (function () {
   'use strict';
@@ -114,6 +150,52 @@
     var n = tree;
     String(addr).replace('.', '').split('').forEach(function (d) { n = n && typeof n === 'object' ? n[d === '0' ? '_' : d] : undefined; });
     return n;
+  }
+
+  // ── the seal: the beach's own, seal.js beside this script, loaded once ──
+  var SEAL = null;
+  function seal() {
+    if (window.beachSeal) return Promise.resolve(window.beachSeal);
+    if (SEAL) return SEAL;
+    SEAL = new Promise(function (res, rej) {
+      var s = document.createElement('script'); s.src = BASE.href + 'seal.js'; s.async = true;
+      s.onload = function () { if (window.beachSeal) res(window.beachSeal); else { SEAL = null; rej(new Error('the seal did not load')); } };
+      s.onerror = function () { SEAL = null; rej(new Error('could not load ' + s.src)); };
+      (document.head || document.documentElement).appendChild(s);
+    });
+    return SEAL;
+  }
+  /* the keys this script keeps on the device, plain in memory for this page alone and wrapped in storage (see THE SEAL
+   * above), under names of its own: beach-key:<block> for the key a write kept, beach-made:<block> for a key made here
+   * until it is said; read once, before any act. next-latch:<block> is the convention the site's own pages keep a key
+   * under, plain: it is read here as a key the person's pages kept, and never written. */
+  var KEYS = {}, READY = null;
+  function own(k) { return String(k).replace(/^next-latch:/, 'beach-key:').replace(/^made-key:/, 'beach-made:'); }
+  function isKeyName(k) { return /^(beach-key|beach-made):/.test(String(k || '')); }
+  function ready() {
+    if (READY) return READY;
+    var names = [];
+    try { for (var i = 0; i < localStorage.length; i++) { var n = localStorage.key(i); if (isKeyName(n)) names.push(n); } } catch (e) {}
+    if (!names.length) return READY = Promise.resolve();
+    return READY = seal().then(function (S) {
+      return Promise.all(names.map(function (n) {
+        var v = get(n);
+        if (!S.keep.wrapped(v)) return keepKey(n, v);
+        return S.keep.unwrap(v).then(function (t) { if (t !== null) KEYS[n] = t; });
+      }));
+    }).catch(function () {});
+  }
+  function kept(k) {
+    var o = own(k);
+    if (KEYS[o]) return KEYS[o];
+    var v = /^next-latch:/.test(k) ? get(k) : '';
+    return v && !/^w1\./.test(v) ? v : '';
+  }
+  function keepKey(k, v) {
+    var o = own(k);
+    if (v == null) { delete KEYS[o]; del(o); return Promise.resolve(); }
+    KEYS[o] = v;
+    return seal().then(function (S) { return S.keep.wrap(v); }).then(function (w) { put(o, w); }, function () { del(o); });
   }
 
   // ── the members' gate (README, "The members' gate"; bsp-mcp docs/protocol-pscale-beach-v2.md 2.8) ──
@@ -161,7 +243,10 @@
         key = v.trim();
       }
       return proof(name, key).then(function (r) {
-        if (r.ok) return r;
+        // the member's one word: the halves it derives published at their passport's 9 where none stand, so a keeper can
+        // seal a copy to them, or checked against those that do (r.keys: 'published' | 'match' | 'mismatch' | 'held')
+        // and kept on the device, wrapped, as a write keeps it: the seal then opens for them after a reload while the pass lasts
+        if (r.ok) return keepKey('next-latch:passport:' + name, key).then(function () { return publish(name, key); }).then(function (p) { r.keys = p.ok ? (p.published ? 'published' : 'match') : p.code === 'mismatch' || p.code === 'held' ? p.code : 'unknown'; return r; }, function () { r.keys = 'unknown'; return r; });
         if (r.status === 404) return { ok: false, code: 'not_found', error: 'no member called ' + name + ' on this beach' };
         if (!refused(r)) return r;
         last = r; key = '';
@@ -228,9 +313,9 @@
         return r.json().catch(function () { return null; }).then(function (d) {
           var a = answer(r, d);
           if (!a.ok) { a.by = says.by; return a; }
-          put('next-latch:' + block, key); if (made) put('made-key:' + block, key);
           HELD[name] = key; put(NAME, name);
-          return proof(name, key).then(function (p) { p.name = name; p.made = made; p.founded = true; return p; });
+          return Promise.all([keepKey('next-latch:' + block, key), made ? keepKey('made-key:' + block, key) : null])
+            .then(function () { return proof(name, key); }).then(function (p) { p.name = name; p.made = made; p.founded = true; return p; });
         });
       }).catch(failed);
   }
@@ -304,12 +389,14 @@
    * block's own, else the passport's (every block named for a handle with a passport is bound to that key), else
    * one kept for another of their blocks */
   function keyFor(block, name) {
-    var k = HELD[name] || get('next-latch:' + block) || get('mirror-latch:' + block) || get('passport-latch:' + name) || get('lists-latch:' + name) || get('now-latch:' + name);
+    var k = HELD[name] || kept('next-latch:' + block) || get('mirror-latch:' + block) || get('passport-latch:' + name) || get('lists-latch:' + name) || get('now-latch:' + name);
     if (k) return k;
+    var tail = ':' + name, n;
+    for (n in KEYS) if (/^beach-key:/.test(n) && n.slice(-tail.length) === tail && KEYS[n]) return KEYS[n];
     try {
       for (var i = 0; i < localStorage.length; i++) {
-        var n = localStorage.key(i);
-        if (/^next-latch:/.test(n) && n.slice(-(name.length + 1)) === ':' + name) return localStorage.getItem(n);
+        n = localStorage.key(i);
+        if (/^next-latch:/.test(n) && n.slice(-tail.length) === tail && kept(n)) return kept(n);
       }
     } catch (e) {}
     return '';
@@ -335,7 +422,7 @@
         key = v.trim();
       }
       return act(key).then(function (r) {
-        if (r && r.ok) { put('next-latch:' + block, key); put(NAME, name); r.name = name; return r; }
+        if (r && r.ok) return keepKey('next-latch:' + block, key).then(function () { put(NAME, name); r.name = name; return r; });
         if (!refused(r)) return r;
         last = r; key = '';
         return attempt();
@@ -363,14 +450,20 @@
     if (!field) return Promise.resolve({ ok: false, error: 'not a family name: ' + String(op.field || '') });
     if (!/^[1-9][0-9]*(\.[0-9]+)?$/.test(addr)) return Promise.resolve({ ok: false, error: 'not an address: ' + addr });
     if (!text) return Promise.resolve({ ok: false, error: 'nothing to say' });
-    if (shown()) return through({ kind: 'say', field: field, at: addr, text: text });
+    if (op.gray && typeof op.gray === 'object') return Promise.resolve({ ok: false, error: 'a say is sealed to the person (gray: true) or in a colour (gray: "colour:<name>"); a grain line is sealed with beachVoice.seal' });
+    if (shown()) return through({ kind: 'say', field: field, at: addr, text: text, gray: op.gray });
     var name = nameFor(op); if (!name) return Promise.resolve(NEED);
     var block = field + ':' + name;
     return family(field, block, name).then(function (f) {
       return signed(block, name, !f.mirror, function (key) {
         return (f.mirror ? Promise.resolve({ ok: true }) : found(block, key, { _: floored(op.intro || intro(field, name), f.floor) })).then(function (w) {
           // confirm_required: the mirror was founded a moment ago, from another tab, and stands
-          return w.ok || w.code === 'confirm_required' ? post({ block: block, spindle: addr, content: text, secret: key }) : w;
+          if (!(w.ok || w.code === 'confirm_required')) return w;
+          if (!op.gray) return post({ block: block, spindle: addr, content: text, secret: key });
+          // THE WRITER'S DOOR SEALS BEFORE THE LINE LEAVES: the envelope stands at the address, as the connector lands it
+          return sealFor(op.gray, text, name, key).then(function (s) {
+            return post({ block: block, spindle: addr, content: s.envelope, secret: key }).then(function (r) { if (r.ok) { r.sealed = s.how; if (s.turn) r.turn = s.turn; } return r; });
+          }, failed);
         });
       });
     }).catch(failed);
@@ -380,6 +473,7 @@
     var field = fieldOf(op.field), content = op.content;
     if (!field) return Promise.resolve({ ok: false, error: 'not a family name: ' + String(op.field || '') });
     if (!content || typeof content !== 'object' || Array.isArray(content)) return Promise.resolve({ ok: false, error: 'nothing to keep' });
+    if (op.gray) return Promise.resolve({ ok: false, error: 'a mirror is never sealed whole: seal a line with say, at its address' });
     if (shown()) return through({ kind: 'keep', field: field, content: content });
     var name = nameFor(op); if (!name) return Promise.resolve(NEED);
     var block = field + ':' + name, tree = JSON.parse(JSON.stringify(content));
@@ -477,11 +571,12 @@
         }
         return index().then(function (ix) {
           var made = false;
-          if (!onBeach(ix, name) && !get('next-latch:' + block)) { var k = makeKey(); put('next-latch:' + block, k); put('made-key:' + block, k); made = true; }
+          var keeping = Promise.resolve();
+          if (!onBeach(ix, name) && !kept('next-latch:' + block)) { var k = makeKey(); keeping = Promise.all([keepKey('next-latch:' + block, k), keepKey('made-key:' + block, k)]); made = true; }
           var line = String(op.intro || '').trim();
           line = line ? line.replace(/^MIRROR — a /, 'MIRROR — ' + name + '’s ') : intro(field, name);
           var tree = { _: floored(line, f.floor) };
-          return signed(block, name, true, function (key) { return found(block, key, tree); }).then(function (r) {
+          return keeping.then(function () { return signed(block, name, true, function (key) { return found(block, key, tree); }); }).then(function (r) {
             if (r && r.ok) { r.name = name; r.made = made; r.born = true; if (name === PROPOSED) { TAKEN[name] = 1; PROPOSED = ''; } }
             return r;
           });
@@ -497,10 +592,146 @@
     op = op || {};
     var field = fieldOf(op.field), name = clean(op.name || who());
     if (!field || !name) return null;
-    var block = field + ':' + name, k = get('made-key:' + block);
+    var block = field + ':' + name, k = kept('made-key:' + block);
     if (!k) return null;
-    del('made-key:' + block);
-    return get('next-latch:' + block) === k ? { name: name, key: k } : null;
+    keepKey('made-key:' + block, null);
+    return kept('next-latch:' + block) === k ? { name: name, key: k } : null;
+  }
+
+  // ── the seal through the voice (coloured stigmergy, step 4; the design's §4.1 and §4.2) ──
+  /* the word a name seals with: the key this page holds for it (its proof at a members' beach), else the one the device
+   * keeps for its passport or any of its blocks; never asked for here (wear and prove ask) */
+  function wordOf(name) { return HELD[name] || keyFor('passport:' + name, name); }
+  /* THE READER'S GLASSES: each colour turn this tab has opened, kept in memory alone, so every later line of that colour
+   * and turn opens with no ring read and no derivation */
+  var WORN = {};
+  var turnNo = function (t) { return String(parseInt(t, 10) || t); };
+  /* a colour block at this beach — its current turn, or the one named — and this name's key for it: their own copy opened
+   * with their word, worn from then on. { K, turn, node }, K null where no copy opens; null where no such block or turn */
+  function colourTurn(block, turn, name) {
+    var at = turn != null ? block + '|' + turnNo(turn) : '';
+    if (at && WORN[at]) return Promise.resolve({ K: WORN[at], turn: turnNo(turn) });
+    var word = name ? wordOf(name) : '';
+    return Promise.all([seal(), read(block)]).then(function (r) {
+      var S = r[0], b = r[1];
+      if (!b) return null;
+      var t = turn == null ? S.colour.current(b) : S.colour.turns(b).filter(function (x) { return x.address === turnNo(turn); })[0];
+      if (!t) return null;
+      var k = block + '|' + t.address;
+      if (WORN[k]) return { K: WORN[k], turn: t.address, node: t.node };
+      if (!word) return { K: null, turn: t.address, node: t.node };
+      return S.colour.keyOf(t, word, name).then(function (K) { if (K) WORN[k] = K; return { K: K, turn: t.address, node: t.node }; });
+    });
+  }
+  /* the envelope a line leaves as: gray true to the person alone (self, salted with their name — the key their published
+   * halves derive); 'colour:<name>' in that colour, with the current turn's key from their own copy, else as a letter;
+   * { grain: <partner> } to the two of them, refused where the word does not derive the halves published at their
+   * passport. Resolves { envelope, how: 'self' | 'colour' | 'letter' | 'grain', turn? } */
+  function sealFor(gray, text, name, word) {
+    return seal().then(function (S) {
+      word = word || wordOf(name);
+      if (gray && typeof gray === 'object' && gray.grain) {
+        var partner = clean(gray.grain);
+        if (!partner) throw refusal('a grain line is sealed to a partner: say who');
+        if (!word) throw refusal('no key is held here for ' + name + ': wear it first');
+        return Promise.all([read('passport:' + partner), read('passport:' + name)]).then(function (r) {
+          var theirs = S.publishedOf(r[0] && r[0]['9']), mine = S.publishedOf(r[1] && r[1]['9']);
+          if (!theirs) throw refusal(partner + ' has no keys published at passport:' + partner + ' 9, so nothing can be sealed to them yet');
+          return S.grain.seal(text, word, name, partner, theirs.x25519, mine ? mine.x25519 : undefined).then(function (e) { return { envelope: e, how: 'grain' }; });
+        });
+      }
+      if (typeof gray === 'string') {
+        var block = S.colour.block(gray);
+        return colourTurn(block, null, name).then(function (t) {
+          if (!t) throw refusal('no ' + block + ' stands on this beach: a colour is founded by its keeper first');
+          if (t.K) return S.colour.seal(text, block, t.turn, t.K).then(function (e) { return { envelope: e, how: 'colour', turn: t.turn }; });
+          return S.colour.letter(text, block, t.turn, t.node['2']).then(function (e) { return { envelope: e, how: 'letter', turn: t.turn }; });
+        });
+      }
+      if (!word) throw refusal('no key is held here for ' + name + ': wear it first');
+      return S.self.seal(text, word, name).then(function (e) { return { envelope: e, how: 'self' }; });
+    });
+  }
+  /* the envelope alone, for a page that writes its own block: { ok, envelope, how, turn? } */
+  function sealAct(text, op) {
+    op = op || {};
+    text = String(text || '');
+    if (!text) return Promise.resolve({ ok: false, error: 'nothing to seal' });
+    if (!op.gray) return Promise.resolve({ ok: false, error: 'say how: gray true, "colour:<name>", or { grain: <partner> }' });
+    if (shown()) return through({ kind: 'seal', text: text, gray: op.gray });
+    var name = nameFor(op); if (!name) return Promise.resolve(NEED);
+    return sealFor(op.gray, text, name).then(function (s) { return { ok: true, name: name, envelope: s.envelope, how: s.how, turn: s.turn }; }).catch(failed);
+  }
+  /* OPEN a sealed line this tab can open, else null — never a question (the page shows grey(node)) */
+  function open(node, op) {
+    op = op || {};
+    if (shown()) return through({ kind: 'open', node: node, with: op.with, ring: op.ring }).then(function (r) { return r && r.ok ? r.text : null; });
+    var name = nameFor(op);
+    return seal().then(function (S) {
+      var e = S.envelopeOf(node), m = S.mode(e);
+      if (!m) return null;
+      var word = name ? wordOf(name) : '';
+      if (m === 'self') return word ? S.self.open(e, word, op.salt || name) : null;
+      if (m === 'group') return op.ring && word ? S.group.unwrap(op.ring, word, name).then(function (K) { return K ? S.group.open(e, K) : null; }) : null;
+      if (m === 'grain') {
+        var other = clean(op.with) || String(e['9']['2'] || '');
+        if (!word || !other || other === name) return null;
+        return read('passport:' + other).then(function (p) { var k = S.publishedOf(p && p['9']); return k ? S.grain.open(e, word, name, k.x25519) : null; });
+      }
+      return colourTurn(String(e['9']['2'] || ''), String(e['9']['3'] || ''), name).then(function (t) { return t && t.K ? S.colour.open(e, t.K) : null; });
+    }).catch(function () { return null; });
+  }
+  function grey(node) { return window.beachSeal ? window.beachSeal.grey(node) : ''; }
+  /* the colours this tab holds, each with its current turn: read fresh from the beach's index each time */
+  function colours(op) {
+    op = op || {};
+    if (shown()) return through({ kind: 'colours' }).then(function (r) { return r && r.ok ? r.colours || [] : []; });
+    var name = nameFor(op);
+    if (!name || !wordOf(name)) return Promise.resolve([]);
+    return Promise.all([seal(), index(true)]).then(function (r) {
+      var S = r[0], names = r[1].blocks.filter(function (b) { return b.indexOf('colour:') === 0; });
+      return Promise.all(names.map(function (b) {
+        return colourTurn(b, null, name).then(function (t) { return t && t.K ? { name: S.colour.name(b), block: b, turn: t.turn } : null; }, function () { return null; });
+      }));
+    }).then(function (list) { return list.filter(Boolean); }, function () { return []; });
+  }
+  /* the halves a word derives, published at passport:<name> 9 where none stand (one write, under the word as the latch,
+   * which the beach refuses if the word is wrong), or checked against those that do */
+  function publish(name, key) {
+    return Promise.all([seal(), read('passport:' + name)]).then(function (r) {
+      var S = r[0], p = r[1];
+      if (!p) return { ok: false, code: 'not_found', status: 404, error: 'no passport:' + name + ' on this beach' };
+      return S.pair(key, name).then(function (pair) {
+        var mine = S.published(pair), has = S.publishedOf(p['9']);
+        if (has) return has.x25519 === mine['2'] && has.ed25519 === mine['1'] ? { ok: true, published: false } : { ok: false, code: 'mismatch', error: 'that key does not derive the keys published at passport:' + name + ' 9' };
+        if (p['9'] !== undefined && p['9'] !== null) return { ok: false, code: 'held', error: 'passport:' + name + ' keeps something else at 9, where its keys go' };
+        return post({ block: 'passport:' + name, spindle: '9', content: mine, secret: key }).then(function (w) { return w.ok ? { ok: true, published: true } : w; });
+      });
+    });
+  }
+  /* WEAR: the person's word put on for this tab, on an open beach (at a members' beach, prove does this as they key in):
+   * the key held or kept for the name, else asked for, twice at most while it proves wrong — a word proves itself against
+   * the halves published at passport:<name> 9, or by publishing them. Resolves { ok, name, published } or a refusal */
+  function wear(op) {
+    op = op || {};
+    var name = nameFor(op); if (!name) return Promise.resolve(NEED);
+    var asked = 0, last = null, key = wordOf(name);
+    function attempt() {
+      if (!key) {
+        if (op.ask === false) return Promise.resolve({ ok: false, needKey: true, error: name + '’s key is not on this device' });
+        if (asked++ === 2) return Promise.resolve(last);
+        var v = window.prompt(last ? 'That key is not the one ' + name + '’s passport uses. Enter it again (' + KEPT + '):' : 'Enter the key ' + name + '’s passport uses, to seal and open lines as them (' + KEPT + '):');
+        if (v === null || !v.trim()) return Promise.resolve({ ok: false, quiet: true });
+        key = v.trim();
+      }
+      return publish(name, key).then(function (r) {
+        if (r.ok) { HELD[name] = key; put(NAME, name); return keepKey('next-latch:passport:' + name, key).then(function () { return { ok: true, name: name, published: r.published }; }); }
+        if (!refused(r) && r.code !== 'mismatch') return r;
+        last = r; key = '';
+        return attempt();
+      });
+    }
+    return attempt().catch(failed);
   }
 
   // ── the button on the page ──
@@ -595,6 +826,9 @@
   var watchers = [], was = false;
   function onButton(fn) { if (typeof fn === 'function') watchers.push(fn); }
   function start() {
+    // the seal loads with the voice, so grey(node) can draw a sealed line as soon as a page meets one; its libraries load on first use
+    seal().catch(function () {});
+    ready();
     was = shown();
     new MutationObserver(function () {
       var now = shown();
@@ -612,11 +846,14 @@
     });
   }
 
+  /* every act waits for the keys the device keeps to be read (ready), so a reload proves and seals without a question */
+  function waits(fn) { return function () { var a = arguments; return ready().then(function () { return fn.apply(null, a); }); }; }
   window.beachVoice = {
-    say: say, keep: keep, ask: ask, drop: drop,
-    propose: propose, enter: enter, made: made, known: known,
-    prove: prove, pass: pass, leave: leave,
-    invite: invite, invited: invited, join: join,
+    say: waits(say), keep: waits(keep), ask: ask, drop: waits(drop),
+    propose: propose, enter: waits(enter), made: made, known: known,
+    prove: waits(prove), pass: pass, leave: leave,
+    invite: waits(invite), invited: invited, join: waits(join),
+    seal: waits(sealAct), open: waits(open), grey: grey, colours: waits(colours), wear: waits(wear),
     name: who,
     button: { shown: shown, set: setButton },
     setting: setting, set: set,
