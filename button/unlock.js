@@ -26,7 +26,25 @@
   if (!opener || !nonce) return;
 
   function say(t) { $('msg').textContent = t || ''; }
-  function remembered() { try { return JSON.parse(localStorage.getItem(REM)); } catch (e) { return null; } }
+  /* REMEMBERED ON THIS DEVICE, NEVER PLAIN (coloured stigmergy step 4; Matthew's condition at 1.18): the person this device
+   * remembers is wrapped under a key the browser will not hand out (seal.js keep) before it goes to this origin's storage;
+   * one remembered plain before this is read once and wrapped from then on; where the browser offers no such key, nobody
+   * is remembered and the words are typed each time. */
+  var S = window.beachSeal || null;
+  function parse(t) { try { return JSON.parse(t) || null; } catch (e) { return null; } }
+  function recall() {
+    var v = null;
+    try { v = localStorage.getItem(REM); } catch (e) { v = null; }
+    if (!v) return Promise.resolve(null);
+    if (S && S.keep.wrapped(v)) return S.keep.unwrap(v).then(parse, function () { return null; });
+    var p = parse(v);
+    if (p) remember(p);
+    return Promise.resolve(p);
+  }
+  function remember(person) {
+    if (!S || !S.keep.able()) { try { localStorage.removeItem(REM); } catch (e) {} return Promise.resolve(false); }
+    return S.keep.wrap(JSON.stringify(person)).then(function (w) { try { localStorage.setItem(REM, w); } catch (e) {} return true; }, function () { try { localStorage.removeItem(REM); } catch (e) {} return false; });
+  }
 
   var who = document.createElement('b');
   who.textContent = asker;
@@ -38,14 +56,17 @@
     window.close();
   }
 
-  var known = remembered();
+  var known = null;
   function showForm() { $('known').hidden = true; $('f').hidden = false; $('h').focus(); }
-  if (known && known.handle) {
-    $('kname').textContent = known.handle;
-    $('kname2').textContent = known.handle;
-    $('known').hidden = false;
-    $('wipe').hidden = false;
-  } else showForm();
+  recall().then(function (k) {
+    known = k;
+    if (known && known.handle) {
+      $('kname').textContent = known.handle;
+      $('kname2').textContent = known.handle;
+      $('known').hidden = false;
+      $('wipe').hidden = false;
+    } else showForm();
+  });
 
   $('useknown').onclick = function () { hand(known); };
   $('other').onclick = showForm;
@@ -60,7 +81,6 @@
     var handle = $('h').value.trim();
     if (!/^[^\s:/?#]{1,64}$/.test(handle)) return say('A handle has no spaces, colons or slashes.');
     var person = { handle: handle, secret: $('s').value, key: $('k').value.trim() };
-    if ($('rem').checked) { try { localStorage.setItem(REM, JSON.stringify(person)); } catch (err) {} }
-    hand(person);
+    ($('rem').checked ? remember(person) : Promise.resolve(false)).then(function () { hand(person); });
   });
 })();

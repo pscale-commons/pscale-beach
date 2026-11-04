@@ -67,7 +67,22 @@
   function put(s, k, v) { try { if (v == null) s.removeItem(k); else s.setItem(k, v); } catch (e) {} }
 
   var me = null;   // { handle, secret, key }
-  try { me = JSON.parse(get(sessionStorage, KEEP)) || null; } catch (e) { me = null; }
+  /* KEPT FOR THE TAB, NEVER PLAIN (coloured stigmergy step 4; Matthew's condition at 1.18): what this tab holds of the
+   * person is wrapped under a key the browser will not hand out (seal.js keep) before it goes to sessionStorage, so the
+   * storage holds ciphertext; a tab that kept it plain before this is read once and wrapped from then on; where the
+   * browser offers no such key, nothing is kept and the person unlocks again after a reload. */
+  var S = window.beachSeal || null, woke = Promise.resolve();
+  (function () {
+    var v = get(sessionStorage, KEEP);
+    if (!v) return;
+    if (S && S.keep.wrapped(v)) { woke = S.keep.unwrap(v).then(function (t) { try { me = JSON.parse(t) || null; } catch (e) { me = null; } }); return; }
+    try { me = JSON.parse(v) || null; } catch (e) { me = null; }
+    keepMe();
+  })();
+  function keepMe() {
+    if (!me || !S || !S.keep.able()) return put(sessionStorage, KEEP, null);
+    S.keep.wrap(JSON.stringify(me)).then(function (w) { put(sessionStorage, KEEP, w); }, function () { put(sessionStorage, KEEP, null); });
+  }
 
   /* The page the button stands on, as the page itself says it (button.js): its address and title,
    * believed only within the page's own origin, with the query and fragment dropped (they can carry
@@ -188,7 +203,7 @@
       if (m.type !== 'beach:unlocked' || m.n !== nonce || !m.handle) return;
       me = { handle: String(m.handle), secret: String(m.secret || ''), key: String(m.key || '') };
       popup = null; nonce = '';
-      put(sessionStorage, KEEP, JSON.stringify(me));
+      keepMe();
       render(); hello();
       note('Holding ' + me.handle + ' for this tab on ' + HOST + '.' +
         (me.secret ? ' Your words are not tried until the first write, which will say if they are wrong.' : ' No passphrase, so nothing can be written as you.') +
@@ -346,7 +361,89 @@
     if (op.kind === 'say') return say(id, op);
     if (op.kind === 'keep') return keep(id, op);
     if (op.kind === 'ask') return askFor(id, op);
+    if (op.kind === 'seal') return sealFor(id, op);
+    if (op.kind === 'open') return openFor(id, op);
+    if (op.kind === 'colours') return coloursFor(id);
     reply(id, { ok: false, error: 'the button does not know "' + op.kind + '"' });
+  }
+
+  /* ── THE SEAL THROUGH THE BUTTON (coloured stigmergy, step 4; the design's §4.1): the frame holds the person's word, so
+   * it derives the pair, opens their copies and seals — the page never does. A line is sealed on a card the person
+   * commits, as every write is; a sealed line is opened, and the colours they hold named, only for a page that may know
+   * their name (the tick in settings), since what opens for them says who they are. The word is the passphrase they
+   * unlocked with, the key their passport uses; the pair it derives with their name as the salt is the one their passport
+   * publishes (pscale_key_publish), and is kept in this frame's memory for the tab. ── */
+  var WORN = {};
+  var turnNo = function (t) { return String(parseInt(t, 10) || t); };
+  function colourTurn(block, turn) {
+    var at = turn != null ? block + '|' + turnNo(turn) : '';
+    if (at && WORN[at]) return Promise.resolve({ K: WORN[at], turn: turnNo(turn) });
+    return readRoot(block, BEACH).then(function (b) {
+      if (!b) return null;
+      var t = turn == null ? S.colour.current(b) : S.colour.turns(b).filter(function (x) { return x.address === turnNo(turn); })[0];
+      if (!t) return null;
+      var k = block + '|' + t.address;
+      if (WORN[k]) return { K: WORN[k], turn: t.address, node: t.node };
+      return S.colour.keyOf(t, me.secret, me.handle).then(function (K) { if (K) WORN[k] = K; return { K: K, turn: t.address, node: t.node }; });
+    });
+  }
+  function halves(handle) { return readRoot('passport:' + handle, BEACH).then(function (p) { return S.publishedOf(p && p['9']); }); }
+  /* the envelope a line leaves as: { envelope, how, turn? } — self, in a colour (or a letter to it), or to a grain partner */
+  function envelopeFor(gray, text) {
+    if (gray && typeof gray === 'object' && gray.grain) {
+      var partner = String(gray.grain || '').replace(/[^a-z0-9_\s-]/gi, '').trim();
+      return Promise.all([halves(partner), halves(me.handle)]).then(function (r) {
+        if (!r[0]) throw new Error(partner + ' has no keys published at passport:' + partner + ' 9');
+        return S.grain.seal(text, me.secret, me.handle, partner, r[0].x25519, r[1] ? r[1].x25519 : undefined).then(function (e) { return { envelope: e, how: 'grain' }; });
+      });
+    }
+    if (typeof gray === 'string') {
+      var block = S.colour.block(gray);
+      return colourTurn(block, null).then(function (t) {
+        if (!t) throw new Error('no ' + block + ' stands on the beach');
+        if (t.K) return S.colour.seal(text, block, t.turn, t.K).then(function (e) { return { envelope: e, how: 'colour', turn: t.turn }; });
+        return S.colour.letter(text, block, t.turn, t.node['2']).then(function (e) { return { envelope: e, how: 'letter', turn: t.turn }; });
+      });
+    }
+    return S.self.seal(text, me.secret, me.handle).then(function (e) { return { envelope: e, how: 'self' }; });
+  }
+  function sealWord(gray) { return gray && typeof gray === 'object' && gray.grain ? 'to ' + gray.grain + ', sealed between the two of you' : typeof gray === 'string' ? 'sealed in ' + S.colour.block(gray) : 'sealed to you alone'; }
+  function sealFor(id, op) {
+    var text = String(op.text || '').trim().slice(0, 2000);
+    if (!text) return reply(id, { ok: false, error: 'nothing to seal' });
+    if (!S) return reply(id, { ok: false, error: 'the beach serves no seal' });
+    if (!me || !me.secret) return hold(id, op, HOST + ' asks to seal this as you, ' + sealWord(op.gray) + ':', text);
+    decide(HOST + ' asks to seal this as ' + me.handle + ', ' + sealWord(op.gray) + ' — the page then writes it where it stands:', text, 'seal', function (yes, why) {
+      if (!yes) return reply(id, { ok: false, error: why || 'declined' });
+      envelopeFor(op.gray, text).then(function (s) { reply(id, { ok: true, handle: me.handle, envelope: s.envelope, how: s.how, turn: s.turn }); },
+        function (e) { reply(id, { ok: false, error: e.message }); });
+    }, true);
+  }
+  function mayOpen(id) {
+    if (!S) { reply(id, { ok: false, error: 'the beach serves no seal' }); return false; }
+    if (!me || !me.secret) { reply(id, { ok: false, error: 'no one has unlocked the button here' }); return false; }
+    if (get(localStorage, TELL) !== '1') { reply(id, { ok: false, error: 'the button opens sealed lines only for a page that may know your name (the tick in its settings)' }); return false; }
+    return true;
+  }
+  function openFor(id, op) {
+    if (!mayOpen(id)) return;
+    var e = S.envelopeOf(op.node), m = S.mode(e);
+    if (!m) return reply(id, { ok: true, text: null });
+    var p;
+    if (m === 'self') p = S.self.open(e, me.secret, me.handle);
+    else if (m === 'group') p = op.ring ? S.group.unwrap(op.ring, me.secret, me.handle).then(function (K) { return K ? S.group.open(e, K) : null; }) : Promise.resolve(null);
+    else if (m === 'grain') {
+      var other = String(op.with || e['9']['2'] || '').replace(/[^a-z0-9_\s-]/gi, '').trim();
+      p = !other || other === me.handle ? Promise.resolve(null) : halves(other).then(function (k) { return k ? S.grain.open(e, me.secret, me.handle, k.x25519) : null; });
+    } else p = colourTurn(String(e['9']['2'] || ''), String(e['9']['3'] || '')).then(function (t) { return t && t.K ? S.colour.open(e, t.K) : null; });
+    p.then(function (text) { reply(id, { ok: true, text: text }); }, function () { reply(id, { ok: true, text: null }); });
+  }
+  function coloursFor(id) {
+    if (!mayOpen(id)) return;
+    readRoot('', BEACH).then(function (ix) {
+      var names = ((ix && ix.blocks) || []).map(function (b) { return typeof b === 'string' ? b : (b && b.name) || ''; }).filter(function (b) { return b.indexOf('colour:') === 0; });
+      return Promise.all(names.map(function (b) { return colourTurn(b, null).then(function (t) { return t && t.K ? { name: S.colour.name(b), block: b, turn: t.turn } : null; }, function () { return null; }); }));
+    }).then(function (list) { reply(id, { ok: true, colours: list.filter(Boolean) }); }, function (e) { reply(id, { ok: false, error: e.message }); });
   }
 
   /* A page may ask the button to write AS the person — and only to a block named for them.
@@ -445,17 +542,23 @@
     if (!me || !me.secret) return hold(id, op, HOST + ' asks to add your reading to ' + field + ', in your own mirror:', text);
     var base = op.where === 'here' ? SURFACE : BEACH, block = field + ':' + me.handle;
     if (!mine(block)) return reply(id, { ok: false, error: 'the button writes only blocks named for the person (…:' + me.handle + ')' });
+    if (op.gray && typeof op.gray === 'object') return reply(id, { ok: false, error: 'a say is sealed to the person (gray: true) or in a colour (gray: "colour:<name>")' });
+    if (op.gray && !S) return reply(id, { ok: false, error: 'the beach serves no seal' });
     family(field, block, base).then(function (f) {
-      var m = f.mirror, was = m ? lineAt(m, at) : '';
+      var m = f.mirror, was = m ? lineAt(m, at) : '', sealed = null;
       var where = base.replace(/^https?:\/\//, '') + ' — ' + block + ' at ' + at +
-        (!m ? ' (this founds your mirror, locked with your passphrase)' : was ? ', replacing what you said there: “' + clip(was) + '”' : '');
+        (!m ? ' (this founds your mirror, locked with your passphrase)' : was ? ', replacing what you said there: “' + clip(was) + '”' : '') +
+        (op.gray ? ', ' + sealWord(op.gray) : '');
       decide(HOST + ' asks to add your reading to ' + field + ', in your own mirror, ' + where + ':', text, 'commit', function (yes, why) {
         if (!yes) return reply(id, { ok: false, error: why || 'declined' });
         (m ? Promise.resolve({ ok: true }) : found(block, { _: floored(mirrorIntro(field), f.floor) }, base)).then(function (w) {
           // confirm_required: the mirror was founded a moment ago, from another tab, and stands
-          return w.ok || w.code === 'confirm_required' ? post({ block: block, spindle: at, content: text, secret: me.secret }, base) : w;
+          if (!(w.ok || w.code === 'confirm_required')) return w;
+          if (!op.gray) return post({ block: block, spindle: at, content: text, secret: me.secret }, base);
+          // the writer's door seals before the line leaves (coloured stigmergy §4.1)
+          return envelopeFor(op.gray, text).then(function (s) { sealed = s; return post({ block: block, spindle: at, content: s.envelope, secret: me.secret }, base); }, function (e) { return { ok: false, status: 0, error: e.message }; });
         }).then(function (r) {
-          reply(id, { ok: r.ok, status: r.status, error: r.error, code: r.code, handle: me.handle, block: block, at: at, founded: !m });
+          reply(id, { ok: r.ok, status: r.status, error: r.error, code: r.code, handle: me.handle, block: block, at: at, founded: !m, sealed: r.ok && sealed ? sealed.how : undefined, turn: r.ok && sealed ? sealed.turn : undefined });
           note(r.ok ? 'Your reading stands in ' + block + ' at ' + at + '.' : 'The beach refused that reading: ' + (r.error || r.status) + (r.status === 403 ? ' — unlock again if your words were wrong.' : ''));
         });
       }, true);
@@ -954,7 +1057,7 @@
   $('unlock').onclick = unlock;
   $('you').onclick = unlock;
   $('forget').onclick = function () {
-    me = null; put(sessionStorage, KEEP, null); render(); hello();
+    me = null; keepMe(); WORN = {}; render(); hello();
     alerts = []; alertsFor = ''; ears = { handle: '', rooms: [], at: 0 }; paintAlerts();
     note('Forgotten: this tab holds nothing of yours now.');
   };
@@ -983,8 +1086,10 @@
     tell({ type: 'close' });
   });
 
-  render();
-  show(framed ? 'closed' : 'prompt');
-  tell({ type: 'ready' });
-  if (me) { hello(); listen(true); }
+  woke.then(function () {
+    render();
+    show(framed ? 'closed' : 'prompt');
+    tell({ type: 'ready' });
+    if (me) { hello(); listen(true); }
+  });
 })();
