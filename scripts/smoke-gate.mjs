@@ -152,6 +152,16 @@ try {
   ok(r.status === 200 && r.body?.handle === 'newbie', 'newbie proves the new passport for a pass', r.body);
   ok((await g('GET', `${W}?block=days:ada`, null, bearer(r.body?.pass || ''))).status === 200, 'and reads as a member');
 
+  console.log('\n— an invite minted for a name founds that name alone —');
+  r = await g('POST', `${W}?block=passport:ada`, { invite: true, for: 'pearl' }, bearer(ada));
+  ok(r.status === 200 && r.body?.for === 'pearl' && r.body.by === 'ada', 'ada mints an invite for pearl', r.body);
+  const forPearl = r.body?.invite || '';
+  ok((await g('POST', `${W}?block=passport:other`, { spindle: '', content: { _: 'OTHER' }, new_lock: 'O1' }, bearer(forPearl))).status === 401, 'it founds no other name');
+  ok((await g('POST', `${W}?block=passport:pearl`, { spindle: '', content: { _: 'PEARL' }, new_lock: 'P1' }, bearer(forPearl))).status === 200, 'pearl founds her passport with it');
+  ok((await g('POST', `${W}?block=passport:pearl`, { secret: 'P1' })).body?.handle === 'pearl', 'and proves it for a pass');
+  ok((await g('POST', `${W}?block=passport:ada`, { invite: true, for: 'no>good' }, bearer(ada))).status === 400, 'a name that is not one is refused at the mint');
+  ok((await g('POST', `${W}?block=passport:ada`, { invite: true, for: '' }, bearer(ada))).status === 400, 'and so is an empty one');
+
   console.log('\n— DELETE —');
   ok((await g('DELETE', `${W}?block=lighthouse`, { confirm: true })).status === 401, 'a stranger cannot wipe');
   ok((await g('DELETE', `${W}?block=lighthouse`, { confirm: true }, bearer(ada))).status === 200, 'a member wipes an open block, as ever');
