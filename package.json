@@ -37,7 +37,8 @@
     "smoke:gate": "node scripts/smoke-gate.mjs",
     "smoke:guard": "node scripts/smoke-guard.mjs",
     "smoke:tombstone": "node scripts/smoke-tombstone.mjs",
-    "smoke:copy-world": "node scripts/smoke-copy-world.mjs"
+    "smoke:copy-world": "node scripts/smoke-copy-world.mjs",
+    "smoke:index-check": "node scripts/smoke-index-check.mjs"
   },
   "dependencies": {
     "@upstash/redis": "^1.34.0"
