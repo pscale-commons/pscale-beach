@@ -215,14 +215,52 @@
   function answer(r, d) { return { ok: r.ok && !(d && d.error), status: r.status, code: d && d.code, error: d && (d.error || d.message), found: d && d.found }; }
   /* the proof itself: the passport's latch, no content, answered with the pass */
   function proof(name, key) {
-    return fetch(BEACH, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ block: 'passport:' + name, secret: key }) })
-      .then(function (r) {
-        return r.json().catch(function () { return null; }).then(function (d) {
-          if (r.ok && d && d.pass) { put(PASS, JSON.stringify({ name: name, pass: d.pass, expires: d.expires })); HELD[name] = key; put(NAME, name); return { ok: true, name: name, expires: d.expires }; }
-          if (r.ok) return { ok: false, open: true, error: ROOT + ' has no members’ gate: it is open to anyone' };
-          return answer(r, d);
-        });
+    // behind a wall the passport cannot be read first: the form kept here for the name, else the derived latch first
+    return latch().then(function (L) { return L.proofForms(ROOT, name, key); }, function () { return switchedHere(name) ? [] : [key]; }).then(function (forms) {
+      var last = { ok: false, code: 'form_gone', error: 'the beach’s latch module did not load, and ' + name + '’s key here is derived: nothing was sent' };
+      function one(i) {
+        if (i >= forms.length) return last;
+        return fetch(BEACH, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ block: 'passport:' + name, secret: forms[i] }) })
+          .then(function (r) {
+            return r.json().catch(function () { return null; }).then(function (d) {
+              if (r.ok && d && d.pass) {
+                put(PASS, JSON.stringify({ name: name, pass: d.pass, expires: d.expires })); HELD[name] = key; put(NAME, name);
+                if (window.beachLatch) window.beachLatch.proved(ROOT, name, forms[i], key);
+                return { ok: true, name: name, expires: d.expires };
+              }
+              if (r.ok) return { ok: false, open: true, error: ROOT + ' has no members’ gate: it is open to anyone' };
+              last = answer(r, d);
+              return r.status === 403 ? one(i + 1) : last;
+            });
+          });
+      }
+      return one(0);
+    });
+  }
+  /* ── THE DERIVED LATCH (bsp-mcp proposals/2026-11-05-the-derived-latch.md; latch.js, beside this script) ── */
+  var LATCH = null;
+  function latch() {
+    if (window.beachLatch) return seal().then(function () { return window.beachLatch; });
+    if (LATCH) return LATCH;
+    return LATCH = seal().then(function () {
+      return new Promise(function (res, rej) {
+        var s = document.createElement('script'); s.src = BASE.href + 'latch.js'; s.async = true;
+        s.onload = function () { if (window.beachLatch) res(window.beachLatch); else { LATCH = null; rej(new Error('the latch did not load')); } };
+        s.onerror = function () { LATCH = null; rej(new Error('could not load ' + s.src)); };
+        (document.head || document.documentElement).appendChild(s);
       });
+    });
+  }
+  /* this device saw the name switched here, so with no latch module nothing keyed is sent at all */
+  function switchedHere(name) { return /^derived:/.test(get('beach-form:' + ROOT.toLowerCase() + '|' + name) || ''); }
+  /* a body with its keys in the form each hand's passport names; refused, nothing sent, where a beach stopped saying it */
+  function keysFor(body) {
+    if (!body || !((typeof body.secret === 'string' && body.secret) || (typeof body.new_lock === 'string' && body.new_lock))) return Promise.resolve(body);
+    return latch().then(function (L) { return L.body(ROOT, body, [who()], headers({ Accept: 'application/json' })); }, function () {
+      var b = String(body.block || ''), h = b.slice(b.lastIndexOf(':') + 1);
+      if (switchedHere(h) || switchedHere(who())) throw refusal('the beach’s latch module did not load, and this key is derived here: nothing was sent', 'form_gone');
+      return body;
+    });
   }
   /* the pass for a member's name: the one this device holds while it lasts, else earned with the key this page holds
    * or the device keeps, else the one the browser asks for (again, twice at most, while the beach refuses it); op.ask
@@ -306,13 +344,26 @@
     if (Date.parse(says.expires) < Date.now()) return Promise.resolve({ ok: false, code: 'expired', by: says.by, error: 'This invitation ran out on ' + new Date(says.expires).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) + ': ask ' + says.by + ' for another.' });
     if (!name || name.length > 32) return Promise.resolve(NEED);
     if (says.for && says.for !== name) return Promise.resolve({ ok: false, code: 'for', by: says.by, for: says.for, error: 'This invitation is for ' + says.for + ', not ' + name + '.' });
-    var block = 'passport:' + name, key = String(op.key || '').trim(), made = false;
-    if (!key) { key = makeKey(); made = true; }
+    var block = 'passport:' + name, key = String(op.key || '').trim(), made = !key;
     var line = typeof op.passport === 'string' ? op.passport.trim() : '';
     var content = op.passport && typeof op.passport === 'object' ? op.passport
       : { _: line || (name + ' — joined ' + ROOT.replace(/^https?:\/\//, '') + ' on ' + new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) + ' at ' + says.by + '’s invitation.') };
-    return fetch(BEACH, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ block: block, content: content, new_lock: key }) })
-      .then(function (r) {
+    return (key ? Promise.resolve(key) : makeKey()).then(function (k) {
+      key = k;
+      // BORN SWITCHED where the page asks (op.derived): the passport founded under the latch derived from the word, its
+      // halves and the marker at 9 in the same write, so the word never reaches the beach at all
+      if (!op.derived) return { lock: key, content: content };
+      return latch().then(function (L) {
+        var S = window.beachSeal, now = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+        return Promise.all([S.pair(key, name), S.latch(key, name)]).then(function (r) {
+          var c = {}, x; for (x in content) c[x] = content[x];
+          c['9'] = S.published(r[0]); c['9']['3'] = L.marker(name, now, now);
+          return { lock: r[1], content: c };
+        });
+      });
+    }).then(function (f) {
+      return fetch(BEACH, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify({ block: block, content: f.content, new_lock: f.lock }) });
+    }).then(function (r) {
         return r.json().catch(function () { return null; }).then(function (d) {
           var a = answer(r, d);
           if (!a.ok) { a.by = says.by; return a; }
@@ -337,8 +388,11 @@
     });
   }
   function send(method, block, body, again) {
-    return fetch(method === 'DELETE' ? BEACH + '?block=' + encodeURIComponent(block) : BEACH, {
-      method: method, cache: 'no-store', headers: headers({ 'Content-Type': 'application/json', Accept: 'application/json' }), body: JSON.stringify(body)
+    // THE DERIVED LATCH (latch.js): the keys go in the form each hand's passport names, the word never where it says derived
+    return keysFor(body).then(function (sent) {
+      return fetch(method === 'DELETE' ? BEACH + '?block=' + encodeURIComponent(block) : BEACH, {
+        method: method, cache: 'no-store', headers: headers({ 'Content-Type': 'application/json', Accept: 'application/json' }), body: JSON.stringify(sent)
+      });
     }).then(function (r) {
       return r.json().catch(function () { return null; }).then(function (d) {
         /* a members' beach refusing the write at its door (no pass, or one run out): the passport proved once more
@@ -532,7 +586,28 @@
     'pepper pier pine plover plum pond poppy prism quartz rain raven reed reef ridge river robin rose rowan saffron sage sail ' +
     'salt sand shell shore silver sky slate snow sorrel south spark spray spruce star stone storm stream summit swallow swan ' +
     'tern thistle thorn tide timber topaz tower trail tulip valley velvet violet wave west wharf willow wind winter wren yarrow').split(' ');
-  function makeKey() { return [0, 1, 2].map(function () { return WORDS[rnd(WORDS.length)]; }).join('-') + '-' + (10 + rnd(90)); }
+  /* A KEY MADE HERE IS FIVE WORDS (the derived latch, §7; ways:key 6): two digits first, so a phone's capital lands on a
+   * digit, then five of the 4,096 plain words of words.js, beside this script and loaded only when a key is made — 66.5
+   * bits, a sealing word's strength. The three words above made keys until now (29 bits, a latch's strength); a key of
+   * that shape is still read as the made key it is (weak), and its holder may ask for five words (switch, fresh). */
+  var WORDS5 = null;
+  function words() {
+    if (window.beachWords) return Promise.resolve(window.beachWords);
+    if (WORDS5) return WORDS5;
+    return WORDS5 = new Promise(function (res, rej) {
+      var s = document.createElement('script'); s.src = BASE.href + 'words.js'; s.async = true;
+      s.onload = function () { if (window.beachWords && window.beachWords.length === 4096) res(window.beachWords); else { WORDS5 = null; rej(new Error('the words did not load')); } };
+      s.onerror = function () { WORDS5 = null; rej(new Error('could not load ' + s.src)); };
+      (document.head || document.documentElement).appendChild(s);
+    });
+  }
+  function makeKey() {
+    return words().then(function (W) {
+      var a = new Uint32Array(6); crypto.getRandomValues(a);   // 4,096 divides 2^32: no word is likelier than another
+      return [String(10 + a[0] % 90)].concat([1, 2, 3, 4, 5].map(function (i) { return W[a[i] % 4096]; })).join('-');
+    });
+  }
+  function weak(key) { var m = /^([a-z]+)-([a-z]+)-([a-z]+)-([1-9][0-9])$/.exec(String(key || '')); return !!m && [m[1], m[2], m[3]].every(function (w) { return WORDS.indexOf(w) >= 0; }); }
   var PROPOSED = '', TAKEN = {};
   /* a name made up for a newcomer: a starling and four digits no block on the beach is named for, the same
    * one until it is taken (by them, or by someone since it was proposed) */
@@ -575,7 +650,7 @@
         return index().then(function (ix) {
           var made = false;
           var keeping = Promise.resolve();
-          if (!onBeach(ix, name) && !kept('next-latch:' + block)) { var k = makeKey(); keeping = Promise.all([keepKey('next-latch:' + block, k), keepKey('made-key:' + block, k)]); made = true; }
+          if (!onBeach(ix, name) && !kept('next-latch:' + block)) { keeping = makeKey().then(function (k) { return Promise.all([keepKey('next-latch:' + block, k), keepKey('made-key:' + block, k)]); }); made = true; }
           var line = String(op.intro || '').trim();
           line = line ? line.replace(/^MIRROR — a /, 'MIRROR — ' + name + '’s ') : intro(field, name);
           var tree = { _: floored(line, f.floor) };
@@ -737,6 +812,39 @@
     return attempt().catch(failed);
   }
 
+  /* THE SWITCH, WHEN THE HOLDER ASKS (the derived latch, §5): the name's latches at this beach move off the word onto the
+   * latch derived from it, so no beach is sent the word again — the marker at passport:<name> 9.3 first, then the
+   * passport, then every block named for the name, each probed with no key so an open block is never latched (latch.js
+   * switchTo). The word is the one held or kept for the name, else asked for. op.back runs it the other way; op.fresh
+   * makes five new words first and moves every latch onto theirs, the new halves published in the same act, the new key
+   * kept and said once by made({ field: 'passport', name }). Resolves { ok, name, swept, moved, open, refused, made? } */
+  function switchLatch(op) {
+    op = op || {};
+    var name = nameFor(op); if (!name) return Promise.resolve(NEED);
+    var word = wordOf(name), asked = 0;
+    function attempt() {
+      if (!word) {
+        if (op.ask === false) return Promise.resolve({ ok: false, needKey: true, error: name + '’s key is not on this device' });
+        if (asked++ === 2) return Promise.resolve({ ok: false, error: 'that key does not open ' + name + '’s passport' });
+        var v = window.prompt('The key ' + name + '’s passport uses (' + KEPT + '):');
+        if (v === null || !v.trim()) return Promise.resolve({ ok: false, quiet: true });
+        word = v.trim();
+      }
+      return (op.fresh && !op.back ? makeKey() : Promise.resolve('')).then(function (fresh) {
+        return latch().then(function (L) {
+          return L.switchTo(ROOT, name, word, { back: !!op.back, to: fresh || undefined }, headers({ 'Content-Type': 'application/json', Accept: 'application/json' }));
+        }).then(function (r) {
+          if (!r.ok) { if (/does not derive/.test(r.error || '')) { word = ''; return attempt(); } return r; }
+          r.name = name;
+          var key = fresh || word;
+          HELD[name] = key;
+          return Promise.all([keepKey('next-latch:passport:' + name, key), fresh ? keepKey('made-key:passport:' + name, key) : null]).then(function () { if (fresh) r.made = true; return r; });
+        });
+      });
+    }
+    return attempt().catch(failed);
+  }
+
   // ── the button on the page ──
   function shown() {
     return !!(window.beachButton && typeof window.beachButton.request === 'function' && document.querySelector('iframe[title="beach button"]'));
@@ -857,6 +965,7 @@
     prove: waits(prove), pass: pass, leave: leave,
     invite: waits(invite), invited: invited, join: waits(join),
     seal: waits(sealAct), open: waits(open), grey: grey, colours: waits(colours), wear: waits(wear),
+    switch: waits(switchLatch), weak: function (name) { return weak(wordOf(clean(name || who()))); },
     name: who,
     button: { shown: shown, set: setButton },
     setting: setting, set: set,

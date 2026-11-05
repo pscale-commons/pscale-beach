@@ -134,6 +134,7 @@
     $('youdo').textContent = me ? 'change ›' : 'unlock ›';
     $('forget').hidden = !me;
     $('ear').hidden = !me;
+    $('latch').hidden = !(me && me.secret && window.beachLatch);
     $('tell').checked = get(localStorage, TELL) === '1';
     $('served').textContent = 'served by ' + BEACH.replace(/^https?:\/\//, '');
   }
@@ -195,7 +196,12 @@
     /* the ear's window, the beach's own: it says it is ready, and only then — and only to it — the
      * person goes over; it says when the ear changed, and the button looks again */
     if (earWin && e.source === earWin && e.origin === location.origin && m.n === earNonce) {
-      if (m.type === 'beach:ear-ready' && me) earWin.postMessage({ type: 'beach:ear', n: earNonce, handle: me.handle, secret: me.secret }, location.origin);
+      // the ear writes ear:<handle> alone, so it is handed the latch in the form that passport names (the derived latch)
+      if (m.type === 'beach:ear-ready' && me) {
+        var who_ = me, win = earWin, n = earNonce;
+        (window.beachLatch && who_.secret ? window.beachLatch.latchFor(BEACH, 'ear:' + who_.handle, who_.secret, [who_.handle]) : Promise.resolve({ send: who_.secret }))
+          .then(function (t) { win.postMessage({ type: 'beach:ear', n: n, handle: who_.handle, secret: t.send }, location.origin); }, function () { win.postMessage({ type: 'beach:ear', n: n, handle: who_.handle, secret: '' }, location.origin); });
+      }
       else if (m.type === 'beach:ear-changed') listen(true);
       return;
     }
@@ -721,15 +727,19 @@
 
   /* a write to the page's place (base omitted) or to the beach's own root (base = BEACH) */
   function post(body, base) {
-    return fetch((base || SURFACE) + '/.well-known/pscale-beach', {
-      method: 'POST', cache: 'no-store',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify(body)
-    }).then(function (r) {
-      return r.json().catch(function () { return {}; }).then(function (j) {
-        return { ok: r.ok && !j.error, status: r.status, error: j.error || null, code: j.code || null, slot: j.slot || null };
-      });
-    }, function () { return { ok: false, status: 0, error: 'the beach did not answer' }; });
+    // THE DERIVED LATCH (latch.js): the keys in the form the hand's passport names; nothing sent where a beach stopped saying it
+    var L = window.beachLatch;
+    return (L ? L.body(base || SURFACE, body, me ? [me.handle] : []) : Promise.resolve(body)).then(function (sent) {
+      return fetch((base || SURFACE) + '/.well-known/pscale-beach', {
+        method: 'POST', cache: 'no-store',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(sent)
+      }).then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (j) {
+          return { ok: r.ok && !j.error, status: r.status, error: j.error || null, code: j.code || null, slot: j.slot || null };
+        });
+      }, function () { return { ok: false, status: 0, error: 'the beach did not answer' }; });
+    }, function (e) { return { ok: false, status: 0, error: (e && e.message) || 'nothing was sent', code: (e && e.code) || null }; });
   }
   function yesOrNo(text, body, yesLabel) {
     return new Promise(function (ok) { decide(text, body, yesLabel, function (yes, why) { ok({ yes: yes, why: why }); }, true); });
@@ -1083,6 +1093,18 @@
     put(localStorage, TELL, this.checked ? '1' : null); hello(); markIt();
   };
   $('ear').onclick = openEar;
+  /* THE SWITCH, ASKED FOR HERE (the derived latch, §5): the tap is the holder's ask. Their latches at this beach move off
+   * the word onto the latch derived from it (latch.js switchTo), so this beach is never sent the word again. */
+  $('latch').onclick = function () {
+    if (!me || !me.secret || !window.beachLatch) return;
+    var b = this; b.disabled = true; $('latchsays').textContent = 'switching…';
+    window.beachLatch.switchTo(BEACH, me.handle, me.secret).then(function (r) {
+      b.disabled = false;
+      $('latchsays').textContent = r.ok ? 'switched' : 'not switched';
+      note(r.ok ? 'Your key now reaches ' + BEACH.replace(/^https?:\/\//, '') + ' only as the latch derived from it: ' + r.moved.length + ' of your blocks moved' + (r.already.length ? ', ' + r.already.length + ' already' : '') + (r.refused.length ? '; ' + r.refused.length + ' under another key left as they are' : '') + '.'
+        : 'Nothing was switched: ' + (r.error || 'the beach did not take it') + '.');
+    }, function (e) { b.disabled = false; $('latchsays').textContent = 'not switched'; note('Nothing was switched: ' + ((e && e.message) || e) + '.'); });
+  };
   $('aseen').onclick = function () { alerts = []; paintAlerts(); };
   /* a look every so often while the tab is in view, as well as each time the prompt opens */
   setInterval(function () { if (me && document.visibilityState !== 'hidden') listen(false); }, EVERY * 1000);
