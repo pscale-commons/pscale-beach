@@ -408,6 +408,12 @@
     return S.self.seal(text, me.secret, me.handle).then(function (e) { return { envelope: e, how: 'self' }; });
   }
   function sealWord(gray) { return gray && typeof gray === 'object' && gray.grain ? 'to ' + gray.grain + ', sealed between the two of you' : typeof gray === 'string' ? 'sealed in ' + S.colour.block(gray) : 'sealed to you alone'; }
+  /* why a seal failed, in the person's terms: a key that could not be derived in this browser (its WebAssembly refused,
+   * or the seal's libraries not loaded) said as that, anything else (no such colour, a partner with no keys) as itself */
+  function sealFailure(e) {
+    var m = String((e && e.message) || e || 'the seal failed').replace(/\.$/, '');
+    return /WebAssembly|wasm|could not load/i.test(m) ? 'this browser could not derive your key here (' + m + ')' : m;
+  }
   function sealFor(id, op) {
     var text = String(op.text || '').trim().slice(0, 2000);
     if (!text) return reply(id, { ok: false, error: 'nothing to seal' });
@@ -551,15 +557,19 @@
         (op.gray ? ', ' + sealWord(op.gray) : '');
       decide(HOST + ' asks to add your reading to ' + field + ', in your own mirror, ' + where + ':', text, 'commit', function (yes, why) {
         if (!yes) return reply(id, { ok: false, error: why || 'declined' });
-        (m ? Promise.resolve({ ok: true }) : found(block, { _: floored(mirrorIntro(field), f.floor) }, base)).then(function (w) {
-          // confirm_required: the mirror was founded a moment ago, from another tab, and stands
-          if (!(w.ok || w.code === 'confirm_required')) return w;
-          if (!op.gray) return post({ block: block, spindle: at, content: text, secret: me.secret }, base);
-          // the writer's door seals before the line leaves (coloured stigmergy §4.1)
-          return envelopeFor(op.gray, text).then(function (s) { sealed = s; return post({ block: block, spindle: at, content: s.envelope, secret: me.secret }, base); }, function (e) { return { ok: false, status: 0, error: e.message }; });
-        }).then(function (r) {
-          reply(id, { ok: r.ok, status: r.status, error: r.error, code: r.code, handle: me.handle, block: block, at: at, founded: !m, sealed: r.ok && sealed ? sealed.how : undefined, turn: r.ok && sealed ? sealed.turn : undefined });
-          note(r.ok ? 'Your reading stands in ' + block + ' at ' + at + '.' : 'The beach refused that reading: ' + (r.error || r.status) + (r.status === 403 ? ' — unlock again if your words were wrong.' : ''));
+        // the writer's door seals before the line leaves (coloured stigmergy §4.1), and before the mirror is founded: a seal
+        // that fails founds nothing and writes nothing, and is said as what it is, never as the beach's refusal
+        (op.gray ? envelopeFor(op.gray, text).then(function (s) { sealed = s; return s.envelope; }) : Promise.resolve(text)).then(function (content) {
+          return (m ? Promise.resolve({ ok: true }) : found(block, { _: floored(mirrorIntro(field), f.floor) }, base)).then(function (w) {
+            // confirm_required: the mirror was founded a moment ago, from another tab, and stands
+            if (!(w.ok || w.code === 'confirm_required')) return w;
+            return post({ block: block, spindle: at, content: content, secret: me.secret }, base);
+          });
+        }, function (e) { return { ok: false, status: 0, code: 'unsealed', unsealed: true, error: sealFailure(e) }; }).then(function (r) {
+          reply(id, { ok: r.ok, status: r.status, error: r.error, code: r.code, handle: me.handle, block: block, at: at, founded: !m && !r.unsealed, sealed: r.ok && sealed ? sealed.how : undefined, turn: r.ok && sealed ? sealed.turn : undefined });
+          note(r.ok ? 'Your reading stands in ' + block + ' at ' + at + '.'
+            : r.unsealed ? 'Your reading was not sealed, so nothing was written: ' + r.error + '.'
+              : 'The beach refused that reading: ' + (r.error || r.status) + (r.status === 403 ? ' — unlock again if your words were wrong.' : ''));
         });
       }, true);
     }, unread(id));

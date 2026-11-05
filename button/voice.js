@@ -270,8 +270,9 @@
     return { by: cut < 0 ? who : who.slice(0, cut), for: cut < 0 ? '' : who.slice(cut + 1), expires: new Date(Number(p[2])).toISOString() };
   }
   /* a member's invitation to this beach, minted under their pass (earned first where none is held, as prove earns it), for
-   * the name op.for where they say who it is for; seven days; the beach keeps no record. Resolves { ok, name, invite, by,
-   * for, expires } or prove's own refusals, or { ok: false, open: true } where the beach has no gate */
+   * the name op.for where they say who it is for; seven days; it founds one passport, the beach recording that one use for
+   * as long as the invitation lasts, so a member bringing in several newcomers mints one for each. Resolves { ok, name,
+   * invite, by, for, expires } or prove's own refusals, or { ok: false, open: true } where the beach has no gate */
   function invite(op) {
     op = op || {};
     var to = clean(op.for);
@@ -292,9 +293,11 @@
   }
   /* a newcomer's passport founded with an invitation as the bearer (README, "The members' gate"): one write, its opening
    * line op.passport (else a plain one), locked to op.key or a key made here, kept as every write keeps one; then the
-   * passport proved for the pass. The beach founds with an invitation a passport that does not yet stand and nothing else,
-   * and with one minted for a name that name's alone, so its refusal is the door's own (members_only); the guard's, where
-   * the line carries what the beach keeps out of plain words, names the kind found. What can be told here is told here. */
+   * passport proved for the pass. The beach founds with an invitation one passport that does not yet stand and nothing
+   * else, and with one minted for a name that name's alone; where it will not, it says why in words of its own, the code
+   * beside them: invite_for_another, invite_spent (taken already: ask for another), name_taken (choose another name); the
+   * guard's, where the line carries what the beach keeps out of plain words, names the kind found; the key guard's
+   * (key_in_payload), where the line carries the key itself. What can be told here is told here. */
   function join(op) {
     op = op || {};
     var token = String(op.invite || '').trim(), name = clean(op.name);

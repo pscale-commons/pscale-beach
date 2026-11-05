@@ -2,6 +2,7 @@ import { Redis } from '@upstash/redis';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { hasFloor, defaultIdentity, repairFloor, appendWithSupernest, appendAtNode, owedSummaries } from './floor.js';
 import { NOW_HEADER, nowHeader, renderNow } from '../lib/temporal.js';
+import { refuseKeyInPayload } from '../lib/key-guard.js';
 
 // ── Pscale Beach v2 — URL surface, sibling blocks ──
 // Spec: https://github.com/pscale-commons/bsp-mcp-server/blob/main/docs/protocol-pscale-beach-v2.md
@@ -1382,7 +1383,8 @@ const _settingsCache = new Map(); // `${origin}|${block}` -> { lines: Map<string
 // <x>:<handle> is that handle when it keeps an index, else the keepers (BEACH_KEEPERS).
 // Writes need a pass under the latch rules as ever, save the proof itself and a passport
 // founded with an INVITE a member minted (seven days; one minted FOR a name founds that
-// name's passport alone, so a link that travels founds nothing else). What the gate hides a seal cannot
+// name's passport alone, so a link that travels founds nothing else; and any invite founds
+// once — THE INVITATION, SPENT ONCE, below). What the gate hides a seal cannot
 // (existence, place, size, time); what it cannot hide the seal does (the words from the
 // operator) — the two compose.
 const GATE_ON = process.env.BEACH_GATE === 'members';
@@ -1402,7 +1404,7 @@ function gateMint(kind, handle, ttlMs, to) {
   const exp = Date.now() + ttlMs, who = to ? `${handle}>${to}` : handle;
   return { token: `${kind}.${b64u(who)}.${exp}.${gateSign(kind, who, exp)}`, expires: new Date(exp).toISOString() };
 }
-// Whose token this is — {kind: 'm' | 'i', handle, to} — or null: a forged, expired or malformed one is nobody.
+// Whose token this is — {kind: 'm' | 'i', handle, to, exp} — or null: a forged, expired or malformed one is nobody.
 function gateVerify(token) {
   if (!GATE_SECRET || typeof token !== 'string') return null;
   const parts = token.split('.');
@@ -1418,7 +1420,7 @@ function gateVerify(token) {
   const got = Buffer.from(String(sig));
   if (want.length !== got.length || !timingSafeEqual(want, got)) return null;
   const cut = kind === 'i' ? handle.indexOf('>') : -1;
-  return cut < 0 ? { kind, handle, to: '' } : { kind, handle: handle.slice(0, cut), to: handle.slice(cut + 1) };
+  return cut < 0 ? { kind, handle, to: '', exp } : { kind, handle: handle.slice(0, cut), to: handle.slice(cut + 1), exp };
 }
 const _settingsLatchCache = new Map(); // origin -> { latched, at }
 async function settingsLatched(origin) {
@@ -1430,20 +1432,67 @@ async function settingsLatched(origin) {
   return latched;
 }
 // Who stands at the door: whether the gate is up for this deploy, and the pass or invite the request carries.
+// An invite is also named by a hash of its token (inviteId) and carries its expiry, for the record of its use.
 async function gateFor(req) {
-  const nobody = { on: false, member: null, invite: null, invited: '' };
+  const nobody = { on: false, member: null, invite: null, invited: '', inviteId: '', inviteExp: 0 };
   if (!GATE_ON || !GATE_SECRET) return nobody;
   if (!(await settingsLatched(BASE_ORIGIN))) return nobody;
   const auth = String((req.headers && (req.headers.authorization || req.headers.Authorization)) || '');
   const m = auth.match(/^Bearer\s+(\S+)$/i);
   const who = m ? gateVerify(m[1]) : null;
   const invite = who && who.kind === 'i' ? who : null;
-  return { on: true, member: who && who.kind === 'm' ? who.handle : null, invite: invite ? invite.handle : null, invited: invite ? invite.to : '' };
+  return {
+    on: true, member: who && who.kind === 'm' ? who.handle : null,
+    invite: invite ? invite.handle : null, invited: invite ? invite.to : '',
+    inviteId: invite ? createHash('sha256').update(m[1]).digest('hex') : '', inviteExp: invite ? invite.exp : 0,
+  };
 }
 function membersOnly(origin) {
   return {
     error: `${origin} is its members' beach: a member proves their passport once for a pass (POST {block: 'passport:<handle>', secret}, no content) and sends it as Authorization: Bearer on every request; what the keepers mark beyond is served to anyone`,
     code: 'members_only',
+  };
+}
+
+// ── THE INVITATION, SPENT ONCE (the security schematic's 1.34) ──
+// An invitation founds one passport. Named for someone it founds that name's and no other; unnamed, it founds
+// one for whoever carries it first, and nothing after. So the beach records its use: one key in the store per
+// invitation, named by a hash of the token (the store never holds a token that works), written the moment
+// before its passport is founded and living exactly as long as the token does (the token's expiry is the
+// record's), so nothing of it outlasts the week the link could be used. SET NX, so two hands holding one link
+// cannot both found; released if the founding is then refused (a shape, a lock, the key guard), so a mistyped
+// first try spends nothing. Deploy-wide, as the token is: one minted at a world founds once across every world
+// of the deploy. A member who brings in several newcomers mints one invitation for each, named where they can.
+// Behind the wall an invitation holder is a newcomer a member vouched for, so their refusals say why — a link
+// minted for another name, a link already taken, a name that stands — where a stranger hears members_only.
+function inviteUseKey(id) { return `${keyNs(BASE_ORIGIN)}:invite:${id}`; }
+async function inviteUse(id) {
+  try { return id ? await redis.get(inviteUseKey(id)) : null; } catch { return null; }
+}
+async function takeInvite(spend) {
+  const use = { by: spend.by, for: spend.for, founded: spend.founded, origin: spend.origin, at: new Date().toISOString() };
+  return (await redis.set(inviteUseKey(spend.id), use, { nx: true, pxat: spend.exp })) === 'OK';
+}
+async function releaseInvite(spend) {
+  try { await redis.del(inviteUseKey(spend.id)); } catch { /* the record runs out with the token regardless */ }
+}
+function inviteForAnother(origin, by, to) {
+  return {
+    error: `this invitation from ${by} was minted for ${to}, and founds passport:${to} at ${origin} and no other name: found that one with it, or ask ${by} for an invitation in your own name`,
+    code: 'invite_for_another', by, for: to,
+  };
+}
+function inviteSpent(origin, by, use) {
+  const when = use && typeof use === 'object' && typeof use.at === 'string' ? ` on ${use.at.slice(0, 10)}` : '';
+  return {
+    error: `this invitation from ${by} was taken already${when}, and an invitation founds one passport at ${origin}: ask ${by}, or any member, for one of your own`,
+    code: 'invite_spent', by,
+  };
+}
+function nameStands(origin, blockName) {
+  return {
+    error: `${blockName} already stands at ${origin}, and an invitation founds a passport that does not stand yet: choose another name (and if this one is yours, prove it for a pass: POST {block: '${blockName}', secret}, no content)`,
+    code: 'name_taken',
   };
 }
 const _indexCache = new Map(); // `${origin}|index:<holder>` -> { block, at }
@@ -2510,6 +2559,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'block name required (pass ?block=<name> or "block" in body)', code: 'invalid_shape' });
     }
     const body = req.body || {};
+    let spend = null;   // the invitation this write founds a passport with, recorded as taken just before it lands
 
     if (gate.on) {
       // THE PROOF: a passport's latch proved once, no content, mints a pass.
@@ -2537,28 +2587,49 @@ export default async function handler(req, res) {
         return res.status(200).json({ _: `an invitation from ${gate.member} to ${origin}${to ? ` for ${to}` : ''} until ${expires}: the newcomer's first write, founding ${whom} with new_lock, carries it as Authorization: Bearer`, invite: token, by: gate.member, ...(to ? { for: to } : {}), expires });
       }
       if (!gate.member) {
-        const founding = !!gate.invite && isPassport(blockName) && (!gate.invited || blockName === `passport:${gate.invited}`) &&
-          typeof body.new_lock === 'string' && body.new_lock !== '' && body.append !== true && (await loadBlock(origin, blockName)) == null;
+        // A stranger writes nothing but a passport founded locked with an invitation (THE INVITATION, SPENT ONCE).
+        const founding = !!gate.invite && isPassport(blockName) && typeof body.new_lock === 'string' && body.new_lock !== '' && body.append !== true;
         if (!founding) return res.status(401).json(membersOnly(origin));
+        if (gate.invited && blockName !== `passport:${gate.invited}`) return res.status(403).json(inviteForAnother(origin, gate.invite, gate.invited));
+        const used = await inviteUse(gate.inviteId);
+        if (used) return res.status(410).json(inviteSpent(origin, gate.invite, used));
+        if ((await loadBlock(origin, blockName)) != null) return res.status(409).json(nameStands(origin, blockName));
+        spend = { id: gate.inviteId, exp: gate.inviteExp, by: gate.invite, for: gate.invited, founded: blockName, origin };
       }
     }
+    // THE KEY GUARD: a write that carries, as a whole word, a key the same request presents is refused before
+    // anything lands, open beach or gated, whichever door it came through (lib/key-guard.js, the router's twin).
+    // Read is what would land: a write's content, a settle's declaration and shell reference, a grain reach's
+    // description, side and name. A gray write passes, sealed before it arrived.
+    const keyed = refuseKeyInPayload(
+      { content: body.content, declaration: body.declaration, shell_ref: body.shell_ref, description: body.description, my_side_content: body.my_side_content, agent_id: body.agent_id },
+      [body.secret, body.new_lock, body.passphrase, body.my_passphrase],
+    );
+    if (keyed) return res.status(keyed.status).json(keyed.body);
     // THE GUARD: behind the gate, a plain write into a people-keeping place is screened (its rule is above, by the gate's).
     if (gate.on && body.action === undefined) {
       const guarded = await guardRefusal(origin, blockName, body.content);
       if (guarded) return res.status(guarded.status).json(guarded.body);
     }
+    // The invitation is taken the moment before its passport is founded: one hand of two holding one link wins.
+    if (spend && !(await takeInvite(spend))) return res.status(410).json(inviteSpent(origin, spend.by, await inviteUse(spend.id)));
 
     // Substrate-action dispatch (sed:/grain: state machines).
     let result;
-    if (blockName.startsWith('sed:') && body.action === 'register') {
-      result = await handleSedRegister(origin, blockName.slice(4), body);
-    } else if (blockName.startsWith('grain:') && body.action === 'reach') {
-      result = await handleGrainReach(origin, blockName.slice(6), body);
-    } else {
-      // Standard bsp-mcp shape: {spindle, content, secret?, new_lock?, gray?}
-      // Works for any block name including substrate-prefixed ones (per-
-      // position lock derivation handled by lockKeyForWrite/hashByBlockName).
-      result = await handleStandardWrite(origin, blockName, body);
+    try {
+      if (blockName.startsWith('sed:') && body.action === 'register') {
+        result = await handleSedRegister(origin, blockName.slice(4), body);
+      } else if (blockName.startsWith('grain:') && body.action === 'reach') {
+        result = await handleGrainReach(origin, blockName.slice(6), body);
+      } else {
+        // Standard bsp-mcp shape: {spindle, content, secret?, new_lock?, gray?}
+        // Works for any block name including substrate-prefixed ones (per-
+        // position lock derivation handled by lockKeyForWrite/hashByBlockName).
+        result = await handleStandardWrite(origin, blockName, body);
+      }
+    } finally {
+      // a founding refused (or crashed) spends no invitation
+      if (spend && !(result && result.status === 200)) await releaseInvite(spend);
     }
     return res.status(result.status).json(result.body);
   }

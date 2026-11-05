@@ -9,7 +9,8 @@
 // probe or an index; the keeper's pass is proved once at the destination's apex; the keeper's
 // index is founded in the destination world with the beyond names, so a stranger's index there
 // is exactly those, served, while the rest is members-only; a second run replaces what is still
-// open and leaves what a holder has re-latched; and locks never copy (a copied mirror is open for
+// open and leaves what a holder has re-latched; the sign is re-pointed at the copy, and a block
+// still naming the original is said by name; and locks never copy (a copied mirror is open for
 // its holder to re-latch).
 
 import { spawn } from 'node:child_process';
@@ -47,8 +48,11 @@ try {
   // the source: a place in a world, with its law, its pages, a person and the strays a beach collects
   const from = `${SRC}/w/place`, to = `${DST}/w/place`;
   for (const [name, content, lock] of [
-    ['lighthouse', { _: 'LIGHTHOUSE — the place.' }],
-    ['policies', { _: 'POLICIES', 2: { _: 'PRIVACY NOTICE' } }],
+    ['lighthouse', { _: 'LIGHTHOUSE — the place.',
+      1: `JOINING — everyone calls pscale_play(world='${from}', handle=<your name>); the door carries the rest.`,
+      2: `${from}-annex — a neighbouring place of its own`,
+      3: `the place's own index: ${from.replace(/^https?:\/\//, '')}/.well-known/pscale-beach.` }],
+    ['policies', { _: 'POLICIES', 2: { _: 'PRIVACY NOTICE' }, 3: `the original stands at ${from}` }],
     ['spine:constitution', { _: 'THE CONSTITUTION' }],
     ['passport:ada', { _: 'ADA' }, 'A1'],
     ['now:ada', { _: 'MIRROR — ada on the now field.' }, 'A1'],
@@ -64,6 +68,8 @@ try {
   const dry = await copy({ from, to, as: 'keeper', key: 'K1', beyond: ['lighthouse', 'policies'], confirm: false });
   ok(dry.dry && dry.copies.join(',') === 'lighthouse,now:ada,policies,spine:constitution', 'says what copies', dry.copies);
   ok(dry.left.length === 3 && dry.left.every(([n]) => /^(passport|archive|probe):/.test(n)), 'and what stays behind', dry.left);
+  ok(JSON.stringify(dry.repointed) === JSON.stringify([['lighthouse', 2]]), 'says the sign would be re-pointed: two of its lines name the original', dry.repointed);
+  ok(JSON.stringify(dry.named) === JSON.stringify([['policies', 1]]), 'and names the block that still names the original, to copy as it stands', dry.named);
   ok((await api(to, 'GET', 'lighthouse')).status === 401, 'writes nothing');
 
   console.log('the copy');
@@ -73,6 +79,13 @@ try {
   const strangerIdx = await api(to, 'GET', null);
   ok(strangerIdx.status === 200 && strangerIdx.body.blocks.join(',') === 'lighthouse,policies', 'a stranger\'s index in the world is exactly the beyond names', strangerIdx.body);
   ok((await api(to, 'GET', 'policies')).body?.['2']?._ === 'PRIVACY NOTICE', 'and reads one whole');
+  const sign = (await api(to, 'GET', 'lighthouse')).body;
+  ok(sign?.['1'] === `JOINING — everyone calls pscale_play(world='${to}', handle=<your name>); the door carries the rest.`, 'the copied sign sends a player to the copy behind the wall, not the open original', sign?.['1']);
+  ok(sign?.['3'] === `the place's own index: ${to.replace(/^https?:\/\//, '')}/.well-known/pscale-beach.` && sign?.['2'] === `${from}-annex — a neighbouring place of its own`,
+    '…written bare where it stood bare, and a longer name left as the other place it is', sign);
+  ok(JSON.stringify(r.repointed) === JSON.stringify([['lighthouse', 2]]) && JSON.stringify(r.named) === JSON.stringify([['policies', 1]]), 'the copy says what it re-pointed and what still names the original', { repointed: r.repointed, named: r.named });
+  ok((await api(to, 'GET', 'policies')).body?.['3'] === `the original stands at ${from}`, '…which copied as it stands');
+  ok((await api(from, 'GET', 'lighthouse')).body?.['1'].includes(`world='${from}'`), 'and the original\'s own sign is untouched');
   ok((await api(to, 'GET', 'spine:constitution')).status === 401 && (await api(to, 'GET', 'now:ada')).status === 401, 'the rest is members-only');
   ok((await api(to, 'GET', 'passport:ada')).status === 401, 'no passport came (the same refusal whether a thing exists or not)');
   const pass = (await api(DST, 'POST', 'passport:keeper', { secret: 'K1' })).body.pass;

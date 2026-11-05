@@ -8,6 +8,11 @@
 // or null); set auto-serialises an object/string; keys(pattern) matches a '*'
 // anywhere, as Redis KEYS does ('<prefix>*' for an index, '<ns>/w/*:touched'
 // for the played tables); del returns the count removed.
+//
+// Expiry: PXAT (an absolute instant in ms) is honoured — the invitation's record
+// of use lives exactly as long as its token, and the gate's smoke proves it. It
+// is kept beside the value as <file>.ttl; a key past it reads as absent, as in
+// Redis, and a SET without it clears it. EX stays a no-op here, as it always was.
 
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
@@ -17,7 +22,18 @@ export class FileRedis {
 
   _file(key) { return join(this.dir, encodeURIComponent(key) + '.json'); }
 
+  // A key past its PXAT is gone: its files are removed and it reads as absent.
+  async _expired(key) {
+    let at;
+    try { at = Number(await fs.readFile(this._file(key) + '.ttl', 'utf8')); } catch (e) { if (e.code === 'ENOENT') return false; throw e; }
+    if (!(at <= Date.now())) return false;
+    await fs.unlink(this._file(key)).catch(() => {});
+    await fs.unlink(this._file(key) + '.ttl').catch(() => {});
+    return true;
+  }
+
   async get(key) {
+    if (await this._expired(key)) return null;
     try {
       return JSON.parse(await fs.readFile(this._file(key), 'utf8'));
     } catch (e) {
@@ -28,22 +44,27 @@ export class FileRedis {
 
   async set(key, val, opts) {
     // NX (set-if-absent) — mirrors Upstash's atomic `SET … NX` used by the
-    // single-resolution claim and the per-accumulator append mutex. The 'wx'
-    // open flag makes it one atomic syscall (fail-if-exists), so Promise.all'd
-    // handler invocations interleaving at awaits still contend correctly —
-    // access-then-write had a window between the two awaits. EX (TTL) is a
-    // no-op in the file shim.
+    // single-resolution claim, the per-accumulator append mutex and the
+    // invitation's record of use. The 'wx' open flag makes it one atomic
+    // syscall (fail-if-exists), so Promise.all'd handler invocations
+    // interleaving at awaits still contend correctly — access-then-write had a
+    // window between the two awaits. EX (TTL) is a no-op in the file shim;
+    // PXAT is kept (above).
     await fs.mkdir(this.dir, { recursive: true });
+    await this._expired(key);
+    const ttl = this._file(key) + '.ttl';
     if (opts && opts.nx) {
       try {
         await fs.writeFile(this._file(key), JSON.stringify(val), { flag: 'wx' });
-        return 'OK';
       } catch (e) {
         if (e.code === 'EEXIST') return null; // exists → NX fails
         throw e;
       }
+    } else {
+      await fs.writeFile(this._file(key), JSON.stringify(val));
     }
-    await fs.writeFile(this._file(key), JSON.stringify(val));
+    if (opts && typeof opts.pxat === 'number') await fs.writeFile(ttl, String(opts.pxat));
+    else await fs.unlink(ttl).catch(() => {});
     return 'OK';
   }
 
@@ -59,7 +80,9 @@ export class FileRedis {
       .filter((f) => f.endsWith('.json'))
       .map((f) => decodeURIComponent(f.slice(0, -'.json'.length)));
     const glob = new RegExp('^' + pattern.split('*').map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$');
-    return all.filter((k) => glob.test(k));
+    const out = [];
+    for (const k of all.filter((k) => glob.test(k))) if (!(await this._expired(k))) out.push(k);
+    return out;
   }
 
   // STRLEN — byte length of the stored serialised value (the raw file), 0 when
@@ -131,6 +154,7 @@ export class FileRedis {
       } catch (e) {
         if (e.code !== 'ENOENT') throw e;
       }
+      await fs.unlink(this._file(key) + '.ttl').catch(() => {});
     }
     return n;
   }

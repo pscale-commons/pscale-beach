@@ -5,8 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- The window of the beach button, served by the beach itself. It loads nothing it did
      not bring: its own script and style, and it talks to two places only — the beach that serves
-     it ('self'), and Anthropic with the person's own key. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' https://api.anthropic.com; img-src 'self'; base-uri 'none'; form-action 'none'">
+     it ('self'), and Anthropic with the person's own key. 'wasm-unsafe-eval' lets the seal's own
+     Argon2 (WebAssembly, served here at vendor/) derive the pair a line is sealed and opened with;
+     it lets no script be evaluated from a string, and no script from anywhere else. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self' https://api.anthropic.com; img-src 'self'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex">
 <title>beach button</title>
