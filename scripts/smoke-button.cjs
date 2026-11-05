@@ -6,13 +6,16 @@
 // write, and open the unlock window itself to catch its answer. A mock beach and a mock Anthropic
 // record where every secret actually travelled. For contrast it also does what the old Chrome
 // extension did — draw a widget inside the page, in a closed shadow root — and shows that one
-// leaks. Then it holds the button to its shape: the circle's three taps (+ # ×), Escape, a tap
+// leaks. It seals a reading in the frame under the frame's own content-security policy (the seal's
+// Argon2 is WebAssembly, which the policy must let run), opens it again, and founds nothing where a
+// seal fails, saying so as what it is. Then it holds the button to its shape: the circle's three taps (+ # ×), Escape, a tap
 // elsewhere leaving settings, the window hung above the circle and never over it, growing with
 // the reply and never past its most, widened by its left edge, flipped below the circle at the top
 // of the screen, risen above a phone's keyboard, and moved by its grip.
 //
 // Runs offline in headless Chromium (Playwright). CommonJS (.cjs), as this package is ESM:
 //   NODE_PATH=$(npm root -g) npm run smoke:button
+//   (on macOS, whose loopback carries only 127.0.0.1: BUTTON_OTHER_HOST='[::1]' NODE_PATH=… npm run smoke:button)
 // (Playwright is not a dependency of the beach; once: npm i -g playwright && npx playwright install chromium)
 const http = require('http');
 const fs = require('fs');
@@ -31,9 +34,13 @@ const ANSWER = 'Your passport says you are a tester of buttons.';
 const CARD = 'Ask weft to pass the dictation fix to whoever keeps this page';
 const LINE = 'Thank you, weft: the button works from my own pages.';
 const READING = 'The Walkman, on the bus to school.';
+const SEALED = 'A line for me alone: the Walkman was my brother’s.';
 const ASKED = 'Who in place-in-the-wave came early, and who is most like me?';
 // the page's own address carries a query and a fragment, which never leave the frame
 const HOST_URL = (host) => `http://${host}:${SITE}/__test/host.html?token=page-secret#frag`;
+// a second site, for "one site's button is not another's": 127.0.0.2 where the loopback carries it (Linux); macOS's
+// carries only 127.0.0.1, so there BUTTON_OTHER_HOST='[::1]' names the same machine as another site
+const OTHER = process.env.BUTTON_OTHER_HOST || '127.0.0.2';
 const PAGE_SAID = `http://localhost:${SITE}/__test/host.html`;
 const GAP = 10, EDGE = 8, TALL = 560, LEAST = 280;
 
@@ -80,6 +87,8 @@ const TYPES = { '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/htm
 function site(req, res) {
   const url = new URL(req.url, 'http://x');
   if (url.pathname === '/__test/host.html') { res.writeHead(200, { 'content-type': 'text/html' }); return res.end(HOST_PAGE); }
+  // a page of no policy carrying the beach's seal, as the voice and the router stand to a sealed line: it opens what the frame sealed
+  if (url.pathname === '/__test/open.html') { res.writeHead(200, { 'content-type': 'text/html' }); return res.end(`<!doctype html><html><head><meta charset="utf-8"><title>open</title></head><body><script src="${BUTTON}seal.js"></script></body></html>`); }
   const file = path.join(ROOT, url.pathname);
   if (!url.pathname.startsWith('/button/') || !file.startsWith(path.join(ROOT, 'button')) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); return res.end(); }
   let body = fs.readFileSync(file, 'utf8');
@@ -659,6 +668,41 @@ async function run(partitioned) {
   check('…and a keep into a collective', !collective.ok && /named for the person/.test(collective.error), collective);
   check('…none of which writes anything', posts() === p0);
 
+  console.log('\na reading sealed in the frame, under the frame\'s own policy:');
+  // The pair a line is sealed with is derived from the person's word by Argon2id, which runs as WebAssembly: the frame's
+  // own content-security policy must let it, and a seal that fails must found nothing and say so as what it is.
+  const clockPosts = () => mirrorPosts('clock:tester');
+  pending = page.evaluate(() => window.beachButton.request({ kind: 'say', field: 'clock', at: '2026421365.1', text: 'a line for a colour that stands nowhere', gray: 'colour:nowhere' }));
+  await armed(commit);
+  await commit.click();
+  got = await within(pending, 15000, 'a say sealed in a colour that stands nowhere');
+  const toldThen = await frame.locator('#log p').last().textContent();
+  check('a seal that fails founds nothing: no mirror, no line', !got.ok && got.founded === false && clockPosts().length === 0, { got, posts: clockPosts().length });
+  check('…and the person is told the line was not sealed and nothing was written, never that the beach refused it',
+    /not sealed/.test(toldThen) && /nothing was written/.test(toldThen) && !/refused/.test(toldThen) && /no colour:nowhere stands/.test(got.error || ''), { toldThen, got });
+  pending = page.evaluate((t) => window.beachButton.request({ kind: 'say', field: 'clock', at: '2026421365.2', text: t, gray: true }), SEALED);
+  await armed(commit);
+  staged = await lastCard();
+  check('a reading the page asks sealed is staged saying so, and that it founds the mirror', staged.includes('sealed to you alone') && staged.includes('founds your mirror'), staged);
+  await commit.click();
+  got = await within(pending, 30000, 'a say sealed in the frame');
+  const toldNow = await frame.locator('#log p').last().textContent();
+  const sealedLine = clockPosts().find((x) => x.body.spindle === '2026421365.2');
+  const envelope = sealedLine && sealedLine.body.content;
+  check('the frame derives the pair under its own policy and seals the line before it leaves', got.ok && got.sealed === 'self' && !!envelope && !!envelope['9'] &&
+    envelope['9']._ === 'gray' && envelope['9']['1'] === 'self' && typeof envelope['1'] === 'string' && typeof envelope['2'] === 'string', { got, envelope, toldNow });
+  check('…the mirror founded once the seal stood, locked to the person\'s words, then the line written under them',
+    got.founded === true && clockPosts().length === 2 && clockPosts()[0].body.new_lock === SECRET && sealedLine.body.secret === SECRET, clockPosts().map((x) => Object.keys(x.body)));
+  check('…and no word of the reading reached the beach', !beachLog.some((x) => JSON.stringify(x.body || '').includes('my brother')));
+  const opener = await context.newPage();
+  await opener.goto(`http://127.0.0.1:${SITE}/__test/open.html`);
+  await opener.waitForFunction(() => !!window.beachSeal);
+  const opened = await opener.evaluate(([e, w]) => window.beachSeal.self.open(e, w, 'tester'), [envelope, SECRET]);
+  check('…the envelope opens with the person\'s word and name, as the voice opens one', opened === SEALED, opened);
+  await opener.close();
+  const openedHere = await page.evaluate((e) => window.beachButton.request({ kind: 'open', node: e }), envelope);
+  check('…and the frame opens it again, for a page the person lets know their name', openedHere && openedHere.ok && openedHere.text === SEALED, openedHere);
+
   const WAVE = { _: 'MIRROR — a place in the wave (spine:place-in-the-wave): the year each technology reached them.', 1: '1979 — at my gran’s', 3: '1996 — dial-up', 5: '2009 — MySpace' };
   pending = page.evaluate((w) => window.beachButton.request({ kind: 'keep', field: 'place-in-the-wave', content: w }), WAVE);
   await armed(commit);
@@ -774,7 +818,7 @@ async function run(partitioned) {
   await settle();
   await frame.locator('#q').pressSequentially('a draft left on this site');
   const pageB = await context.newPage();
-  await pageB.goto(`http://127.0.0.2:${SITE}/__test/host.html`);
+  await pageB.goto(`http://${OTHER}:${SITE}/__test/host.html`);
   const frameB = pageB.frameLocator('iframe[title="beach button"]');
   await whenReady(pageB);
   await toView(pageB, 'prompt');
@@ -782,7 +826,7 @@ async function run(partitioned) {
   const [popupB] = await Promise.all([context.waitForEvent('page'), frameB.locator('#unlock').click()]);
   await popupB.waitForLoadState();
   check('the beach\'s window remembers the person (its own storage, one tap)', await popupB.locator('#known').isVisible() && (await popupB.locator('#kname').textContent()) === 'tester');
-  check('…and names the new site that asks', (await popupB.locator('#asker').textContent()).includes(`127.0.0.2:${SITE}`));
+  check('…and names the new site that asks', (await popupB.locator('#asker').textContent()).includes(`${OTHER}:${SITE}`));
   await clickThatCloses(popupB, '#useknown');
   await frameB.locator('#who', { hasText: 'tester' }).waitFor();
   check('the draft left on the first site is not on this one', (await frameB.locator('#q').inputValue()) === '');
