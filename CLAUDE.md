@@ -59,6 +59,7 @@ Above the wire-frozen kernel, everything in this repo is forkable per operator:
 pscale-beach/
 ├── api/pscale-beach.js          — the handler (wire-frozen)
 ├── api/turn.js                  — the TURN pass for live games (operator's Cloudflare key; no part of the wire)
+├── api/night-readers.js         — the owner's daily look at who read the beach all night (the host's own counts, one line to the owner's room; no part of the wire)
 ├── lib/                         — ports from the router, re-ported never forked: temporal.js (the sundial), key-guard.js (a write carrying its own key refused)
 ├── seeds/
 │   ├── library/                 — library blocks (10 files; operator-curated, forkable)
