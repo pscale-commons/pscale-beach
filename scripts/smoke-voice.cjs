@@ -234,7 +234,7 @@ const writes = (block) => log.filter((x) => x.method !== 'GET' && (!block || x.b
   const bornAs = r.name, bornBlock = 'reflexive-reading:' + bornAs;
   check('one tap with no name: a proposed name taken since is passed over for another, without asking', r.ok && r.born && r.made && bornAs !== proposed && /^starling-\d{4}$/.test(bornAs) && asked.length === 0, r);
   const madeKey = LOCKS[bornBlock], keptMade = await fresh.p.evaluate((b) => localStorage.getItem('beach-key:' + b), bornBlock);
-  check('…the mirror is founded under a key made here, two digits and five words (the derived latch, §7), kept where the voice looks first — wrapped, never plain', !!BLOCKS[bornBlock] && /^[1-9][0-9](-[a-z]{4,8}){5}$/.test(madeKey || '') && /^w1\./.test(keptMade || '') && !keptMade.includes(madeKey), { madeKey, keptMade });
+  check('…the mirror is founded under a key made here, two digits and three words (the derived latch, §7), kept where the voice looks first — wrapped, never plain', !!BLOCKS[bornBlock] && /^[1-9][0-9](-[a-z]{4,8}){3}$/.test(madeKey || '') && /^w1\./.test(keptMade || '') && !keptMade.includes(madeKey), { madeKey, keptMade });
   check('…with the intro the page gave, the name in a\'s place', BLOCKS[bornBlock]._ === 'MIRROR — ' + bornAs + '’s premiere of reflexive-reading, first seen today.' && (await fresh.p.evaluate(() => beachVoice.name())) === bornAs, BLOCKS[bornBlock]);
   r = await fresh.p.evaluate(() => beachVoice.say({ field: 'reflexive-reading', at: '1.1', text: 'My first answer.' }));
   check('…and the newcomer\'s answers follow, asking nothing', r.ok && asked.length === 0 && BLOCKS[bornBlock]['1']['1'] === 'My first answer.', r);

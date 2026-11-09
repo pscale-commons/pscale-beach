@@ -168,7 +168,7 @@ function site(req, res) {
     keys = await newcomer(`Object.keys(localStorage)`);
     check('the key is kept where every write keeps one, and the pass beside it', keys.includes('beach-key:passport:newbie') && keys.includes('beach-pass:' + beachAt(GATED)), keys);
     const madeKey = await newcomer(`beachVoice.made({ field: 'passport', name: 'newbie' })`);
-    check('the key made here is said once, two digits and five words (the derived latch, §7)', madeKey && madeKey.name === 'newbie' && /^[1-9][0-9](-[a-z]{4,8}){5}$/.test(madeKey.key), madeKey);
+    check('the key made here is said once, two digits and three words (the derived latch, §7)', madeKey && madeKey.name === 'newbie' && /^[1-9][0-9](-[a-z]{4,8}){3}$/.test(madeKey.key), madeKey);
     check('and never twice', await newcomer(`beachVoice.made({ field: 'passport', name: 'newbie' })`) === null);
     const nPass = await newcomer(`beachVoice.pass()`);
     const pp = await g('GET', `${W}?block=passport:newbie`, null, { Authorization: 'Bearer ' + nPass.pass });
