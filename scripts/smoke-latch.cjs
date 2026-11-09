@@ -2,8 +2,8 @@
 // against the REAL handler: one local beach open and one a members' beach, the voice served to a plain page in headless Chromium,
 // every body the page sends to a beach recorded. Proves: the switch runs when the holder asks (the marker, the passport, the
 // blocks named for them moved; an open room left open), and after it the word is refused and the derived latch taken; a write
-// after it goes with the derived latch; the switch back; a made key of three words is weak, and asked for, five fresh words take
-// every latch; a passport stripped of its marker is refused with nothing sent; a newcomer gets five words, founded under the
+// after it goes with the derived latch; the switch back; a made key of the old three short words is weak, and asked for, three fresh words take
+// every latch; a passport stripped of its marker is refused with nothing sent; a newcomer gets three words, founded under the
 // derived latch only where the page asks. Needs Playwright (NODE_PATH as smoke:voice-gate says).
 const http = require('http');
 const fs = require('fs');
@@ -57,7 +57,7 @@ function site(req, res) {
 }
 
 const W_ADA = 'rowan-pier-swallow-plover-41', OLD_BO = 'amber-anchor-apple-12', K_KEEPER = 'keeper-key-for-the-smoke', PROJECT = 'a-shared-project-lock';
-const FIVE = /^[1-9][0-9](-[a-z]{4,8}){5}$/;
+const THREE = /^[1-9][0-9](-[a-z]{4,8}){3}$/;
 
 (async () => {
   const dirO = fs.mkdtempSync(path.join(os.tmpdir(), 'latch-open-')), dirG = fs.mkdtempSync(path.join(os.tmpdir(), 'latch-gated-'));
@@ -115,13 +115,13 @@ const FIVE = /^[1-9][0-9](-[a-z]{4,8}){5}$/;
     r = await V('switch', { name: 'ada', back: true });
     check('it runs, 9.3 is gone, and the word is taken again', r && r.ok && (await O('GET', 'passport:ada')).body['9']['3'] === undefined && (await O('POST', 'notes:ada', { spindle: '8', content: 'x', secret: W_ADA })).status === 200, r);
 
-    console.log('\na made key of three words, and five fresh ones asked for');
+    console.log('\na made key of the old three short words, and three fresh ones asked for');
     answers = [OLD_BO];
     await V('wear', { name: 'bo' });
-    check('a key of the old three words is read as weak', await pg.evaluate(() => window.beachVoice.weak('bo')) === true);
+    check('a key of the old three short words is read as weak', await pg.evaluate(() => window.beachVoice.weak('bo')) === true);
     r = await V('switch', { name: 'bo', fresh: true });
     const fresh = await pg.evaluate(() => window.beachVoice.made({ field: 'passport', name: 'bo' }));
-    check('five new words, said once, and every latch on theirs', r && r.ok && r.made && fresh && FIVE.test(fresh.key), { r, made: !!fresh && FIVE.test(fresh.key) });
+    check('three new words, said once, and every latch on theirs', r && r.ok && r.made && fresh && THREE.test(fresh.key), { r, made: !!fresh && THREE.test(fresh.key) });
     if (fresh) {
       const L_new = await S.latch(fresh.key, 'bo');
       check('the old key is refused at passport:bo and notes:bo, the new derived latch taken', (await O('POST', 'notes:bo', { spindle: '1', content: 'x', secret: OLD_BO })).status === 403 && (await O('POST', 'notes:bo', { spindle: '1', content: 'y', secret: L_new })).status === 200);
@@ -144,7 +144,7 @@ const FIVE = /^[1-9][0-9](-[a-z]{4,8}){5}$/;
     r = await V('join', { invite: inv1.invite, name: 'cy', derived: true });
     const madeCy = await pg.evaluate(() => window.beachVoice.made({ field: 'passport', name: 'cy' }));
     const foundCy = sent.slice(n).find((b) => b.block === 'passport:cy' && b.new_lock);
-    check('a newcomer the page asks to be born switched gets five words, founded under the derived latch, the marker in the same write', r && r.ok && madeCy && FIVE.test(madeCy.key) && foundCy && foundCy.new_lock === await S.latch(madeCy.key, 'cy') && /^latch: derived/.test(foundCy.content['9']['3']), { r, made: madeCy && FIVE.test(madeCy.key) });
+    check('a newcomer the page asks to be born switched gets three words, founded under the derived latch, the marker in the same write', r && r.ok && madeCy && THREE.test(madeCy.key) && foundCy && foundCy.new_lock === await S.latch(madeCy.key, 'cy') && /^latch: derived/.test(foundCy.content['9']['3']), { r, made: madeCy && THREE.test(madeCy.key) });
     check("…and the newcomer's word was never sent", !sent.slice(n).some((b) => madeCy && (b.secret === madeCy.key || b.new_lock === madeCy.key)));
     answers = [K_KEEPER];
     const inv2 = await V('invite', { name: 'keeper', for: 'dee' });
@@ -152,7 +152,7 @@ const FIVE = /^[1-9][0-9](-[a-z]{4,8}){5}$/;
     r = await V('join', { invite: inv2.invite, name: 'dee' });
     const madeDee = await pg.evaluate(() => window.beachVoice.made({ field: 'passport', name: 'dee' }));
     const foundDee = sent.slice(n).find((b) => b.block === 'passport:dee' && b.new_lock);
-    check('a newcomer not asked to switch gets five words too, founded under the word as before', r && r.ok && madeDee && FIVE.test(madeDee.key) && foundDee && foundDee.new_lock === madeDee.key, { r });
+    check('a newcomer not asked to switch gets three words too, founded under the word as before', r && r.ok && madeDee && THREE.test(madeDee.key) && foundDee && foundDee.new_lock === madeDee.key, { r });
   } catch (e) {
     pass = false; console.error('  ✗ ' + ((e && e.stack) || e));
   } finally {

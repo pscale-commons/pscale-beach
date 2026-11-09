@@ -1,5 +1,5 @@
 /* words.js — the 4,096 plain words a key made by the voice is drawn from (bsp-mcp proposals/2026-11-05-the-derived-latch.md
- * §7; ways:key 6): two digits, then five of these, make 66.5 bits, a sealing word's strength. 4,096 is 2^12, so a word drawn
+ * §7; ways:key 6): two digits, then three of these (David, 9 November 2026), make about 42.5 bits. 4,096 is 2^12, so a word drawn
  * as a 32-bit random number modulo 4,096 favours none.
  *
  * A first list, from Webster's Second International (1934, public domain; /usr/share/dict/web2 and web2a): words of four to

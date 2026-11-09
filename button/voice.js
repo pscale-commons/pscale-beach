@@ -586,25 +586,29 @@
     'pepper pier pine plover plum pond poppy prism quartz rain raven reed reef ridge river robin rose rowan saffron sage sail ' +
     'salt sand shell shore silver sky slate snow sorrel south spark spray spruce star stone storm stream summit swallow swan ' +
     'tern thistle thorn tide timber topaz tower trail tulip valley velvet violet wave west wharf willow wind winter wren yarrow').split(' ');
-  /* A KEY MADE HERE IS FIVE WORDS (the derived latch, §7; ways:key 6): two digits first, so a phone's capital lands on a
-   * digit, then five of the 4,096 plain words of words.js, beside this script and loaded only when a key is made — 66.5
-   * bits, a sealing word's strength. The three words above made keys until now (29 bits, a latch's strength); a key of
-   * that shape is still read as the made key it is (weak), and its holder may ask for five words (switch, fresh). */
-  var WORDS5 = null;
+  /* A KEY MADE HERE IS THREE WORDS (the derived latch, §7; ways:key 6), three by David's decision of 9 November 2026, since
+   * no person remembers five. Two digits first, so a phone's capital lands on a digit, then three of the 4,096 plain words
+   * of words.js, beside this script and loaded only when a key is made: about 42.5 bits, 36 from the words and 6.5 from the
+   * digits. Its strength is the long list, the device that remembers the words for its holder, and the derived latch that
+   * keeps the words off every beach once the holder switches. What three words cannot do is said plainly: whoever holds a
+   * copy of a beach's store and weeks of computing can guess one particular person's key. The short words above made keys
+   * until #109 (29 bits, the words first and the digits last); a key of that shape is still read as the made key it is
+   * (weak), and its holder may ask for fresh words (switch, fresh). */
+  var LONG = null;
   function words() {
     if (window.beachWords) return Promise.resolve(window.beachWords);
-    if (WORDS5) return WORDS5;
-    return WORDS5 = new Promise(function (res, rej) {
+    if (LONG) return LONG;
+    return LONG = new Promise(function (res, rej) {
       var s = document.createElement('script'); s.src = BASE.href + 'words.js'; s.async = true;
-      s.onload = function () { if (window.beachWords && window.beachWords.length === 4096) res(window.beachWords); else { WORDS5 = null; rej(new Error('the words did not load')); } };
-      s.onerror = function () { WORDS5 = null; rej(new Error('could not load ' + s.src)); };
+      s.onload = function () { if (window.beachWords && window.beachWords.length === 4096) res(window.beachWords); else { LONG = null; rej(new Error('the words did not load')); } };
+      s.onerror = function () { LONG = null; rej(new Error('could not load ' + s.src)); };
       (document.head || document.documentElement).appendChild(s);
     });
   }
   function makeKey() {
     return words().then(function (W) {
-      var a = new Uint32Array(6); crypto.getRandomValues(a);   // 4,096 divides 2^32: no word is likelier than another
-      return [String(10 + a[0] % 90)].concat([1, 2, 3, 4, 5].map(function (i) { return W[a[i] % 4096]; })).join('-');
+      var a = new Uint32Array(4); crypto.getRandomValues(a);   // 4,096 divides 2^32: no word is likelier than another
+      return [String(10 + a[0] % 90)].concat([1, 2, 3].map(function (i) { return W[a[i] % 4096]; })).join('-');
     });
   }
   function weak(key) { var m = /^([a-z]+)-([a-z]+)-([a-z]+)-([1-9][0-9])$/.exec(String(key || '')); return !!m && [m[1], m[2], m[3]].every(function (w) { return WORDS.indexOf(w) >= 0; }); }
@@ -816,7 +820,7 @@
    * latch derived from it, so no beach is sent the word again — the marker at passport:<name> 9.3 first, then the
    * passport, then every block named for the name, each probed with no key so an open block is never latched (latch.js
    * switchTo). The word is the one held or kept for the name, else asked for. op.back runs it the other way; op.fresh
-   * makes five new words first and moves every latch onto theirs, the new halves published in the same act, the new key
+   * makes three new words first and moves every latch onto theirs, the new halves published in the same act, the new key
    * kept and said once by made({ field: 'passport', name }). Resolves { ok, name, swept, moved, open, refused, made? } */
   function switchLatch(op) {
     op = op || {};
