@@ -14,8 +14,11 @@ pscale-beach/
 │   ├── pscale-beach.js          — the /.well-known/pscale-beach endpoint
 │   ├── floor.js                 — pure floor-invariant helpers, shared by the
 │   │                               handler and the one-shot scripts
-│   └── turn.js                  — /api/turn, a TURN pass for live games from the
-│                                   owner's own Cloudflare key (no part of the wire)
+│   ├── turn.js                  — /api/turn, a TURN pass for live games from the
+│   │                               owner's own Cloudflare key (no part of the wire)
+│   └── night-readers.js         — /api/night-readers, the owner's daily look at who
+│                                   read the beach all night, from the host's own
+│                                   counts (no part of the wire)
 ├── lib/                         — ports from the router, re-ported never forked:
 │                                   temporal.js (the sundial's now), key-guard.js
 │                                   (a write carrying its own key refused)
@@ -116,6 +119,10 @@ curl https://your-vercel-url.vercel.app/.well-known/pscale-beach
 | `BEACH_KEEPERS` | with the gate | you choose | Comma-separated handles whose `index:<handle>` says what a stranger may see (card field 5 = `beyond`). |
 | `TURN_KEY_ID`, `TURN_KEY_API_TOKEN` | optional | Cloudflare dashboard → Realtime → TURN Server | A TURN key on your own Cloudflare account, its Turn Token ID and API token. With both set, `/api/turn` hands each player of a live game a pass that runs out, so a pair whose networks block a direct link still plays through Cloudflare's relay; name it in your `settings` at 1.5 as `turn_url=https://<your beach>/api/turn`. Unset, live games keep to STUN alone. The token is a secret: it stays in these settings and never reaches a page. Cloudflare's first 1,000 GB a month are free. `npm run smoke:turn` proves the route offline. |
 | `TURN_TTL` | optional | you choose | How long a TURN pass lasts, in seconds. 14400 (four hours) unless set; held between 300 and 86400. |
+| `NIGHT_READERS_TOKEN` | optional | Vercel → Account Settings → Tokens | A Vercel access token made under the team that owns this project. With it set, Vercel's cron calls `/api/night-readers` once a day (07:00 UTC, in `vercel.json`): it reads the host's own hourly counts for the night just gone (00:00 to 06:00 where you are) and, when a browser or a robot read in every hour of it, leaves one line in your room naming each by browser and site, never by address. A beach cannot see whether anyone is looking at a page; a caller reading through every hour of the night is the honest sign of a tab left open, a crawler or a runaway script. Nothing is refused and no read pays for it. Anyone can `GET /api/night-readers` to see the finding (`?night=YYYY-MM-DD` for an earlier night); only the cron writes. Vercel cannot limit a token to reading, so this one can do anything on the team: it stays in these settings and never reaches a page. Unset, nothing is looked at. `npm run smoke:night-readers` proves the route offline. |
+| `NIGHT_READERS_POOL` | with the token | your handle | Whose room hears: the line is appended to `pool:<this>`, as any hand appends. Unset, the first of `BEACH_KEEPERS`; with neither, the finding is only shown. |
+| `NIGHT_READERS_ZONE`, `NIGHT_READERS_FLOOR` | optional | you choose | Where your night falls (an IANA zone such as `Europe/London`; UTC unless set), and the reads an hour below which nothing is said (30 unless set: one every two minutes). |
+| `CRON_SECRET` | with the token | any long random string | Vercel sends it with each cron call, and only a call carrying it writes. Unset, the cron looks and never tells. |
 
 ### The key guard
 
