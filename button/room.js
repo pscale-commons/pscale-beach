@@ -30,7 +30,7 @@
  * 'turn_url=<a route answering { iceServers }>' for the pairs that cannot connect without TURN. Where the
  * beach names no vapour, the room's own LIQUID carries the introductions: liquid:<room>, one slot per
  * player, overwriting (block-conventions 4.5), each slot a pending intention ('ann is in the room, reaching
- * bob') with the player's mailbox at 7, polled every second — a hop takes a second or two, so a pair that
+ * bob') with the player's mailbox at 7, polled every second while its tab is in view — a hop takes a second or two, so a pair that
  * cannot connect directly plays slowly there, and the page should say so. Nothing of the wire is play's
  * record: a slot is blanked on leaving, and the beach keeps nothing of what crossed it.
  *
@@ -196,6 +196,7 @@
     }
     function loop() {
       if (stopped) return;
+      if (document.hidden) { timer = setTimeout(loop, POLL_SLOW); return; }   // a hidden tab reads nothing; it reads again once seen
       poll().then(function () { if (!stopped) timer = setTimeout(loop, w.fast ? POLL_FAST : POLL_SLOW); });
     }
     w.fast = true; w.pingEvery = 6000;
