@@ -51,7 +51,7 @@ const check = (label, ok, detail) => {
 };
 
 // ── the hostile host page ─────────────────────────────────────────────────────────────────
-const HOST_PAGE = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>a page that wants your words</title></head><body>
+const HOST_PAGE = `<!doctype html><html data-family="door-test"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>a page that wants your words</title></head><body>
 <h1>Some page on the open web</h1>
 <script>
   window.__spy = { keys: [], messages: [], fetches: [], hello: [] };
@@ -109,6 +109,12 @@ const BLOCKS = {
 BLOCKS['spine:reflexive-reading'] = { _: 'Reading this reflexively.', 1: { _: 'Most charts ask you to take in information…', 1: 'David Pinto, who made these pages…' } };
 BLOCKS['spine:place-in-the-wave'] = { _: 'Your place in the wave.', 1: 'TV', 3: 'Internet', 5: 'Social media' };
 BLOCKS['spine:clock'] = { _: 'A family on the clock.' };
+// the family the host page says it is the face of, and its kind's way (spine:o-page-unit 1.111114):
+// its law names no way, its phase's form names none, its mode's form names ways:reader
+BLOCKS['function:door-test'] = { _: 'Operator for door-test: a proposal read as a document.', 1: 'mode: document', 7: 'phase: proposal — the decisions are open.' };
+BLOCKS['function:proposal'] = { _: 'THE PROPOSAL FORM — of the smoke, naming no way.' };
+BLOCKS['function:document'] = { _: 'THE DOCUMENT FORM — of the smoke. How a mind helps its person read one and answer it is ways:reader.' };
+BLOCKS['ways:reader'] = { _: 'THE WAY OF A READER — of the smoke.', 1: 'FIND THE FAMILY.', 2: 'READ IT PLAINLY.', 9: 'PROVENANCE — never taught.' };
 const FLOORS = { 'spine:clock': 10 };
 const HANDS = {};   // ahead:now:tester, once founded
 const EARS = {};    // ear:tester, once founded
@@ -516,6 +522,10 @@ async function run(partitioned) {
   check('the question went to Anthropic with the page\'s address, its query and fragment dropped',
     llmLog[0].body.system.includes(PAGE_SAID) && !/page-secret|#frag/.test(llmLog[0].body.system), llmLog[0].body.system.slice(0, 300));
   check('…and the beach was told nothing of it', !beachLog.some((r) => JSON.stringify(r).includes('__test/host.html')));
+  check('…with the family the page says it is the face of, and its kind\'s way, as the router hands it over',
+    llmLog[0].body.system.includes('the face of the family door-test') && llmLog[0].body.system.includes('ways:reader') &&
+    llmLog[0].body.system.includes('1 FIND THE FAMILY.') && !llmLog[0].body.system.includes('never taught'), llmLog[0].body.system.slice(-500));
+  check('…the way found by its phase\'s form, then its mode\'s', ['function:door-test', 'function:proposal', 'function:document', 'ways:reader'].every((b) => beachLog.some((r) => r.method === 'GET' && r.query.block === b)));
   check('…a person holding a passphrase is offered the two proposals', ['read_block', 'propose_card', 'propose_line'].every((t) => llmLog[0].body.tools.some((x) => x.name === t)));
   // a page may say where it stands only within its own origin
   await page.evaluate(() => { document.querySelector('iframe[title="beach button"]').contentWindow.postMessage({ type: 'page', href: 'https://bank.example/account', title: 'Your bank' }, '*'); });

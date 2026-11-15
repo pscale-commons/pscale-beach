@@ -331,7 +331,15 @@
    * so 'this page' means something to the person asking. The frame believes it only within this
    * page's origin, drops its query and fragment, and sends it to the beach only inside a card the
    * person commits. */
-  function where() { if (frame && ready) send({ type: 'page', href: location.href, title: document.title }); }
+  /* and the family it is the face of, where it says one (happyseaurchin.com's theme.js reads it;
+   * any page may say it on its <html> as data-family or data-proposal), so the button hands over
+   * the family's way as the router does (spine:o-page-unit 1.111114) */
+  function familyHere() {
+    try { if (typeof window.siteDoorFamily === 'function') { var f = window.siteDoorFamily(); if (f && f.name) return f.name; } } catch (e) {}
+    var h = document.documentElement;
+    return h.getAttribute('data-family') || h.getAttribute('data-proposal') || '';
+  }
+  function where() { if (frame && ready) send({ type: 'page', href: location.href, title: document.title, family: familyHere() }); }
   addEventListener('hashchange', where);
   addEventListener('popstate', where);
 
