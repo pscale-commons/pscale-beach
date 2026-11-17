@@ -6,7 +6,7 @@
 // seed blocks to the deployed /.well-known/pscale-beach endpoint:
 //
 //   • library/    — reference blocks (reflexive, spore, vision, grit, rpg,
-//                   state, systemic-kernel, federation-protocol,
+//                   state, systems-lens, federation-protocol,
 //                   state-block-reflexive-spark, pscale-geometry). Locked at
 //                   "_" with operator's passphrase so the operator can curate.
 //   • config/     — operational config blocks every beach needs by spec:
@@ -166,7 +166,7 @@ const LIBRARY_CATEGORIES = {
   // 5.2 — evolving beach usage
   'state': '2',
   'grit': '2',
-  'systemic-kernel': '2',
+  'systems-lens': '2',
   // 5.3 — creating beach-crabs on the beach
   'reflexive': '3',
   'state-block-reflexive-spark': '3',

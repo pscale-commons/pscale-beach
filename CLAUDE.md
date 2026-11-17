@@ -29,7 +29,7 @@ If a real bug surfaces in any of these (as the spore.json shape-gate violation d
 
 Above the wire-frozen kernel, everything in this repo is forkable per operator:
 
-- `seeds/library/` — the library (reflexive, spore, vision, grit, rpg, state, systemic-kernel, federation-protocol, state-block-reflexive-spark). Each operator can curate variants.
+- `seeds/library/` — the library (reflexive, spore, vision, grit, rpg, state, systems-lens, federation-protocol, state-block-reflexive-spark). Each operator can curate variants.
 - `seeds/config/` — operational config every beach needs by spec (`tide` for the host's mark-wipe schedule, `settings` for per-beach xstream client knobs). Shape is defined by xstream's kernel readers (see `xstream-bsp/src/kernel/settings-reader.ts` for the settings schema and `beach-kernel.ts`'s `readTideConfig` for the tide schema). Operators tune leaf positions later; empty positions fall through to kernel defaults.
 - `seeds/templates/` — operator-presence and beach-surface scaffolds. Each starter package can iterate the placeholder text.
 - `init/seed-beach.js` — the wizard. Iterations expected as friction surfaces.

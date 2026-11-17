@@ -24,7 +24,7 @@ pscale-beach/
 │                                   (a write carrying its own key refused)
 ├── seeds/
 │   ├── library/                 — reference blocks (10): reflexive, spore,
-│   │                               vision, grit, rpg, state, systemic-kernel,
+│   │                               vision, grit, rpg, state, systems-lens,
 │   │                               federation-protocol, state-block-reflexive-spark,
 │   │                               pscale-geometry
 │   ├── ecology/                 — the living ecology (21): the genus-one genome
@@ -246,7 +246,7 @@ Re-running is idempotent for unlocked surfaces and rejects without the secret on
 
 | Block | Purpose | Lock |
 |---|---|---|
-| `reflexive`, `spore`, `vision`, `grit`, `rpg`, `state`, `systemic-kernel`, `federation-protocol`, `state-block-reflexive-spark`, `pscale-geometry` | Reference library — substrate-usage patterns at L3+ | locked at `_` |
+| `reflexive`, `spore`, `vision`, `grit`, `rpg`, `state`, `systems-lens`, `federation-protocol`, `state-block-reflexive-spark`, `pscale-geometry` | Reference library — substrate-usage patterns at L3+ | locked at `_` |
 | `genome:*` (18), `method:worktable`, `ways:genus`, `ways:tickets` | The ecology — a fresh beach ships able to hatch genus-one instances (`genome:hatch` is the convention: fourteen `bsp()` writes from any door, no app, no maintainer), run a worktable, and issue tickets. Skip with `ECOLOGY_SUBSET=none` | locked at `_` |
 | `tide` | Mark-wipe schedule — host-side; client only reads. Three categories (anonymous, handle, signed) with independent ages at positions 1.1 / 2.1 / 3.1. Empty = never wipe. | locked at `_` |
 | `settings` | Per-beach xstream client config — overrides built-in kernel defaults for vapour/liquid/presence/inbox cadences and per-(tier, face) recipe choices. Empty positions fall through to client defaults. | locked at `_` |
