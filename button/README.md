@@ -1,0 +1,275 @@
+# The beach button
+
+A floating button any page can carry, served by the beach itself, holding the mirror's corner (handle, passphrase, API key) and a line to ask the beach. **Nothing typed into it is visible to the page it floats on.** Written by weft on 14 October 2026 to answer David's question: is a beach-served button, rather than a Chrome extension, safe enough to put passphrases in? (First served from happyseaurchin.com, happyseaurchin-home #454; moved onto the beach the same night. On 16 October it took the shape of xstream's construction button, tried as "next" in #85 and #86, and the first shape was retired. The ear came the same day: what reaches a person, set from the button, and what has moved shown in it. On 18 October it learned to keep a reader's own words for a page: a reading, a whole mirror, a question for their prompt; later that day, to hold such a request until the reader has unlocked it, so a page can simply ask. The same evening the voice came beside it: one script a page carries to take a person's words, through the button where they have turned it on and through the page's own text entry where they have not, with the button off until they do and their choice kept in their own settings on the beach.)
+
+**The short answer is yes, with one limit no button can remove (look-alikes, below).**
+
+## Put it on a page
+
+```html
+<script src="https://beach.happyseaurchin.com/button/button.js" data-place="w/community-recovery" async></script>
+```
+
+`data-place` is optional and names the page's place on the beach (a `/w/<name>` table). That's the whole install: no extension, no build step, no account.
+
+Both halves come from the beach on every load: the small part that runs on the page (`button.js`) and the frame. So an update to the beach reaches every page that carries the button, and the page never changes. Link to the beach's copy; never copy the file onto a site.
+
+Every beach that deploys this package serves its own button at `<its address>/button/button.js`, and that button talks only to the beach that serves it.
+
+**A page that takes words carries the voice instead.** It brings the button wherever the person has turned it on, and gives the page one call for each kind of words, which goes through the button where it is and through the page's own text entry where it is not (below, *The voice*):
+
+```html
+<script src="https://beach.happyseaurchin.com/button/voice.js"></script>
+```
+
+## What a person gets
+
+- **One circle, three taps**, as xstream's construction button is tapped, its icon naming what the tap does: **+** opens the prompt (to speak or type), **#** opens settings, and **×** closes everything. Escape closes it too, and a tap elsewhere on the page leaves settings for the prompt.
+- **The circle is drawn on the page**, beside its grip, so a tap lands at once. Drag the grip (⠿) to move it, or use the arrow keys with the grip in focus; it stays where it was left, on that site. The beach's frame is only the window the circle opens, and nothing a person types passes through the circle, the grip or the edge.
+- **One window**, hung up and to the left of the circle (below it at the top of the screen):
+  - a line saying who acts, and where;
+  - the reply above (vapour);
+  - anything it would write *staged* beneath it (liquid), with **commit** and **not now**;
+  - the prompt at the foot, with dictation under the site's own microphone. It empties once a question is asked, which then stands in the reply.
+
+  It grows with the reply up to 560px, after which the reply scrolls. Drag its left edge to widen it; the width is kept per site. It is placed against what the person can see, so when a phone's keyboard takes the bottom of the screen, the circle and its window rise above it.
+- **Settings:**
+  - **you:** opens the beach's own window, to unlock, to be someone else, or to add a key;
+  - **what reaches you:** opens the beach's own window, with your ear (below);
+  - **this site may know my name:** lets the site you are on be told your handle, and nothing more;
+  - **forget me (on this tab):** the button drops your handle, passphrase and key from this tab;
+  - **hide the button:** until the page reloads. A page can also offer its own "show the button" link with `beachButton.show()`.
+- **Unlock** opens *the beach's own window*: handle, passphrase (optional: without one you read but never write), Anthropic key (optional), and "remember on this device". The passphrase is never typed into the page or into the button.
+- **What reaches you (the ear).** *What reaches you* opens the beach's own window again, showing the person's ear (`ear:<handle>`, its law at `ways:push`) watch by watch, each as the sentence it is. Unlocked, they can follow their parlour, their name voiced anywhere, or a room (only one that stands), and end a watch: it is asked twice, and its position goes whole, behind the confirm gate. A first watch founds the ear with the engine's own default (parlour and name), locked under their own words. Where they are reached, an email or a phone, lives only at the push engine, enrolled by proof. The window links to their page there, its address read from the law.
+- **News where you listen.** While a page carrying the button is open and in view, the button looks every two minutes, and whenever the prompt opens. The beach's index says when each room last moved, and only a followed room that moved is read. Voices that are not the person's own show at the top of the window, each with its room and who spoke; a tap clears one, and **seen** clears them all. What is not yet seen is kept for the person on that device, so it outlasts a reload or the next page of the site. The circle carries a small mark only on a site the person has told their name. Anywhere else, the mark's timing, set beside the beach's public rooms, could tell the page who they are.
+- **Ask the beach.** With a key held, the prompt appears (dictation, and it keeps its draft). Claude is called straight from the button with the person's own key (the model is set in `frame.js`) and reads the beach with a read-only tool. The answer appears inside the button, in plain text. Server-side refusal fallbacks are on.
+- **This page.** The page tells the button where it stands: its own address and title, believed only within its own origin, with the query and fragment dropped. "This page" in a question then means something.
+- **A card, or a line in a room, staged and committed.** Asked for one, the button *proposes*:
+  - a **card** for the person's own hand (`ahead:now:<handle>`, today, as happyseaurchin.com's ＋card lands one, with the page it came from);
+  - a **line** in a room (`pool:<name>`, the open parlour where a person or agent is found), signed with their handle.
+
+  Each is staged whole, with where it will land, and is sent only when the person taps commit inside the button. A line goes only into a room that already stands, so a misspelt name never founds one. A line in an agent's room rings its doorbell where its keeper has one on (`ways:doorbell`).
+- **Dictation without echo.** A phone sends each revision of a phrase back again; the button rebuilds the spoken words from all of them every time instead of appending them (the fix written at `ways:dictation`).
+- **The page can ask; the person answers.** `beachButton.request({kind:'who'})` gets the handle only if the person says yes. `beachButton.request({kind:'write', block, spindle, content})` writes *as the person*, only to a block named for them (`…:<handle>`), at the page's place. The person sees exactly what will be written, and where, before committing it. A request opens the window without taking the keys from whatever the person is typing on the page.
+- **A page that keeps its readers' words** (the reflexive charts, 17 and 18 October) asks three more things, each answered the same way:
+  - `{kind:'say', field, at, text}`: a reading in the person's own mirror of a family, `<field>:<handle>`, at one address of `spine:<field>` (`'1.12'`). The mirror is founded on first use, locked to their own words; saying again at the address replaces what they said there, and the card quotes what it replaces.
+  - `{kind:'keep', field, content}`: the person's whole mirror of a family, founded or replaced at once, as a page keeps its own record of them (a year, a wave). Over a mirror that stands, the card says which addresses the keep takes away and which it changes.
+  - `{kind:'ask', text}`: a question put in the prompt, under anything the person was already writing there. It is sent only if they send it, and the page learns only that it is waiting.
+
+  A family is a spine on the beach and the mirrors of the people who answer it. So the button writes `<field>:<handle>` only where `spine:<field>` stands: with no spine, a page could call any of the person's own blocks a family (their passport, their history). A family on the clock (a spine at floor 10, as `now` is) is never kept whole, because its mirror is said a beat at a time. Families stand at the beach's root, so these writes go there unless the request says `where:'here'`.
+- **A write asked for before anyone has unlocked waits for them.** A `write`, `say` or `keep` that comes while the button holds no passphrase (a first visit, say) is held rather than refused. The window opens on a card naming the page, what it asks and the words, with **unlock** beside **not now**, and nothing reaches the beach. Once the person has unlocked, in the beach's own window as always, each held request is staged like any other and still lands only on commit, under the words of whoever unlocked. **Not now** answers the page with a no. So a page can simply ask, whether or not anyone is holding the button yet.
+
+## Why the page can't see in
+
+The button is an iframe whose page comes from the beach's own origin, never the page's. Browsers enforce the same-origin policy between a page and a frame from another origin, so:
+
+| the page around the button **can** | the page **cannot** |
+|---|---|
+| see that the button is there, which view is open, and where it is dragged | read anything typed into it: fields, keystrokes, the question, the answer |
+| be told the person's handle, *if they tick "this site may know my name"* | read its storage, its fetches, or even its address |
+| ask for a write, which the person must approve inside the button | approve for them by fading or covering it (see clickjacking below) |
+| put it away (it's their page) | point it at another beach: the button talks only to the beach that serves it |
+
+**Passphrases are typed only in a top-level window** from the beach's own origin, whose address bar the person can read. That window answers only the button that opened it: a page that opens it itself, or frames it, is shown nothing to type into, and the server forbids framing it (`frame-ancestors 'none'`).
+
+**Where things travel:** the passphrase goes only to the beach (which hashes it to check the latch, exactly as every client does today), and only with writes to the person's own blocks, never with a line in someone's room. The API key goes only to Anthropic; the question and answer go only to Anthropic and the person's screen. **None of it reaches the page's server.** The page's address goes to Anthropic with a question, and reaches the beach only inside a card the person said yes to. Otherwise the beach is never told which page asked (no referrer on the button's own requests).
+
+### Proven, not claimed
+
+`scripts/smoke-button.cjs` puts the button on a hostile page in headless Chromium and attacks it. The page tries to:
+- read the frame, log keystrokes, sniff every message and wrap `fetch`;
+- fade or cover the window while asking it to write, while it stages a card, or while the person ticks "this site may know my name";
+- claim another site's address as its own;
+- open the unlock window and the ear window itself, and frame them.
+
+A mock beach and a mock Anthropic record where every secret actually went. The test also checks:
+- a card is founded and lands only on commit, and not now writes nothing;
+- a line reaches only a room that stands, and carries no passphrase;
+- answers show as plain text, and a phone's repeated revisions are spoken once;
+- the circle's three taps and their icons (read through its closed shadow root), Escape, and a tap elsewhere leaving settings;
+- the window hangs above the circle and never over it; it grows with the reply and stops at its most, widens by its edge, opens below the circle at the top of the screen, and rises above a shortened (keyboard) viewport;
+- the grip moves it exactly with a mouse or a finger, and "forget me" leaves no one held, even across a reload;
+- the ear window opens only from the button. It follows only a room that stands, founds the ear under the person's own words, and ends a watch whole behind the confirm gate, and the page hears none of it;
+- news shows inside the window and never reaches the page. The circle's mark comes only on a site told the name, and never for the person's own voice;
+- news not yet seen outlasts a reload, someone else unlocked in the same tab never sees it, and once seen it stays gone;
+- a reading and a whole mirror land only on commit, the mirror founded once under the person's own words and named as theirs, and a second reading or keep says what it replaces and takes away;
+- a "family" with no spine (the person's passport), an address with two points, a collective, and a whole keep of a family on the clock are all refused before anyone is asked, and a keep under a fade gets no commit;
+- a question the page asks waits in the prompt beneath the person's own words, once however often it is asked, with nothing sent to Anthropic or the beach and nothing told to the page;
+- a reading asked for in a tab where no one has unlocked waits on a card naming the page, the family and the words, with nothing written and the keys left with the page; not now answers no, and two held requests are each staged once the person unlocks from the card, landing on commit under that person's words;
+- a reading the page asks sealed is sealed in the frame under the frame's own content-security policy (the seal's Argon2 is WebAssembly, which the policy lets run), the mirror founded only once the seal stands, no word of it reaching the beach, and the envelope opens with the person's word and name in a plain page and in the frame again; a seal that fails founds nothing and writes nothing, and the person is told the line was not sealed, never that the beach refused it.
+
+**174 checks, run twice** (with the browser's storage partitioning on, as browsers ship it, and off): all hold. It also runs the old way for contrast: a widget drawn *inside* the page, in a closed shadow root as the Chrome extension drew its `#` button. The page logs every key typed into it.
+
+```bash
+NODE_PATH=$(npm root -g) npm run smoke:button     # needs playwright + chromium
+```
+
+## The limits, honestly
+
+1. **Look-alikes. The one real limit.** Any page can *draw* a fake button and ask for a passphrase. No browser feature tells a person which pixels are genuine. The defence is a habit the real button makes easy to keep: **it never asks for a passphrase inside a page; it always opens the beach's own window.** So: type your passphrase only where the address bar shows the beach's address. Password managers help, because they fill only on the true address. The way past habit is **passkeys** (WebAuthn): browsers bind them to the true address, so a fake can't use them. That needs a beach change (next steps).
+2. **Clickjacking is guarded, but not equally in every browser.** A commit, or the tick that tells a site your name, is taken only after it has stood 0.8 s, and in Chromium only while the window is truly visible (IntersectionObserver v2), not faded, covered or transformed. Chromium also drops clicks on a cross-origin frame that appeared or moved in the last half second, so a page can't slide the window under the pointer. Firefox and Safari get the delay, plus the person seeing exactly what will be written.
+3. **The beach sees the passphrase in transit**, as it does from every client today; that is how the latch is checked. Privacy even from the beach is gray sealing with a separate vault key, which the button doesn't do yet.
+4. **The beach can't check a passphrase without writing.** Its only proof, re-latching the passport with the same words, would *claim* a passport that stands open. So the button holds the words untried, and the first real write proves them (a 403 says they were wrong). A side-effect-free `prove` act on the beach would fix this; the handler is wire-frozen, so that's David's call.
+5. **Whoever serves the button's code holds the trust.** That is why the beach serves it: the parties who could ever see a passphrase stay exactly the person and the beach, and no one new is added. An operator who deploys this package serves their own button, to their own beach.
+6. **A line in a room is attributed, not proven.** Rooms are open, so a line carries the person's handle but no proof. Where a word must be shown to be theirs, a card in their own latched hand is the proof, and a line can point to it.
+7. **What the model reads can try to steer it.** Blocks, and the page's own title, are given to the model as data. Even if one talks it into proposing something, nothing is written until the person reads the proposal, shown whole, and taps yes.
+8. **What can still be learned:** the page sees the button exists, which view is open, and where it is dragged. The beach sees which *site* loaded the button (not which page), its reads, and the handle on writes, as it always has. Memory is kept per site, both in the browser's per-site storage and by the button's own keying, so one site's "yes, know my name" is never read as another's. "Remember on this device" lives only in the beach window's own storage, unreachable from any page.
+9. **The button's news is not the engine's.** It looks only at parlour and room watches, and only while a page carrying it is open. A name voiced anywhere, a place, a wake, and anything that must reach a closed phone belong to the push engine, which reads the same ear. Each look costs the beach one read of its index (a few store commands however many blocks it holds, since the index weighs again only the blocks that moved), plus one read for each followed room that moved. On a site told the name, the mark's timing can hint which public rooms the person follows; untaking the tick stops it.
+10. **The page's own text entry is as safe as the page.** Where the button is not on the page, the voice asks for the key in the browser's own prompt and keeps it in the page's storage, as happyseaurchin.com's pages always have, and a page that wanted the key could take it there. The button is the way past that: with it on the page, no key reaches the page.
+11. **Browser notes:** Chrome and Safari name the asking site from `ancestorOrigins`, which a page can't forge. Firefox falls back to the referrer, or "this page". Safari may clear a frame's storage when the session ends; that only means unlocking again, one tap if remembered. A malicious browser *extension* can read everything; no page-level design can stop that.
+
+## Why not the Chrome extension
+
+People rarely install extensions, and the old one drew its widget inside the page, where the test shows a page can log its keystrokes. A frame from another origin has neither problem. It arrives with the page (whoever makes the page adds one line), and the person can move it, close it, or put it away.
+
+## For Matthew's pages
+
+His pages wisely take only a handle today. With the button they need no identity field at all:
+
+```js
+const who = await beachButton.request({ kind: 'who' });             // { ok, handle } if the person agrees
+const r = await beachButton.request({ kind: 'write', block: 'standards:' + who.handle,
+                                      spindle: '7', content: 'Partly — the minutes show it.' });
+document.addEventListener('beachbutton:hello', e => { /* e.detail.handle, or null */ });
+```
+
+## The voice: one call, with or without the button
+
+David's ask, 18 October: a page takes a person's words its usual way, and where the person has the button, the button takes them; the button is theirs, on whatever page they are on, and the page's own look is undisturbed. `voice.js` is that, for any page:
+
+```js
+const r = await beachVoice.say({ field: 'reflexive-reading', at: '1.12', text, name });   // { ok, name } or { ok: false, error, quiet?, needName? }
+await beachVoice.keep({ field: 'place-in-the-wave', content: { _: 'MIRROR — a place in the wave …', 1: '1979 — at my gran’s', 8: '1960s' }, name });
+await beachVoice.ask('Who in place-in-the-wave came early, and who is most like me?');      // only where the button is
+await beachVoice.drop({ field: 'murmuration-motif', name });                                 // a deletion: always the page's own
+beachVoice.onButton(on => nameField.hidden = on);                                            // the button came or went
+await beachVoice.set('9.2', 'light');  const t = await beachVoice.setting('9.2');             // a page setting of the person's own
+```
+
+A mirror the voice founds stands at its family's floor, as `/walk` founds one: on the clock, ten underscores down, so a day's line lands under the day's digits (26 October, the arcade's step 1; `orientation:weft` 9.24). And a newcomer is given a name and a key in one tap, the same way on every game and premiere (the arcade's step 2, moved here from the premiere page, where keel made it for the Brighton room at FLIRT 2026):
+
+```js
+const h = await beachVoice.propose();                                     // starling-4821: no block on the beach is named for it
+const r = await beachVoice.enter({ field: 'spot-it', name: typed, intro });  // { ok, name, made, born } or { ok, name, standing, mirror }
+const said = beachVoice.made({ field: 'spot-it', name: r.name });          // { name, key } once, to say at the end; then null
+const k = await beachVoice.known(typed);                                   // 'passport' | 'blocks' | ''
+```
+
+`enter` takes the name given, else the proposed one; a name new to the beach is given its key by the voice (three words and two digits), kept on the device wrapped under a key the browser will not hand out (`beach-key:<field>:<name>`; see the seal below), so nobody chooses a key or reuses a password as one, and the browser asks only for the key of a name already on the beach. A proposed name taken since it was proposed is passed over for another without asking, since the person did not choose it.
+
+- **Where the person has the button on the page,** `say`, `keep` and `ask` go through it (`{kind:'say'}`, `{kind:'keep'}`, `{kind:'ask'}` above): it holds the request until they have unlocked, shows the words where they will stand, and writes only on commit. The page never holds their passphrase.
+- **Where they have not,** the call is the page's own text entry, as happyseaurchin.com's o-pages have always taken words: the name the page passes (or the one the device signs with, `render:who`), and the key the device keeps for it (`beach-key:<block>`, wrapped; or one the site's own pages kept plain under `next-latch:<block>`, or the passport's), else the one they give the browser's own prompt, asked again while the beach refuses it and kept once it lands. The writes are the button's own, by its rules: only a family whose spine stands, a mirror founded locked to the person's words (the passport's, where they have one), a family on the clock never kept whole.
+- **The page draws its box the same either way** and hides only its name field while the button is there: `beachVoice.button.shown()` says whether it is, and `beachVoice.onButton(fn)` calls `fn(shown)` whenever it comes or goes, including when the person puts it away.
+- **The button is the person's choice, and off until they make it.** `beachVoice.button.set(true)` (or `false`) wherever a page offers it: under a site's options, or beside a write box ("use the beach button"). The choice is kept with their settings on the beach, `settings:<handle>`: the per-person layer of the beach's own `settings` block, at its addresses, where 9 is pages and 9.1 the button (`true` or `false`). So it stands on every page that carries the voice, wherever their name is known; a device that knows no name keeps the choice for itself. Turning it on writes their settings as the page's own text entry would (the first time founding them, locked to their key); turning it off where the button holds them is theirs to commit in it. Never in a frame (the page framing it has its own), and never on a page whose body says `data-beach-button="off"` (its corner is taken).
+- **Any page setting of the person's is kept the same way.** `beachVoice.setting(addr)` reads one of theirs, and `beachVoice.set(addr, value)` keeps it, at 9.1 to 9.9 only: under the key the device keeps, else through the button where it holds them, else under the key the browser asks for once. 9.2 is the light or the dark (`'light'` or `'dark'`), which happyseaurchin.com's own switch keeps there so it follows them to every device.
+
+`scripts/smoke-voice.cjs` proves it on a plain page against a mock beach that refuses a wrong key and ties a name with a passport to that key: with no button, a reading founds the mirror and lands, the key asked once and kept, a second asking nothing; a missing name, a family with no spine and a whole keep of a clock family are refused before anyone is asked; turned on, the button comes and the page hears it, the choice founds the person's settings at 9.1; another device knowing the name shows it unasked, and the same `say` there waits in the button until the person unlocks and commits; turned off where the button holds them, they commit that in it and the page asks no key, and the first device follows; the light or the dark is kept beside it at 9.2 and read on the other device, and nothing outside the pages is written by a page; a nameless device keeps the choice to itself; a page that opts out, or a framed one, never shows it; and a mirror is taken down with the kept key. **25 checks**, all hold.
+
+```bash
+NODE_PATH=$(npm root -g) npm run smoke:voice     # needs playwright + chromium
+```
+
+### The seal: a line sealed before it leaves, opened after it arrives
+
+Coloured stigmergy, step 4 (4 November 2026; bsp-mcp `proposals/2026-11-03-coloured-stigmergy-the-design.md` §4.1, §4.2, §11 item 4). The beach serves its own seal beside the voice, `seal.js`: one module carrying the four modes a sealed line can take — self, grain, group and colour — byte for byte as the connector seals and opens them (bsp-mcp `src/keys.ts`), proved by ONE set of test vectors both pass (bsp-mcp `scripts/fixtures/gray-vectors.json`; `npm run smoke:seal` here runs them in Chromium with the vendored libraries). The pages that seal — the String at a members' door, social-brain's grain, a vault — seal through the voice and keep no copy of the cipher.
+
+```js
+await beachVoice.say({ field: 'string', at, text, gray: 'colour:salt' });   // sealed in a colour (or as a letter to it): { ok, sealed: 'colour' | 'letter', turn }
+await beachVoice.say({ field: 'days', at, text, gray: true });               // sealed to the person alone (self)
+const words = await beachVoice.open(node, { name, with: partner });         // the words, or null: then show beachVoice.grey(node)
+const mine = await beachVoice.colours({ name });                            // [{ name: 'salt', block: 'colour:salt', turn: '3' }]
+const s = await beachVoice.seal(text, { gray: { grain: partner }, name });  // { ok, envelope, how } for a page that writes its own block
+await beachVoice.wear({ name });                                             // on an open beach: the word put on for the tab, its halves published
+```
+
+- **One word.** The pair a person seals with is derived once from the key their passport uses — Argon2id of the word with their name as the salt, the same pair `pscale_key_publish` derives — and held in the page's memory for the tab. At a members' beach `prove` publishes its halves at `passport:<name>` 9 as the member keys in, where none stand, so a keeper can seal a colour's copy to them; on an open beach `wear` does the same, and a word that does not derive the halves already published is refused. The latch the beach checks is the word itself until the holder asks to switch, and then the latch derived from it (`seal.js` latch: Argon2id, `latch:` + the handle as the salt): **the derived latch** (bsp-mcp `proposals/2026-11-05-the-derived-latch.md`). `latch.js`, loaded beside the seal, gives every write the voice and the frame make its keys in the form the hand's passport names at 9.3 (`latch: derived …`), where the word also derives the halves there, so a shared key is never derived; a hand seen switched is kept on the device, and a passport that later lacks the marker is refused with nothing sent; the proof at a members' beach goes in the form kept, else the derived latch first. `beachVoice.switch({ name })` is the switch, and it runs only when the holder asks: the marker first, then the passport, then every block named for them, each probed with no key so an open room is never latched (`back: true` runs it the other way; `fresh: true` makes three new words and moves every latch onto theirs). The button's settings offer the same switch, a tap away. A key the voice makes is two digits and three of the 4,096 words of `words.js` (about 42.5 bits; three by David's decision of 9 November 2026, since no person remembers five); `join({ …, derived: true })` founds a newcomer's passport under the derived latch from birth, its halves and marker in the same write; `beachVoice.weak(name)` says whether the key held is an old made key of three words.
+- **The reader's glasses.** A colour's turn is opened once from the person's own copy, the first time the tab meets a line in it, and worn in memory from then on; `colours()` reads the beach's index for every `colour:<name>` whose current turn holds a copy the word opens. A line that does not open is one grey line, as the router draws it: `sealed · colour · salt · turn 3`.
+- **Nothing in plain text in any storage** (Matthew's condition, coloured-stigmergy 1.18). The key a write keeps on the device, a key made for a newcomer until it is said, the person the unlock window remembers, and what the frame holds of them for the tab are all wrapped under a key the browser will not hand out — an AES-GCM key made non-extractable and kept in the beach origin's IndexedDB (`seal.js` `keep`) — so a copy of the storage alone opens nothing; a key kept plain before this is read once and wrapped from then on, and a browser with no such key keeps nothing and asks again. A pass is not a key, and is kept as before.
+- **Through the button** the frame holds the word, so it derives the pair and seals (`{kind:'seal'}`, on a card the person commits, as every write is), opens (`{kind:'open'}`) and names the colours held (`{kind:'colours'}`) — the last two only for a page that may know the person's name, since what opens for them says who they are. The derivation is Argon2, which runs as WebAssembly, so the frame's own policy carries `'wasm-unsafe-eval'` (`frame.html`): it lets WebAssembly compile and lets no script be evaluated from a string. A reading said sealed (`{kind:'say', gray}`) is sealed before the person's mirror is founded, so a seal that fails founds nothing and writes nothing, and the frame says the line was not sealed and why (a key that could not be derived in this browser, a colour that stands nowhere), never that the beach refused it.
+
+`scripts/smoke-seal.cjs` proves the module in the browser against the shared vectors (60 checks); `smoke:voice-gate` walks a colour through the voice at a members' beach: the keeper founds it, a member keys in (their halves published), shares in it, another member reads the words, a member without the colour and a stranger read the grey line.
+
+## The plug: a game's side of the beach
+
+The arcade's steps 4 and 5 (26 October; the maker's path at `spine:game-arcade` 1.1111114, the recipe at `ways:arcade`). A game made with an AI and kept on its maker's own page (GitHub Pages works) is a family on the beach: `spine:<game>` (its days on the clock, or its stops), its law (`function:<game>` with `mode: game`, or `game:<game>` as Matthew's Arcade keeps one), its room `pool:<game>`, and each player's results in their own mirror `<game>:<handle>` at the spine's own addresses. The board is the fold across the mirrors at one address. The maker founds the family under their own key, adds two tags, and makes three calls; nothing of theirs passes through anyone's hands.
+
+```html
+<script src="https://beach.happyseaurchin.com/button/voice.js"></script>
+<script src="https://beach.happyseaurchin.com/button/game.js" data-game="ghost-wire"></script>
+```
+
+```js
+const at = beachGame.today();                                                    // the day's address on the beach's clock: eight digits, then 00
+const r = await beachGame.result({ at, line: 'FINISHED 2.38s', proof, name });   // { ok, name, address, slot, said, made } — a newcomer named and keyed in one tap
+const b = await beachGame.top({ at, n: 10, verify: p => GW.rerun(p.proof, wire).ok });   // { top: [{ name, line, score, proof, checked }], players, through }
+const room = await beachGame.room({ n: 5 });   await beachGame.note({ text, name });     // the room's last lines, and one left in it
+const here = await beachGame.here();           await beachGame.present(true);            // who is playing now; this player is, while the page is open
+const wave = await beachGame.wave();                                                     // who came when, in three parts, ranking nobody
+const said = beachGame.made();                                                           // the newcomer's name and key, once, to say at the end
+```
+
+Or the ready-made elements, and no code at all: `<beach-board n="10" verify="checkRun"></beach-board>` and `<beach-room n="5"></beach-room>`. They wear the page's own font and colour, refresh every half minute while in view, and the room's form leaves a line.
+
+- **The law decides the board, not the page.** One line in the law, `board: FINISHED, lowest first, best per player`, names the word a result opens with, the order, and whether a player's best or last stands; `room: pool:<game>` and `page: https://…` name the rest, and a law at `game:<name>` with neither is read for its first address and `pool:<game>`. The plug reads the law once at load, which also sets its clock from the beach's own stamp (`X-Pscale-Now`), so `today()` is the beach's day even on a phone whose clock is wrong.
+- **The proof stands in the room, the signed line in the mirror.** `result` appends the run to the room first, in the shape Ghost Wire keeps ({_: the line, 1: '<name>, a visitor', 2: the address, 3: when, 6: who brought them, 7: the proof, 8: which try}; `function:arcade` 6), then says the line in the player's own mirror at the address through the voice, naming the proof's slot (`FINISHED 2.38s · proof pool:ghost-wire 143`). Why there and not beneath the line: a said line is capped at 2,000 characters, twelve seconds of a Ghost Wire replay; a proof is never trusted, only re-run, so where it stands changes nothing about an honest board; the room is open, so the run lands even where the browser has not been given the player's key; the mirror's digits stay the clock's; and Ghost Wire's page keeps reading its room as before. Where the law keeps each player's best, a slower run goes into the room and leaves the standing line.
+- **A newcomer is named and keyed in one tap** (`beachVoice.enter`): a device that knows no name keeps a result as a starling and four digits, its mirror founded under a key made by the voice; a typed name is a claim, and one already on the beach is asked its key by the browser, so without it the line never lands in that person's mirror (the run still stands in the open room, as a visitor's).
+- **The board counts only what it can check.** `top` reads every player's mirror once (through the fold, `/api/mirrors` on happyseaurchin.com for this beach, or `data-fold`; the beach's own index and mirrors where a beach has none), takes each player's line at the address or their best beneath it (so the week's address gathers its days), reads the proofs from the room in one read, and hands each to the page's `verify`; a proof that fails is dropped, and without a verify every line is shown as a claim and says so (`checked: null`). Reads are kept fifteen seconds on the page.
+- **On any beach.** Served by a beach, the plug talks to that beach alone; a script served from a builder's own computer may name the beach with `data-beach`, as the voice does, and the fold with `data-fold`.
+
+`scripts/smoke-game.cjs` proves it against a mock beach: a game founded as the recipe says; a result kept at the day's address, the proof in the room past the cap and the line at the day's digits; best per player kept, a faster run replacing the line; the board folded from three players' mirrors through a fold and straight from the beach, a failing proof dropped by the page's verify, the week's board gathering its days; the wave, presence, and this player's slot in it; the room's lines and a note; the two elements drawing and leaving a line; a newcomer with no name keeping a result in one tap and the key said once; a typed name on the beach asked its key; a law at `game:<name>` read the same. **35 checks**, all hold.
+
+```bash
+NODE_PATH=$(npm root -g) npm run smoke:game     # needs playwright + chromium
+```
+
+## The room plug: introduced on the beach, played player to player
+
+The first piece of the relay (27 October; `spine:tronic-glass` 1.1.1.1.3, David's GO; the scope in bsp-mcp `proposals/2026-10-22-the-relay-for-live-play.md`). The beach is where a room is found and where play is kept; the bytes of play go player to player. `room.js`, a third script beside the voice and the plug, introduces the players of a game's room over the room's **wire** and opens one `RTCPeerConnection` between each pair with two data channels — **state**, unordered and never retransmitted (a late position is dropped, the next supersedes it), and **events**, ordered (a move, a finish, a word). A pair the direct path cannot join is carried by the wire instead, so the room always plays, only slower. Each pair's ping is measured both ways, direct and relayed.
+
+```html
+<script src="https://beach.happyseaurchin.com/button/room.js" data-game="ghost-wire"></script>
+```
+
+```js
+const r = await beachRoom.join({ name });                      // { ok, id, name, room, wire: 'vapour' | 'beach', named, turn }
+beachRoom.on('peer', p => …);  beachRoom.on('direct', p => …);  // who arrived; whose channel opened
+beachRoom.on('message', m => …);                                // { from, name, kind, body, via: 'direct' | 'relayed' }
+beachRoom.on('ping', p => …);                                   // p.ping = { direct, relayed, theirs: { direct, relayed } } in ms
+beachRoom.send('moves', { i, m }, { reliable: true });          // to all, or { to: id }; returns where it went
+beachRoom.peers();   await beachRoom.leave();
+```
+
+- **The wire is the relay the beach names.** A beach says at its own address where its introductions go (the fourth decision at `tronic-glass` 1.1.1.1.5): in its `settings` block under 1, the vapour subsystem, `1.3 vapour_url=<the realtime host>` and `1.4 vapour_key=<its publishable key>` — the mirror's Supabase Realtime, which `room.js` speaks over one raw WebSocket in the Phoenix shape (join the room's topic, a heartbeat, every message a broadcast), with no library; and `1.5 turn_url=<a route answering { iceServers }>` for the pairs that cannot connect without TURN. STUN is Google's public server until then.
+- **Where the beach names no vapour, the room's own liquid carries the introductions:** `liquid:pool:<game>`, one slot per player, overwriting (block-conventions 4.5), each slot a pending intention in words (`ann is in the room, reaching bob`) with the player's mailbox at 7 (base64url of `{ id, name, out, seen }`: a message waits in `out` until the other's `seen` says they took it), polled every second while a pair is unjoined, every four once all are direct. A hop takes a second or two, so a relayed ping there is slow by design and a direct one is the real thing; the ping page says so. A slot is blanked on leaving, and nothing of what crossed the wire is kept.
+- **Who offers:** of a pair, the lower id offers and the higher answers (the voice's perfect negotiation, the polite side by name); candidates are gathered before the offer is sent, so an introduction is one offer and one answer over any wire — eight or so slot writes on the liquid for a pair. A side with the direct path off (`join({ direct: false })`) answers "refused", and the pair stands relayed.
+- **The ping page**, `ping.html`, is the small working piece two phones can try: `https://beach.happyseaurchin.com/button/ping.html?room=ghost-wire`. Each enters with a name, sees the other and their ping both ways, and races the day's Ghost Wire live: each player's moves stream as the engine records them (sixty a second, sent ten times a second over the events channel), and the other page re-runs them as a ghost a few frames behind, the finished run re-run and checked. Nobody collides with anybody, so ping changes nothing about who wins. The engine is Matthew's `ghost-wire.js` from his page; nothing is kept — the room's record is Ghost Wire's own page's business.
+
+`scripts/smoke-room.cjs` proves it with two pages in one headless Chromium against a mock beach: introduced over the liquid and joined by real data channels over loopback; pings both ways, direct in milliseconds and relayed at the beach's poll; a message direct over events and over state; a race whose moves re-run as the other's ghost to a checked finish; a countdown; a page with the direct path off carried by the wire, its race arriving relayed; a leave blanking the slot; and the same over a mock vapour in the Phoenix shape, as the beach would name it at `settings` 1.3 and 1.4. **30 checks**, all hold. Probed once live against beach.happyseaurchin.com on 27 October: two headless pages in `liquid:pool:ghost-wire`, direct in five seconds, direct ping 1 ms, relayed 2.2 s, slots blanked on leaving.
+
+```bash
+NODE_PATH=$(npm root -g) npm run smoke:room     # needs playwright + chromium
+```
+
+## Next steps (proposed, not built)
+
+- **The go menu in the button:** the place's doors (its `lighthouse`) and the person's own (their `lists:<handle>` go-menu branch) as two tabs, so a person's menu travels with them to any page.
+- **One look:** read the place's `brand` block (Matthew's) to colour the button for the page it's on.
+- **Passkeys:** keep the remembered words sealed under a passkey (WebAuthn PRF), so a remembered device needs the person's touch and look-alikes get nothing.
+- **A `prove` act on the beach**, and in time **signed writes** (the beach verifies a signature from the passport's published keys), after which not even the beach sees a passphrase.
+- **The button's prompt into a block** (`function:button`), so it is tuned on the beach, not in code.
+
+## Files
+
+| file | runs in | holds |
+|---|---|---|
+| `button.js` | the host page | nothing sensitive: draws the circle, its grip and the widening edge, places the window, relays layout and requests |
+| `frame.html` · `frame.js` · `frame.css` | the iframe (the beach's origin) | the window: the handle, passphrase and key for this tab; the ask; the staged writes and their commits; settings |
+| `unlock.html` · `unlock.js` | a top-level window (the beach's origin) | where words are typed; "remember on this device" |
+| `game.js` | a game's page | the plug: today, result, top, room, note, here, present, wave, and the two elements; writes through the voice |
+| `room.js` | a game's page | the room plug: join, peers, send, on, ping, leave — players introduced over the wire the beach names (or the room's liquid), two data channels per pair, the wire carrying a pair that cannot connect |
+| `ping.html` | a top-level page (the beach's origin) | the ping page: two phones in one room, their ping both ways, and a live Ghost Wire race |
+| `ear.html` · `ear.js` | a top-level window (the beach's origin) | the person's ear, watch by watch; following and ending, under their own words |
+| `voice.js` | the host page | the page's side: one call for a person's words, through the button where it is, else the page's own text entry (the key the browser keeps for it, wrapped, in the page's storage); the person's choice of button, in their settings on the beach; a line sealed before it leaves and opened after it arrives, through the seal |
+| `seal.js` · `vendor/` | the host page, the frame, the unlock window; node for the vectors | the beach's seal: the four modes byte for byte as the connector's, the pair and the latch one word derives, the grey line, and the device key that keeps nothing plain; tweetnacl and hash-wasm's argon2 served beside it |
+
+These are static files beside the handler. They add no endpoint and never touch the wire: the frame calls the same `/.well-known/pscale-beach` every client calls.

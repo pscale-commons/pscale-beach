@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- What reaches a person from this beach (ear:<handle>, the law at ways:push), in the beach's own
+     window: opened from the button's settings and only from there. The server refuses to let any
+     page frame it, and it shows nothing unless the button that opened it hands it the person. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>What reaches you · the beach</title>
+<link rel="stylesheet" href="frame.css">
+</head>
+<body class="window">
+<main>
+  <h1>the beach</h1>
+  <p id="lead">This window opens from the beach button’s settings, and only from there.</p>
+  <section id="ear" hidden>
+    <ul id="watches" class="watches"></ul>
+    <p id="none" class="small" hidden>Nothing reaches you from this beach yet. Following anything below starts your ear, and your parlour and your name come with it.</p>
+  </section>
+  <section id="add" hidden>
+    <div class="row left">
+      <button id="parlour" type="button" hidden>+ my parlour</button>
+      <button id="named" type="button" hidden>+ my name, voiced anywhere</button>
+    </div>
+    <form id="roomf">
+      <label>follow a room <small>— every voice that lands in it reaches you</small>
+        <input id="room" type="text" placeholder="pool:welcome" autocapitalize="off" autocomplete="off" spellcheck="false">
+      </label>
+      <div class="row"><button id="follow" type="submit">follow</button></div>
+    </form>
+  </section>
+  <p id="reading" class="small" hidden>Unlock the button with your passphrase to change what reaches you; without it you can only read it.</p>
+  <p id="msg" aria-live="polite"></p>
+  <p id="where" class="small" hidden>Where you are reached (an email, a phone, each watch’s channels) lives only at the push engine, enrolled by proof, never here: <a id="engine" target="_blank" rel="noopener noreferrer">your page there ›</a></p>
+  <div class="row"><button id="done" type="button">done</button></div>
+</main>
+<script src="ear.js"></script>
+</body>
+</html>

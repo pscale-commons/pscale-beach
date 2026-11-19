@@ -1,7 +1,8 @@
 import { Redis } from '@upstash/redis';
-import { createHash } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { hasFloor, defaultIdentity, repairFloor, appendWithSupernest, appendAtNode, owedSummaries } from './floor.js';
 import { NOW_HEADER, nowHeader, renderNow } from '../lib/temporal.js';
+import { refuseKeyInPayload } from '../lib/key-guard.js';
 
 // ── Pscale Beach v2 — URL surface, sibling blocks ──
 // Spec: https://github.com/pscale-commons/bsp-mcp-server/blob/main/docs/protocol-pscale-beach-v2.md
@@ -163,6 +164,14 @@ function touchedKey(origin) { return `${keyNs(origin)}:touched`; }
 // before this stamp existed simply has none, which is honest (bsp-mcp
 // proposals/2026-09-21-tidying-and-spam.md).
 function bornKey(origin) { return `${keyNs(origin)}:born`; }
+// And the weight the index lists beside each name (`bytes`): block name →
+// "<stored size>|<the touched stamp it was weighed under>|<the day it was
+// weighed>". A block's size changes only when it is written, and every write
+// through the door moves its touched stamp, so the index weighs a block again
+// only when its stamp has moved since — and every block once a day, which
+// catches a write that went round the door (a restore, a migration). Weighing
+// every block on every look billed the store one command per block per look.
+function sizesKey(origin) { return `${keyNs(origin)}:sizes`; }
 // The last copy the door keeps before an UNLATCHED block is wiped or replaced
 // whole — once per block per day, first destruction wins, thirty days.
 function lastKey(origin, name, day) { return `${keyNs(origin)}:last:${name}:${day}`; }
@@ -307,28 +316,112 @@ function formatAddress(digits, floor) {
 }
 
 // Lock-key derivation. Empty spindle (or a spindle addressing the underscore
-// via '0' / '_') always maps to the '_' lock — that's whole-block replace and
-// underscore-of-root writes. Otherwise the lock is per-position: for sed:/grain:
-// the first dotted segment names the registrant/side position (multi-digit
-// like '11', '12', '111'); for ordinary blocks the first digit of the
-// FLOOR-AWARE-PARSED path names the branch. After parseSpindle's floor pad,
-// "34.5" at floor 2 keeps lock key '3'; the same address at floor 3 (block
-// has grown an underscore layer) locks at '_' because the walk now starts
-// with '_' '3' '4' '5'. Locks follow the walk.
+// via '0') always maps to the '_' lock — that's whole-block replace and
+// underscore-of-root writes. Otherwise the lock is per-position, named from the
+// FLOOR-AWARE-PARSED path: for ordinary blocks its first digit names the
+// branch; for sed:/grain: the whole walk names the position, because a place
+// or a side sits deeper than a first digit — place 11 is the node 1→1, place
+// 111 the node 1→1→1 beneath it, a line of side 1 the node 1→5 — so '1.1' and
+// '11' are one position and take one lock. (Read off the spindle as typed, the
+// first dotted segment gave one node as many locks as it had spellings: '9.1'
+// and '91' were the payway's issuer line under two, '1.5' and '15' a line of
+// side 1 — 2026-10-27.) After parseSpindle's floor pad, "34.5" at floor 2
+// keeps lock key '3'; the same address at floor 3 (block has grown an
+// underscore layer) locks at '_' because the walk now starts with '_' '3' '4'
+// '5'. Locks follow the walk.
 function lockKeyForWrite(blockName, spindle, block) {
   if (!spindle) return '_';
   const cleaned = String(spindle).replace(/\*$/, '');
-  if (blockName.startsWith('sed:') || blockName.startsWith('grain:')) {
-    const firstSegment = cleaned.split('.')[0];
-    if (!firstSegment || firstSegment === '0' || firstSegment === '_') return '_';
-    return firstSegment;
-  }
   const fl = floorDepth(block ?? {});
   const { digits } = parseSpindle(cleaned, fl);
   if (!digits.length) return '_';
   const firstDigit = digits[0];
   if (firstDigit === '0' || firstDigit === '_') return '_';
+  if (blockName.startsWith('sed:') || blockName.startsWith('grain:')) return digits.join('');
   return firstDigit;
+}
+
+// THE LATCH THAT GOVERNS A WRITE — the nearest one on the walk: the position's
+// own if it carries one, else the nearest latched position above it (proposal
+// 2026-07-26-lock-inheritance). An ordinary block's positions are its first
+// digits, so the nearest above any of them is the root. A sed's places and a
+// grain's sides sit deeper and the walk passes through them, so a line beneath
+// place 11 is 11's, a line beneath side 1 is side 1's, and place 111 keeps its
+// own latch beneath 11. A sed's root latch is its founder's and governs what no
+// registrant holds — its underscore, its containers, its metadata at 9 — never
+// a member's place, which would put every member under the founder's key. A
+// grain has no root latch: its sides are latched by the reach, and nothing else
+// in it is anyone's to write (substrateWriteRefusal). Null: nothing governs.
+function governingKey(blockName, lockKey, hashes) {
+  if (hashes[lockKey] !== undefined) return lockKey;
+  if (lockKey === '_') return null;
+  if (blockName.startsWith('sed:') || blockName.startsWith('grain:')) {
+    for (let n = lockKey.length - 1; n >= 1; n--) {
+      if (hashes[lockKey.slice(0, n)] !== undefined) return lockKey.slice(0, n);
+    }
+    if (blockName.startsWith('grain:')) return null;
+  }
+  return hashes['_'] !== undefined ? '_' : null;
+}
+
+// A place of a sed is a walk of two digits or more, none of them 0, never
+// beneath 9: block-conventions 7.3 keeps position 9 for the collective's
+// metadata, and in a floor-1 sed a payway's issuer at 9.1 IS the node of 91.
+function isPlacePath(digits) {
+  return digits.length >= 2 && digits[0] !== '9' && !digits.includes('0');
+}
+
+// WHAT A SED OR A GRAIN TAKES BY HAND (2026-10-27 — the holes the coloured-
+// stigmergy proposal named on 26 October, and the rest of their class). Their
+// positions are born by their own actions, a place by settling and a side by
+// reaching, so a write by hand lands only where a latch already governs it, and
+// never removes or moves a position a different latch holds: fine locks bind
+// the coarse, as the grain gate below says. Before this, a write at a sed's 1,
+// which nobody latches, replaced the places 11 to 19; a place's holder replaced
+// the places beneath their own; a sed born by its first settle, with no root
+// latch, could be replaced whole; and a grain's 9, the record of who holds
+// which side that the connector seals to, stood open to any hand.
+function substrateWriteRefusal(blockName, { digits, governing, content, newLock, existing, hashes }) {
+  if (blockName.startsWith('grain:')) {
+    if (existing == null) {
+      return { status: 405, body: { error: `"${blockName}" does not exist, and a grain is born by a reach (the reach action, pscale_grain_reach), never by a write — a grain made by hand would name its own parties at 9.`, code: 'grain_reach_only' } };
+    }
+    if (governing !== '1' && governing !== '2') {
+      return { status: 405, body: { error: `"${blockName}" is written by its two holders, each at their own side under that side's key. Its 8 (a reach not yet accepted), its 9 (who holds which side) and its underscore are the reach action's, and a side nobody has accepted is taken by accepting the reach, never by a write.`, code: 'grain_reach_only' } };
+    }
+    return null;
+  }
+  const where = digits.length ? `position "${digits.join('')}" of "${blockName}"` : `"${blockName}"`;
+  // A latch here is set by settling (a place) or by founding (the root); by
+  // hand it only rotates or delegates under a latch that already governs.
+  if (newLock !== undefined && digits.length && governing === null) {
+    return { status: 405, body: { error: `${where} answers to no latch, and a sed's positions are latched by settling (pscale_settle), its root by founding — not by hand.`, code: 'sed_settle_only' } };
+  }
+  if (content === undefined) return null;
+  const held = Object.keys(hashes).filter((k) => k !== '_');
+  if (!digits.length) {
+    if (existing != null && held.length) {
+      return { status: 405, body: { error: `"${blockName}" holds places, each latched to its own registrant for life, and a whole-block write answers to none of those latches — write one position at a time under the key that governs it.`, code: 'whole_block_replace_unsupported' } };
+    }
+    return null;
+  }
+  if (digits[0] === '0') {
+    if (held.length && (digits.length > 1 || (content !== null && typeof content === 'object'))) {
+      return { status: 409, body: { error: `"${blockName}" holds places, and a write into its root's underscore chain beyond a line at 0 would raise its floor and move every place beneath it — re-voice the underscore with a string at 0.`, code: 'sed_floor_held' } };
+    }
+    return null;
+  }
+  if (governing === null && isPlacePath(digits)) {
+    return { status: 403, body: { error: `${where} is a place nobody has settled — pscale_settle hands out places, and a place is written by its holder.`, code: 'place_unsettled' } };
+  }
+  if (content !== null && typeof content === 'object') {
+    const at = digits.join('');
+    const beneath = held.filter((k) => k.length > at.length && k.startsWith(at)).sort();
+    if (beneath.length) {
+      return { status: 409, body: { error: `${where} holds ${beneath.length === 1 ? 'the place' : 'the places'} ${beneath.join(', ')} beneath it, each latched to its own registrant, and an object written here would replace ${beneath.length === 1 ? 'it' : 'them'} — re-voice this position with a string, or write the part you hold.`, code: 'places_beneath' } };
+    }
+  }
+  return null;
 }
 
 function hashByBlockName(origin, blockName, position, secret) {
@@ -361,15 +454,53 @@ async function handleBoundRefusal(origin, blockName, secret, newLock) {
   if (HANDLE_BOUND_EXEMPT.some((prefix) => blockName.startsWith(prefix))) return null;
   const handle = blockName.slice(cut + 1);
   const passport = `passport:${handle}`;
-  const held = (await loadHashes(origin, passport))['_'];
-  if (held === undefined) return null;
-  const proves = (key) => typeof key === 'string' && key !== '' && hashOrdinary(origin, key, passport, '_') === held;
+  // The passport's latch is its root latch; where the root is open, any latch it carries
+  // holds the whole (a passport is one whole, below).
+  const latches = await loadHashes(origin, passport);
+  const held = latches['_'] !== undefined ? { _: latches['_'] } : latches;
+  if (Object.keys(held).length === 0) return null;
+  // The passport's key is tried here, so the passport's wrong-key cap stands here too.
+  const capped = await wrongKeysRefusal(origin, passport);
+  if (capped) return capped;
+  const proves = (key) => passportKeyAmong(origin, passport, held, [key]) !== null;
   if (proves(secret) || proves(newLock)) return null;
+  await noteWrongKey(origin, passport);
   return {
     status: 403,
     body: {
       error: `"${blockName}" is named for ${handle}, whose passport is locked — a lock here can only be set with ${handle}'s own key, the one that locks ${passport} (as the secret, or as the new lock itself). Founding it open, with no lock, is still allowed.`,
       code: 'handle_bound',
+    },
+  };
+}
+
+// A PASSPORT IS ONE WHOLE (bsp-mcp proposals/2026-09-30-a-passport-is-one-whole). A latch
+// lands where the write lands, so a passport founded by a write at one position — its
+// Location line, as the welcome had assistants do — was latched at that line and open at
+// its top: any hand could latch the root and take the name, and the rule above bound
+// nothing for it. A passport is the claim on a name, so it is held whole. While its root
+// is open, whoever holds a latch on any part of it holds all of it: every write, latch
+// and wipe needs a key that proves one of its latches. And the top latches itself: the
+// key that holds a part, that first latches a part, or that rides the passport's
+// founding takes the root, so the irregular state ends at its holder's next keyed write
+// and nobody is asked to do anything. A passport founded with no key stays open, and one
+// whose root is latched is governed by that latch exactly as before.
+const isPassport = (name) => name === 'passport' || name.startsWith('passport:');
+function passportKeyAmong(origin, blockName, hashes, keys) {
+  for (const key of keys) {
+    if (typeof key !== 'string' || key === '') continue;
+    for (const [position, held] of Object.entries(hashes)) {
+      if (hashOrdinary(origin, key, blockName, position) === held) return key;
+    }
+  }
+  return null;
+}
+function passportHeldRefusal(blockName) {
+  return {
+    status: 403,
+    body: {
+      error: `"${blockName}" is held: part of it is latched, and a passport is one whole — this needs the key that latched it (send it as the secret).`,
+      code: 'lock_required',
     },
   };
 }
@@ -400,7 +531,9 @@ async function saveBlock(origin, name, block, born = false) {
   await redis.set(blockKey(origin, name), block);
   // What this instance had heard from `settings` is stale the moment settings is
   // written; other warm instances catch up within the cache's minute.
-  if (name === 'settings') _settingsCache.delete(origin);
+  if (name === 'settings' || name === 'notice') _settingsCache.delete(`${origin}|${name}`);
+  if (name === 'settings') _settingsLatchCache.delete(origin);
+  if (name.startsWith('index:')) _indexCache.delete(`${origin}|${name}`);
   // The surface remembers the touch. saveBlock is the one persist path every
   // write takes — position write, append, whole-block, sed, grain — so the
   // stamp is physics, not client courtesy: every door is covered, none is
@@ -442,7 +575,9 @@ async function loadHashes(origin, name) {
 async function saveHashes(origin, name, hashes) {
   await redis.set(locksKey(origin, name), hashes);
   // Latching (or relinquishing) the root of `settings` changes whether it is heard at all.
-  if (name === 'settings') _settingsCache.delete(origin);
+  if (name === 'settings' || name === 'notice') _settingsCache.delete(`${origin}|${name}`);
+  if (name === 'settings') _settingsLatchCache.delete(origin);
+  if (name.startsWith('index:')) _indexCache.delete(`${origin}|${name}`);
 }
 
 async function listBlockNames(origin) {
@@ -465,9 +600,7 @@ async function listBlockNames(origin) {
     for (const k of legacyKeys) names.push(k.slice(legacyPrefix.length));
     if (names.length > 0) usedPrefix = legacyPrefix;
   }
-  const sorted = Array.from(new Set(names)).sort();
-  const bytes = await blockBytes(usedPrefix, sorted);
-  return { names: sorted, bytes };
+  return { names: Array.from(new Set(names)).sort(), prefix: usedPrefix };
 }
 
 // ── The /w/ addresses with a room written ──
@@ -513,32 +646,59 @@ async function listPlayedTables() {
   return tables.sort((a, b) => b.touched.localeCompare(a.touched));
 }
 
-// Per-block stored-JSON size via pipelined STRLEN — one extra round trip for
-// the whole surface, values never transferred. The weight beside the name is
-// what lets a reader choose an aperture (a disc probe, a spindle) BEFORE
-// paying for a read: a grown accumulator is visible as such from the index
-// instead of after a whole-block pull. Sizes are an affordance, never a gate —
-// on any error, or a client without pipeline/strlen (older rigs), the index
-// degrades to its nameless-weight shape unchanged.
-async function blockBytes(prefix, names) {
+// Per-block stored-JSON size via pipelined STRLEN, values never transferred.
+// The weight beside the name is what lets a reader choose an aperture (a disc
+// probe, a spindle) BEFORE paying for a read: a grown accumulator is visible as
+// such from the index instead of after a whole-block pull. Sizes are an
+// affordance, never a gate — on any error, or a client without pipeline/strlen
+// (older rigs), the index degrades to its nameless-weight shape unchanged.
+// Weighed only what moved: a size kept at sizesKey under the block's current
+// touched stamp, today, is listed as kept, so a look at a quiet surface costs
+// one hash read rather than one command per block.
+async function blockBytes(origin, prefix, names, touched) {
   if (names.length === 0) return null;
   try {
-    let lens;
-    if (typeof redis.pipeline === 'function') {
-      const p = redis.pipeline();
-      for (const n of names) p.strlen(`${prefix}${n}`);
-      lens = await p.exec();
-    } else if (typeof redis.strlen === 'function') {
-      lens = [];
-      for (const n of names) lens.push(await redis.strlen(`${prefix}${n}`));
-    } else {
-      return null;
+    const day = new Date().toISOString().slice(0, 10);
+    // The kept sizes are derived, never owned: unreadable (a restore can leave
+    // the key a string), they are dropped and every block weighed afresh.
+    let kept = null;
+    try { kept = await redis.hgetall(sizesKey(origin)); }
+    catch { try { await redis.del(sizesKey(origin)); } catch { /* weigh everything */ } }
+    if (!kept || typeof kept !== 'object') kept = {};
+    const size = {}, stale = [];
+    for (const n of names) {
+      const [v, at, on] = String(kept[n] ?? '').split('|');
+      if (kept[n] != null && at === String(touched[n] || '') && on === day) size[n] = Number(v);
+      else stale.push(n);
     }
+    if (stale.length) {
+      let lens;
+      if (typeof redis.pipeline === 'function') {
+        const p = redis.pipeline();
+        for (const n of stale) p.strlen(`${prefix}${n}`);
+        lens = await p.exec();
+      } else if (typeof redis.strlen === 'function') {
+        lens = [];
+        for (const n of stale) lens.push(await redis.strlen(`${prefix}${n}`));
+      } else {
+        return null;
+      }
+      const weighed = {};
+      stale.forEach((n, i) => {
+        const v = Number(lens[i]);
+        size[n] = v;
+        weighed[n] = `${Number.isFinite(v) ? v : 0}|${touched[n] || ''}|${day}`;
+      });
+      try { await redis.hset(sizesKey(origin), weighed); } catch { /* weighed again next look */ }
+    }
+    const present = new Set(names);
+    const gone = Object.keys(kept).filter((n) => !present.has(n));
+    if (gone.length) { try { await redis.hdel(sizesKey(origin), ...gone); } catch { /* never listed */ } }
     const out = {};
-    names.forEach((n, i) => {
-      const v = Number(lens[i]);
+    for (const n of names) {
+      const v = size[n];
       if (Number.isFinite(v) && v > 0) out[n] = v;
-    });
+    }
     return Object.keys(out).length > 0 ? out : null;
   } catch {
     return null;
@@ -997,13 +1157,17 @@ function blockParamFromBody(body) {
 
 // ── Sed: substrate — atomic position allocation ──
 //
-// Floor-2 minimum. Valid positions contain digits 1-9 only (no 0). Sequence:
-// 11, 12, ..., 19, 21, ..., 99, 111, 112, ..., 999, 1111, ...
-function nextValidPosition(positionHashes) {
+// Floor-2 minimum. Valid positions contain digits 1-9 only (no 0), are never
+// beneath 9 (isPlacePath: the collective's metadata stands there), and are never
+// where something already stands: a place's own lines sit at the addresses of
+// the places beneath it (a ticket's grain at 11's 1 is the node of 111), so a
+// settle that landed there would write over them. Sequence: 11, 12, ..., 19,
+// 21, ..., 89, 111, 112, ..., 889, 1111, ...
+function nextValidPosition(positionHashes, block) {
   let n = 11;
   while (n < 1_000_000) {
     const s = String(n);
-    if (!s.includes('0') && !positionHashes[s]) return s;
+    if (isPlacePath([...s]) && !positionHashes[s] && readAt(block, s) == null) return s;
     n++;
   }
   throw new Error('No valid position found below 1,000,000.');
@@ -1030,7 +1194,7 @@ async function handleSedRegister(origin, collective, body) {
   const hashes = await loadHashes(origin, blockName);
   let position;
   try {
-    position = nextValidPosition(hashes);
+    position = nextValidPosition(hashes, block);
   } catch (e) {
     return { status: 500, body: { error: String(e.message || e), code: 'no_position' } };
   }
@@ -1104,7 +1268,10 @@ async function handleGrainReach(origin, pairId, body) {
   if (existing[side] !== undefined) {
     // Own-side rewrite: requires the existing side's secret as my_passphrase.
     const stored = hashes[side];
+    const capped = stored ? await wrongKeysRefusal(origin, blockName) : null;
+    if (capped) return capped;
     if (!stored || hashGrain(my_passphrase, pairId, side) !== stored) {
+      if (stored) await noteWrongKey(origin, blockName);
       return { status: 403, body: { error: `side ${side} is locked`, code: 'lock_required' } };
     }
     existing[side] = { _: my_side_content };
@@ -1172,8 +1339,8 @@ async function withAppendLock(origin, blockName, fn) {
 // When that block stands behind a ROOT LATCH (latchedSettings, below — an
 // unlatched settings block steers nothing) and carries a line
 // "pool_append_webhook=<url>" at any top-level digit position (first match wins;
-// the line may sit at the position directly or at its underscore), every
-// SUCCESSFUL append to a block named pool:* — at the apex or in any world —
+// the line may sit at the position directly, at its underscore, or one rung
+// beneath it), every SUCCESSFUL append to a block named pool:* — at the apex or in any world —
 // fires one POST {origin, pool, slot, agent_id, ts} at that url,
 // with the shared secret from env POOL_WEBHOOK_SECRET riding the
 // x-pool-webhook-secret header. The beach stays dumb: no dial reads, no
@@ -1201,40 +1368,314 @@ async function withAppendLock(origin, blockName, fn) {
 // its defaults, and the bus goes quiet rather than ringing for someone else.
 // Latch the root (a write with new_lock and no spindle) and the lines are heard.
 const SETTINGS_CACHE_TTL_MS = 60_000;
-const _settingsCache = new Map(); // origin -> { lines: Map<string,string>, at: ms }
+const _settingsCache = new Map(); // `${origin}|${block}` -> { lines: Map<string,string>, at: ms }
 
-async function latchedSettings(origin) {
-  const c = _settingsCache.get(origin);
+// ── THE MEMBERS' GATE ──
+// (bsp-mcp proposals/2026-11-02-leros-on-the-commons-the-build-to-completion.md §4.2;
+// docs/protocol-pscale-beach-v2.md 2.8.) A beach an organisation runs for its members
+// stands behind a READ GATE. It is OFF unless the deploy says BEACH_GATE=members, carries
+// BEACH_GATE_SECRET, and its own `settings` block stands behind a root latch — the rule
+// the webhook line and the caps already keep (no latch, no steering) — so the open
+// commons is byte-for-byte unchanged. A MEMBER is a handle whose passport stands latched
+// here; proving that latch once (POST {block: 'passport:<handle>', secret}, no content)
+// mints a PASS — an HMAC over the handle and an expiry under the deploy's secret, twelve
+// hours — sent as Authorization: Bearer on every request. No session store, no cookie,
+// no new block. A STRANGER is served only what a holder's index marks beyond
+// (shell-indexes 1.111113: index:<holder>, the entry naming the block, its card's 5), the
+// index as that subset, and one plain refusal for everything else — the same whether the
+// block exists or not, since what the gate hides is that a thing exists. The holder of
+// <x>:<handle> is that handle when it keeps an index, else the keepers (BEACH_KEEPERS).
+// Writes need a pass under the latch rules as ever, save the proof itself and a passport
+// founded with an INVITE a member minted (seven days; one minted FOR a name founds that
+// name's passport alone, so a link that travels founds nothing else; and any invite founds
+// once — THE INVITATION, SPENT ONCE, below). What the gate hides a seal cannot
+// (existence, place, size, time); what it cannot hide the seal does (the words from the
+// operator) — the two compose.
+const GATE_ON = process.env.BEACH_GATE === 'members';
+const GATE_SECRET = process.env.BEACH_GATE_SECRET || '';
+const GATE_KEEPERS = String(process.env.BEACH_KEEPERS || '').split(',').map((h) => h.trim()).filter(Boolean);
+const PASS_TTL_MS = 12 * 60 * 60 * 1000;
+const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+if (GATE_ON && !GATE_SECRET) console.error('[pscale-beach] BEACH_GATE=members but no BEACH_GATE_SECRET — the gate stays OFF');
+const b64u = (t) => Buffer.from(String(t), 'utf8').toString('base64url');
+const unb64u = (t) => Buffer.from(String(t), 'base64url').toString('utf8');
+function gateSign(kind, handle, exp) {
+  return createHmac('sha256', GATE_SECRET).update(`${kind}|${handle}|${exp}`).digest('base64url');
+}
+// An invite minted for a name carries it after > in the signed name: a handle never holds a >.
+const INVITEE_RE = /^[A-Za-z0-9_][A-Za-z0-9_ -]{0,31}$/;
+function gateMint(kind, handle, ttlMs, to) {
+  const exp = Date.now() + ttlMs, who = to ? `${handle}>${to}` : handle;
+  return { token: `${kind}.${b64u(who)}.${exp}.${gateSign(kind, who, exp)}`, expires: new Date(exp).toISOString() };
+}
+// Whose token this is — {kind: 'm' | 'i', handle, to, exp} — or null: a forged, expired or malformed one is nobody.
+function gateVerify(token) {
+  if (!GATE_SECRET || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 4) return null;
+  const [kind, h, expRaw, sig] = parts;
+  if (kind !== 'm' && kind !== 'i') return null;
+  const exp = Number(expRaw);
+  if (!Number.isFinite(exp) || exp < Date.now()) return null;
+  let handle = '';
+  try { handle = unb64u(h); } catch { return null; }
+  if (!handle) return null;
+  const want = Buffer.from(gateSign(kind, handle, exp));
+  const got = Buffer.from(String(sig));
+  if (want.length !== got.length || !timingSafeEqual(want, got)) return null;
+  const cut = kind === 'i' ? handle.indexOf('>') : -1;
+  return cut < 0 ? { kind, handle, to: '', exp } : { kind, handle: handle.slice(0, cut), to: handle.slice(cut + 1), exp };
+}
+const _settingsLatchCache = new Map(); // origin -> { latched, at }
+async function settingsLatched(origin) {
+  const c = _settingsLatchCache.get(origin);
+  if (c && Date.now() - c.at < SETTINGS_CACHE_TTL_MS) return c.latched;
+  let latched = false;
+  try { latched = (await loadHashes(origin, 'settings'))['_'] !== undefined; } catch { latched = false; }
+  _settingsLatchCache.set(origin, { latched, at: Date.now() });
+  return latched;
+}
+// Who stands at the door: whether the gate is up for this deploy, and the pass or invite the request carries.
+// An invite is also named by a hash of its token (inviteId) and carries its expiry, for the record of its use.
+async function gateFor(req) {
+  const nobody = { on: false, member: null, invite: null, invited: '', inviteId: '', inviteExp: 0 };
+  if (!GATE_ON || !GATE_SECRET) return nobody;
+  if (!(await settingsLatched(BASE_ORIGIN))) return nobody;
+  const auth = String((req.headers && (req.headers.authorization || req.headers.Authorization)) || '');
+  const m = auth.match(/^Bearer\s+(\S+)$/i);
+  const who = m ? gateVerify(m[1]) : null;
+  const invite = who && who.kind === 'i' ? who : null;
+  return {
+    on: true, member: who && who.kind === 'm' ? who.handle : null,
+    invite: invite ? invite.handle : null, invited: invite ? invite.to : '',
+    inviteId: invite ? createHash('sha256').update(m[1]).digest('hex') : '', inviteExp: invite ? invite.exp : 0,
+  };
+}
+function membersOnly(origin) {
+  return {
+    error: `${origin} is its members' beach: a member proves their passport once for a pass (POST {block: 'passport:<handle>', secret}, no content) and sends it as Authorization: Bearer on every request; what the keepers mark beyond is served to anyone`,
+    code: 'members_only',
+  };
+}
+
+// ── THE INVITATION, SPENT ONCE (the security schematic's 1.34) ──
+// An invitation founds one passport. Named for someone it founds that name's and no other; unnamed, it founds
+// one for whoever carries it first, and nothing after. So the beach records its use: one key in the store per
+// invitation, named by a hash of the token (the store never holds a token that works), written the moment
+// before its passport is founded and living exactly as long as the token does (the token's expiry is the
+// record's), so nothing of it outlasts the week the link could be used. SET NX, so two hands holding one link
+// cannot both found; released if the founding is then refused (a shape, a lock, the key guard), so a mistyped
+// first try spends nothing. Deploy-wide, as the token is: one minted at a world founds once across every world
+// of the deploy. A member who brings in several newcomers mints one invitation for each, named where they can.
+// Behind the wall an invitation holder is a newcomer a member vouched for, so their refusals say why — a link
+// minted for another name, a link already taken, a name that stands — where a stranger hears members_only.
+function inviteUseKey(id) { return `${keyNs(BASE_ORIGIN)}:invite:${id}`; }
+async function inviteUse(id) {
+  try { return id ? await redis.get(inviteUseKey(id)) : null; } catch { return null; }
+}
+async function takeInvite(spend) {
+  const use = { by: spend.by, for: spend.for, founded: spend.founded, origin: spend.origin, at: new Date().toISOString() };
+  return (await redis.set(inviteUseKey(spend.id), use, { nx: true, pxat: spend.exp })) === 'OK';
+}
+async function releaseInvite(spend) {
+  try { await redis.del(inviteUseKey(spend.id)); } catch { /* the record runs out with the token regardless */ }
+}
+function inviteForAnother(origin, by, to) {
+  return {
+    error: `this invitation from ${by} was minted for ${to}, and founds passport:${to} at ${origin} and no other name: found that one with it, or ask ${by} for an invitation in your own name`,
+    code: 'invite_for_another', by, for: to,
+  };
+}
+function inviteSpent(origin, by, use) {
+  const when = use && typeof use === 'object' && typeof use.at === 'string' ? ` on ${use.at.slice(0, 10)}` : '';
+  return {
+    error: `this invitation from ${by} was taken already${when}, and an invitation founds one passport at ${origin}: ask ${by}, or any member, for one of your own`,
+    code: 'invite_spent', by,
+  };
+}
+function nameStands(origin, blockName) {
+  return {
+    error: `${blockName} already stands at ${origin}, and an invitation founds a passport that does not stand yet: choose another name (and if this one is yours, prove it for a pass: POST {block: '${blockName}', secret}, no content)`,
+    code: 'name_taken',
+  };
+}
+const _indexCache = new Map(); // `${origin}|index:<holder>` -> { block, at }
+async function holderIndex(origin, holder) {
+  const key = `${origin}|index:${holder}`;
+  const c = _indexCache.get(key);
+  if (c && Date.now() - c.at < SETTINGS_CACHE_TTL_MS) return c.block;
+  let block = null;
+  try { block = await loadBlock(origin, `index:${holder}`); } catch { block = null; }
+  _indexCache.set(key, { block, at: Date.now() });
+  return block;
+}
+// An index is an accumulator: at floor 1 its digits are the entries, at floor 2 its underscore and
+// its digits are eras whose digits are the entries, and so on — an entry stands at depth = floor.
+function indexEntries(index) {
+  if (!index || typeof index !== 'object') return [];
+  let floor = 0, n = index;
+  while (n && typeof n === 'object' && '_' in n) { floor++; n = n['_']; if (typeof n === 'string') break; }
+  if (floor === 0) floor = 1;
+  const out = [];
+  const walk = (node, depth) => {
+    if (!node || typeof node !== 'object') return;
+    if (depth === floor) { out.push(node); return; }
+    for (const k of ['_', '1', '2', '3', '4', '5', '6', '7', '8', '9']) if (node[k] && typeof node[k] === 'object') walk(node[k], depth + 1);
+  };
+  walk(index, 0);
+  return out;
+}
+// The entry whose line IS the block's name, or opens with it; its card's 5 is the visibility.
+function indexSays(index, blockName) {
+  for (const e of indexEntries(index)) {
+    const line = typeof e['_'] === 'string' ? e['_'] : '';
+    if (line === blockName || line.startsWith(blockName + ' ') || line.startsWith(blockName + '\u00a0')) {
+      const v = e['5'];
+      return typeof v === 'string' ? v.trim().toLowerCase() : (v && typeof v === 'object' && typeof v['_'] === 'string' ? v['_'].trim().toLowerCase() : '');
+    }
+  }
+  return null;
+}
+const GATE_HOLDER_EXEMPT = ['sed:', 'grain:', 'archive:', 'probe:', 'index:'];
+// Whether a block is marked beyond by its holder's index — the handle it is named for when that
+// handle keeps an index here, else the keepers. Nothing listed, nothing beyond.
+async function beyondOf(origin, blockName) {
+  const cut = blockName.lastIndexOf(':');
+  const handle = cut > 0 && cut < blockName.length - 1 && !GATE_HOLDER_EXEMPT.some((p) => blockName.startsWith(p)) ? blockName.slice(cut + 1) : null;
+  if (blockName.startsWith('index:')) {
+    // an index decides for itself: index:<h> is beyond only if it lists itself so
+    const own = await holderIndex(origin, blockName.slice('index:'.length));
+    return own ? indexSays(own, blockName) === 'beyond' : false;
+  }
+  if (handle) {
+    const own = await holderIndex(origin, handle);
+    if (own) return indexSays(own, blockName) === 'beyond';
+  }
+  for (const keeper of GATE_KEEPERS) {
+    const idx = await holderIndex(origin, keeper);
+    if (!idx) continue;
+    const says = indexSays(idx, blockName);
+    if (says !== null) return says === 'beyond';
+  }
+  return false;
+}
+async function beyondNames(origin, names) {
+  const out = [];
+  for (const n of names) if (await beyondOf(origin, n)) out.push(n);
+  return out;
+}
+
+// ── THE GUARD ──
+// (who-answers 1.11: the notice is the gate — the handler reads its formulaic rules and enforces
+// them; 1.1112: the guard in the handler; bsp-mcp #564 §4.4 item 2.) Behind the members' switch,
+// the deploy's own `notice` block, standing behind a root latch as `settings` must, may carry one
+// line:
+//     people_keeping=passport:,history:,now:,pool:
+// name prefixes, comma-joined; a prefix without its colon names a bare block; `*` is every block.
+// A PLAIN write into a block named so — its content as sent, not sealed — is refused when any
+// string in it carries what the notice says goes in no block: an email address, a UK phone
+// number, a National Insurance number, an NHS number. The kind found is named, never the value,
+// and the refusal says what to do instead: seal it, or leave it out. A sealed write passes — any
+// node that is a gray envelope (its 9 says so), since ciphertext carries no words; a claim that a
+// write is sealed is not a seal, so the request's own gray flag is not asked. Whatever door the write came through — the router, an app, curl — it is this
+// one door, so the rule holds for all of them. Names are a judgement, not a formula, and stay
+// with the model that writes (1.11); the notice's words are for it. Off the gate nothing here
+// runs, and with no line heard nothing is a people-keeping place. The backup's mirror hears the
+// same line (scripts/beach-backup.sh): what the notice says, the beach does, in every copy.
+const GUARD_SCREENS = [
+  ['an email address', (s) => /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/.test(s)],
+  // spaces, hyphens and brackets between digits are how a number is written; a dot is not (an address is 1.1111)
+  ['a phone number', (s) => /(?:^|[^\d+])(?:\+44\d{9,11}|0\d{9,10})(?!\d)/.test(s.replace(/\(0\)/g, '0').replace(/(?<=\d)[\s()-]+(?=\d)/g, ''))],
+  ['a National Insurance number', (s) => /\b[A-CEGHJ-PR-TW-Z]{2}\s?\d{2}\s?\d{2}\s?\d{2}\s?[A-D]\b/i.test(s)],
+  ['an NHS number', (s) => nhsNumberIn(s)],
+];
+// Ten digits, 3-3-4 with one separator, passing the NHS check digit (weights 10 to 2, mod 11); bare
+// ten digits only when the words say NHS nearby, since a sundial address is ten digits too.
+function nhsNumberIn(s) {
+  const re = /(?:^|\D)(\d{3})([\s-]?)(\d{3})\2(\d{4})(?!\d)/g;
+  let m;
+  while ((m = re.exec(s))) {
+    if (!m[2] && !/nhs/i.test(s.slice(Math.max(0, m.index - 24), m.index))) continue;
+    const d = (m[1] + m[3] + m[4]).split('').map(Number);
+    let check = 11 - (d.slice(0, 9).reduce((a, x, i) => a + x * (10 - i), 0) % 11);
+    if (check === 11) check = 0;
+    if (check !== 10 && check === d[9]) return true;
+  }
+  return false;
+}
+function isGrayNode(n) {
+  return !!n && typeof n === 'object' && typeof n['1'] === 'string' && typeof n['2'] === 'string' && !!n['9'] && typeof n['9'] === 'object' && n['9']['_'] === 'gray';
+}
+function plainStrings(v, out = []) {
+  if (typeof v === 'string') out.push(v);
+  else if (Array.isArray(v)) for (const x of v) plainStrings(x, out);
+  else if (v && typeof v === 'object' && !isGrayNode(v)) for (const k of Object.keys(v)) plainStrings(v[k], out);
+  return out;
+}
+async function peopleKeeping(blockName) {
+  const line = (await latchedLines(BASE_ORIGIN, 'notice')).get('people_keeping');
+  if (!line) return false;
+  if (line === '*') return true;
+  return line.split(',').map((p) => p.trim()).filter(Boolean).some((p) => blockName.startsWith(p) || (p.endsWith(':') && blockName === p.slice(0, -1)));
+}
+async function guardRefusal(origin, blockName, content) {
+  if (content === undefined || !(await peopleKeeping(blockName))) return null;
+  for (const str of plainStrings(content)) {
+    for (const [kind, hit] of GUARD_SCREENS) {
+      if (hit(str)) {
+        return { status: 422, body: { error: `"${blockName}" is a people-keeping place at ${origin}, and this write carries ${kind} in plain words — the notice (?block=notice) says none goes in any block here: seal it, or leave it out`, code: 'people_keeping', found: kind } };
+      }
+    }
+  }
+  return null;
+}
+
+// The lines a steering block carries, heard only from behind its root latch: `settings` (the
+// webhook, the caps, the wires) and `notice` (the guard's people_keeping line, below).
+async function latchedLines(origin, name) {
+  const ck = `${origin}|${name}`;
+  const c = _settingsCache.get(ck);
   if (c && Date.now() - c.at < SETTINGS_CACHE_TTL_MS) return c.lines;
   const lines = new Map();
   try {
-    const hashes = await loadHashes(origin, 'settings');
-    const settings = hashes['_'] !== undefined ? await loadBlock(origin, 'settings') : null;
+    const hashes = await loadHashes(origin, name);
+    const settings = hashes['_'] !== undefined ? await loadBlock(origin, name) : null;
     if (settings && typeof settings === 'object') {
+      const lineOf = (v) => typeof v === 'string' ? v
+        : (v && typeof v === 'object' && typeof v['_'] === 'string' ? v['_'] : '');
+      // Tolerant like parseConventionName: the value ends at whitespace, and a
+      // line may carry explanatory prose after it — the line self-describes.
+      // First declaration of a key wins.
+      const hear = (s) => {
+        const m = s.match(/^\s*([a-z][a-z0-9_]*)\s*=\s*(\S+)(?:\s|$)/);
+        if (m && !lines.has(m[1])) lines.set(m[1], m[2]);
+      };
+      // A line stands at a top-level digit or one rung beneath it, so a family of
+      // lines nests under the branch that names it (the caps under one digit)
+      // instead of fanning across the root. The root latch binds that rung exactly
+      // as it binds the digit above it.
       for (const k of Object.keys(settings)) {
         if (!/^[1-9]\d*$/.test(k)) continue;
         const v = settings[k];
-        const s = typeof v === 'string' ? v
-          : (v && typeof v === 'object' && typeof v['_'] === 'string' ? v['_'] : '');
-        // Tolerant like parseConventionName: the value ends at whitespace, and a
-        // line may carry explanatory prose after it — the line self-describes.
-        // First declaration of a key wins.
-        const m = s.match(/^\s*([a-z][a-z0-9_]*)\s*=\s*(\S+)(?:\s|$)/);
-        if (m && !lines.has(m[1])) lines.set(m[1], m[2]);
+        hear(lineOf(v));
+        if (v && typeof v === 'object') {
+          for (const c of Object.keys(v)) if (/^[1-9]$/.test(c)) hear(lineOf(v[c]));
+        }
       }
     }
   } catch { /* unreadable — treat as undeclared */ }
-  _settingsCache.set(origin, { lines, at: Date.now() });
+  _settingsCache.set(ck, { lines, at: Date.now() });
   return lines;
 }
+const latchedSettings = (origin) => latchedLines(origin, 'settings');
 
 async function poolAppendWebhookUrl() {
   const url = (await latchedSettings(BASE_ORIGIN)).get('pool_append_webhook');
   return url && /^https?:\/\//.test(url) ? url : null;
 }
 
-// ── Three caps, OFF until a beach's owner writes them ──
-// (bsp-mcp proposals/2026-09-21-tidying-and-spam.md 2.5)
+// ── Four caps, OFF until a beach's owner writes them ──
+// (bsp-mcp proposals/2026-09-21-tidying-and-spam.md 2.5; the fourth, security.1)
 //
 // open-commons 1: availability here is cheaply spammable and low-stakes — a
 // flood is a nuisance, not a wound, and clearing is the lever, never a wall. So
@@ -1248,10 +1689,17 @@ async function poolAppendWebhookUrl() {
 //                               so births are the dear thing. Per deploy, not per
 //                               world: worlds are free to mint.
 //   cap_appends_per_minute=<n>  appends ONE unlatched accumulator accepts in a
-//                               clock minute — each append rewrites the whole
-//                               block, so a flooded board slows until the store
-//                               refuses it.
+//                               clock minute, at its root or beneath any node —
+//                               each append rewrites the whole block, so a
+//                               flooded board slows until the store refuses it.
 //   cap_write_bytes=<n>         the size of one write no latch stands behind.
+//   cap_wrong_keys_per_hour=<n> wrong keys ONE block hears in a clock hour. A
+//                               latch is one fast hash and nothing else slows a
+//                               guess, so a script could try a dictionary
+//                               against any latch at the speed of the door.
+//                               Past the cap no key is TRIED on that block until
+//                               the hour turns — the right one included, or the
+//                               cap would slow a guesser without stopping them.
 //
 // TWO SWITCHES, because "off" must cost nothing. The caps sit on the hottest
 // unlatched paths there are (a presence heartbeat is an unlatched write), and
@@ -1268,11 +1716,18 @@ async function poolAppendWebhookUrl() {
 // spindle). Appends then need the key, the flood stops at once, and
 // relinquishing the latch reopens it.
 //
-// A latch-holder is an author and is never throttled; a birth has no latch
-// behind it by definition, so births are counted whoever makes them. The
-// accepted cost, said plainly: a vandal can hold a beach at its birth cap and
-// keep newcomers out for that hour — "the commons goes quiet a while" — and
-// cannot touch anyone already here.
+// A latch-holder is an author and is never throttled by the first three; a birth
+// has no latch behind it by definition, so births are counted whoever makes
+// them — a latch set on a name that holds no block among them, since it takes
+// the name as surely as a block would. The accepted cost, said plainly: a vandal
+// can hold a beach at its birth cap and keep newcomers out for that hour — "the
+// commons goes quiet a while" — and cannot touch anyone already here.
+//
+// The fourth is the one cap that can reach a keyholder, and its cost is said as
+// plainly: a stranger who spends it on one block holds that block's keyholder out
+// until the hour turns. Nothing written there changes, and a wrong key still never
+// opens it. A keyless act is not a guess and is never counted; a key tried for a
+// passport through a block named for its handle counts against the passport.
 const CAPS_ON = process.env.BEACH_CAPS === 'on';
 async function capOf(key) {
   if (!CAPS_ON) return 0;
@@ -1304,6 +1759,26 @@ async function sizeRefusal(content) {
   const bytes = Buffer.byteLength(JSON.stringify(content ?? null));
   if (bytes <= cap) return null;
   return { status: 413, body: { error: `this write is ${bytes} bytes and no latch stands behind it — an unlatched write here may be ${cap} at most (cap_write_bytes)`, code: 'cap_write_bytes' } };
+}
+// Asked at every door BEFORE a key is tried; told AFTER one fails.
+function wrongKeysKey(origin, blockName, when) {
+  return `${keyNs(origin)}:wrongkeys:${blockName}:${when.toISOString().slice(0, 13)}`;
+}
+async function wrongKeysRefusal(origin, blockName, when = new Date()) {
+  const cap = await capOf('cap_wrong_keys_per_hour');
+  if (!cap) return null;
+  try {
+    const n = parseInt(String((await redis.get(wrongKeysKey(origin, blockName, when))) ?? 0), 10);
+    if (!(n >= cap)) return null;
+  } catch { return null; }   // a counter's fault never refuses a write
+  return { status: 429, body: { error: `"${blockName}" has heard ${cap} wrong keys this hour — no key is tried on it until the hour turns, and nothing written there has changed (cap_wrong_keys_per_hour)`, code: 'cap_wrong_keys' } };
+}
+async function noteWrongKey(origin, blockName, when = new Date()) {
+  if (!(await capOf('cap_wrong_keys_per_hour'))) return;
+  try {
+    const k = wrongKeysKey(origin, blockName, when);
+    if ((await redis.incr(k)) === 1) await redis.expire(k, 7200);
+  } catch { /* the refusal stands; the count is refinement */ }
 }
 
 async function firePoolAppendWebhook(origin, blockName, slotAddress, entry) {
@@ -1404,12 +1879,19 @@ async function handleAppendAtSpindle(origin, blockName, spindle, content, secret
   // inheritance as the ordinary write path at this spindle.
   const hashes = await loadHashes(origin, blockName);
   const lockKey = lockKeyForWrite(blockName, spindle, preBlock);
-  const inherits = !blockName.startsWith('sed:') && !blockName.startsWith('grain:');
-  let authKey = lockKey;
-  let stored = hashes[lockKey];
-  if (inherits && stored === undefined && lockKey !== '_' && hashes['_'] !== undefined) {
-    authKey = '_';
-    stored = hashes['_'];
+  const governing = governingKey(blockName, lockKey, hashes);
+  const authKey = governing ?? lockKey;
+  const stored = governing === null ? undefined : hashes[governing];
+  // On a sed or a grain an append lands only beneath a node a latch governs: a
+  // grain's lines beneath a side, a sed's beneath a place or a position its
+  // founder holds. The slot it takes is the address of a place nobody has
+  // settled yet (beneath 11 the next free is 112's), so an append no latch
+  // stands behind would write where a newcomer is later placed.
+  if (blockName.startsWith('grain:') && governing !== '1' && governing !== '2') {
+    return { status: 405, body: { error: `appends to "${blockName}" land beneath a side, under that side's key — "${spindle}" is not inside a side anyone holds`, code: 'grain_reach_only' } };
+  }
+  if (blockName.startsWith('sed:') && governing === null) {
+    return { status: 403, body: { error: `"${spindle}" of "${blockName}" answers to no latch, and a sed takes an append only beneath a position a latch governs — a place's holder beneath their place, a founder beneath what no place holds`, code: 'lock_required' } };
   }
   if (stored) {
     if (!secret) {
@@ -1417,9 +1899,19 @@ async function handleAppendAtSpindle(origin, blockName, spindle, content, secret
         ? `position "${lockKey}" of "${blockName}" is locked, secret required`
         : `position "${lockKey}" of "${blockName}" inherits the lock at its root, secret required`, code: 'lock_required' } };
     }
+    const capped = await wrongKeysRefusal(origin, blockName);
+    if (capped) return capped;
     if (hashByBlockName(origin, blockName, authKey, secret) !== stored) {
+      await noteWrongKey(origin, blockName);
       return { status: 403, body: { error: 'secret does not match', code: 'lock_required' } };
     }
+  } else {
+    // No latch stands behind this append, so the caps (off unless the owner wrote
+    // them) apply as at the root: its size, and this board's fill for the minute —
+    // the same count, since the whole block is the unit an append rewrites. An
+    // append beneath a node never mints a block, so births are not asked.
+    const refused = (await sizeRefusal(content)) || (await appendRefusal(origin, blockName));
+    if (refused) return refused;
   }
   // Same recency law as the root append (block-conventions:9) — object entries
   // that haven't dated themselves get position 3 stamped; strings ride through.
@@ -1498,6 +1990,22 @@ async function handleAppendAtSpindle(origin, blockName, spindle, content, secret
 async function handleStandardWrite(origin, blockName, body) {
   const { spindle = '', content, secret, new_lock, confirm, append, resolve_window, resolve_seen } = body || {};
 
+  // A passport is one whole: while its root is open, a latch on any part holds all of it.
+  let passportKey = null;
+  if (isPassport(blockName)) {
+    const held = await loadHashes(origin, blockName);
+    if (held['_'] === undefined && Object.keys(held).length > 0) {
+      const offered = [secret, new_lock].some((k) => typeof k === 'string' && k !== '');
+      const capped = offered ? await wrongKeysRefusal(origin, blockName) : null;
+      if (capped) return capped;
+      passportKey = passportKeyAmong(origin, blockName, held, [secret, new_lock]);
+      if (passportKey === null) {
+        if (offered) await noteWrongKey(origin, blockName);
+        return passportHeldRefusal(blockName);
+      }
+    }
+  }
+
   // APPEND mode — atomic next-slot allocation with supernest-on-rollover
   // (sunstone:1.63). THE accumulator write: marks, history, pools. The handler
   // picks the next free zero-free slot and wraps the whole block {_: old} when
@@ -1519,11 +2027,22 @@ async function handleStandardWrite(origin, blockName, body) {
     if (appendSpindle !== '') {
       return handleAppendAtSpindle(origin, blockName, appendSpindle, content, secret, resolve_window);
     }
+    // Neither a sed nor a grain is an accumulator at its root: a sed's places are
+    // handed out by settling, and a grain's lines go beneath a side. A root append
+    // lands at a container (a sed's 3 holds the places 31 to 39), and the tenth
+    // wraps the whole block, moving every place, or the record at 9 of who holds
+    // which side, beneath the underscore.
+    if (blockName.startsWith('sed:') || blockName.startsWith('grain:')) {
+      return { status: 405, body: { error: `"${blockName}" takes no append at its root — ${blockName.startsWith('sed:') ? 'a sed\'s places are handed out by settling (pscale_settle)' : 'a grain\'s lines are appended beneath a side, at spindle "1" or "2", under that side\'s key'}`, code: 'substrate_append_unsupported' } };
+    }
     // Whole-accumulator authority: the `_` lock governs append (an accumulator
     // is locked or open as a unit; per-slot locks don't fit an append stream).
     const hashes = await loadHashes(origin, blockName);
     if (hashes['_']) {
+      const capped = secret ? await wrongKeysRefusal(origin, blockName) : null;
+      if (capped) return capped;
       if (!secret || hashByBlockName(origin, blockName, '_', secret) !== hashes['_']) {
+        if (secret) await noteWrongKey(origin, blockName);
         return { status: 403, body: { error: `append to "${blockName}" requires the accumulator secret`, code: 'lock_required' } };
       }
     } else {
@@ -1684,10 +2203,11 @@ async function handleStandardWrite(origin, blockName, body) {
   // A grain's lifecycle is reach-creates, sides-own-their-halves. There is no
   // legitimate replace-the-whole-grain operation: writing a side is a spindled
   // write under that side's key, and re-voicing your own reach is the reach
-  // action's own-side rewrite. Creation is untouched — the gate only fires when
-  // the block already exists. sed: is untouched too: a sed: root DOES carry a
-  // '_' lock from founding, so there the lock genuinely protects and refusing
-  // would remove a real admin capability.
+  // action's own-side rewrite. Creation is refused below as well, since a grain
+  // is born by a reach (substrateWriteRefusal). sed: is gated there too, once
+  // its latches are read: a sed born by its first settle carries no root latch
+  // at all, and a founder's root latch does not stand for its members, so a sed
+  // holding places is never replaced whole either (2026-10-27).
   if (content !== undefined && !spindle && existing != null && blockName.startsWith('grain:')) {
     return {
       status: 405,
@@ -1708,9 +2228,10 @@ async function handleStandardWrite(origin, blockName, body) {
     return { status: 400, body: { error: 'whole-block replace requires {confirm: true}', code: 'confirm_required' } };
   }
   const hashes = await loadHashes(origin, blockName);
-  let lockKey;
+  let lockKey, digits;
   try {
     lockKey = lockKeyForWrite(blockName, spindle, block);
+    digits = spindle ? parseSpindle(String(spindle).replace(/\*$/, ''), floorDepth(block ?? {})).digits : [];
   } catch (e) {
     if (e instanceof InvalidAddressError) {
       return { status: 400, body: { error: e.message, code: 'invalid_address' } };
@@ -1735,19 +2256,20 @@ async function handleStandardWrite(origin, blockName, body) {
   // carrying its own lock still wins, so a position may be delegated to a
   // different holder.
   //
-  // ORDINARY BLOCKS ONLY. sed: and grain: are registration substrates whose
-  // positions ARE their identities — a registrant's position-of-arrival, a
-  // grain party's side — allocated and locked together by their own state
-  // machines. Their root lock is the founder's, and letting it bind the
-  // registrants' positions would put every member under the founder's key.
-  // They keep flat per-position authority.
+  // sed: AND grain: INHERIT ALONG THE WALK, NEVER FROM A ROOT INTO A PLACE.
+  // They are registration substrates whose positions ARE their identities — a
+  // registrant's position-of-arrival, a grain party's side — allocated and
+  // locked together by their own state machines, and those positions sit
+  // deeper than a first digit, so the nearest latch on the walk governs
+  // (governingKey). A sed's root lock is the founder's and governs only what no
+  // registrant holds; letting it bind the registrants' positions would put
+  // every member under the founder's key. Until 2026-10-27 these blocks kept
+  // flat per-position authority, which left every position nobody had latched
+  // one by one open to any hand, and a place's own lines open beneath it.
   const inherits = !blockName.startsWith('sed:') && !blockName.startsWith('grain:');
-  let authKey = lockKey;
-  let stored = hashes[lockKey];
-  if (inherits && stored === undefined && lockKey !== '_' && hashes['_'] !== undefined) {
-    authKey = '_';
-    stored = hashes['_'];
-  }
+  const governing = governingKey(blockName, lockKey, hashes);
+  const authKey = governing ?? lockKey;
+  const stored = governing === null ? undefined : hashes[governing];
 
   // R5 — relinquish. new_lock null or '' returns the position to its PRE-lock
   // state: the hash entry is deleted, the position is open again as if never
@@ -1768,6 +2290,10 @@ async function handleStandardWrite(origin, blockName, body) {
       }
     };
   }
+  if (!inherits) {
+    const refused = substrateWriteRefusal(blockName, { digits, governing, content, newLock: new_lock, existing, hashes });
+    if (refused) return refused;
+  }
 
   // A handle founds under its own key — setting a lock where none stands, on a block
   // named for a handle whose passport is locked, needs that passport's key.
@@ -1783,7 +2309,10 @@ async function handleStandardWrite(origin, blockName, body) {
         ? `position "${lockKey}" of "${blockName}" is locked, secret required`
         : `position "${lockKey}" of "${blockName}" inherits the lock at its root, secret required`, code: 'lock_required' } };
     }
+    const capped = await wrongKeysRefusal(origin, blockName);
+    if (capped) return capped;
     if (hashByBlockName(origin, blockName, authKey, secret) !== stored) {
+      await noteWrongKey(origin, blockName);
       return { status: 403, body: { error: 'secret does not match', code: 'lock_required' } };
     }
   }
@@ -1795,10 +2324,19 @@ async function handleStandardWrite(origin, blockName, body) {
     const refused = (await sizeRefusal(content)) || (existing == null ? await birthRefusal() : null);
     if (refused) return refused;
   }
+  // A latch set on a name that holds no block stores a lock with nothing beside
+  // it — absent from the index, yet the name is taken — so it is a birth too.
+  if (content === undefined && existing == null && stored === undefined && new_lock !== undefined && !relinquish) {
+    const refused = await birthRefusal();
+    if (refused) return refused;
+  }
 
-  // Lock-rotation authority.
+  // Lock-rotation authority. (With content, the key was already tried above.)
   if (new_lock !== undefined && stored) {
+    const capped = secret && content === undefined ? await wrongKeysRefusal(origin, blockName) : null;
+    if (capped) return capped;
     if (!secret || hashByBlockName(origin, blockName, authKey, secret) !== stored) {
+      if (secret) await noteWrongKey(origin, blockName);
       return { status: 403, body: { error: 'lock rotation requires current secret', code: 'lock_required' } };
     }
   }
@@ -1858,6 +2396,19 @@ async function handleStandardWrite(origin, blockName, body) {
     }
   }
 
+  // …and a passport's top latches itself, under the key that holds a part of it, that has
+  // just latched a part of it, or that rode its founding. A relinquish at the root is the
+  // holder's own word to leave it open.
+  if (isPassport(blockName) && hashes['_'] === undefined && !(relinquish && lockKey === '_')) {
+    const key = passportKey
+      ?? (!relinquish && typeof new_lock === 'string' && hashes[lockKey] !== undefined ? new_lock : null)
+      ?? (existing == null && content !== undefined && typeof secret === 'string' && secret !== '' ? secret : null);
+    if (key) {
+      hashes['_'] = hashOrdinary(origin, key, blockName, '_');
+      await saveHashes(origin, blockName, hashes);
+    }
+  }
+
   // born: this write found no block here and made one. Said in the ack so every
   // surface learns of a birth at the moment it happens, at no extra read — a
   // mistyped handle mints a block, and the hand that minted it is the one best
@@ -1870,7 +2421,7 @@ async function handleStandardWrite(origin, blockName, body) {
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept, Authorization');
   res.setHeader('Access-Control-Expose-Headers', NOW_HEADER);
 
   if (req.method === 'OPTIONS') {
@@ -1900,8 +2451,15 @@ export default async function handler(req, res) {
 
   const blockName = ((req.method === 'POST' || req.method === 'DELETE') && blockParamFromBody(req.body)) || blockParam(req.query);
   const origin = originFromRequest(req);
+  const gate = await gateFor(req);
 
   if (req.method === 'GET') {
+    if (gate.on && !gate.member) {
+      // A stranger at a members' beach: the tables are members-only, and a block is served only
+      // where its holder marks it beyond — one refusal, the same whether it exists or not.
+      if (!blockName && req.query && 'tables' in req.query) return res.status(401).json(membersOnly(origin));
+      if (blockName && !(await beyondOf(origin, blockName))) return res.status(401).json(membersOnly(origin));
+    }
     // ?tables — the /w/ addresses with a room written (listPlayedTables).
     // Answered at the beach's own origin, where its /w/ addresses hang; a /w/
     // address or a sub-beach has none beneath it.
@@ -1921,8 +2479,11 @@ export default async function handler(req, res) {
       // Derived index: list named blocks at this surface. The surface is the
       // beach; the blocks listed are what's actually here. `bytes` (when the
       // store supports STRLEN) maps each block to its stored-JSON size, so a
-      // reader picks an aperture before paying for a read.
-      const { names: blocks, bytes } = await listBlockNames(origin);
+      // reader picks an aperture before paying for a read — weighed below,
+      // once touched is read, so only what moved is weighed again.
+      let { names: blocks, prefix } = await listBlockNames(origin);
+      const gated = gate.on && !gate.member;
+      if (gated) blocks = await beyondNames(origin, blocks);
       // `touched` rides beside `bytes` as a second additive sibling — block
       // name → ISO of its last content write, so one GET answers "what
       // changed since I last looked" and a reader refetches only what moved.
@@ -1937,17 +2498,18 @@ export default async function handler(req, res) {
       // which touched alone cannot: a stray minted a minute ago and a busy old
       // block both read as lately touched. Stamped from 2026-09 on; a block born
       // before that carries none, and a reader treats absence as "before".
-      let touched = null, born = null;
+      let touched = null, born = null, stamps = null;
       const present = new Set(blocks);
       const listed = (t) => {
         if (!t || typeof t !== 'object') return null;
         const kept = Object.fromEntries(Object.entries(t).filter(([k]) => present.has(k)));
         return Object.keys(kept).length ? kept : null;
       };
-      try { touched = listed(await redis.hgetall(touchedKey(origin))); } catch { /* the index stands without it */ }
+      try { stamps = await redis.hgetall(touchedKey(origin)); touched = listed(stamps); } catch { /* the index stands without it */ }
       try { born = listed(await redis.hgetall(bornKey(origin))); } catch { /* the index stands without it */ }
+      const bytes = await blockBytes(origin, prefix, blocks, stamps && typeof stamps === 'object' ? stamps : {});
       return res.status(200).json({
-        _: `URL surface at ${origin}. Named sibling blocks listed below; address each via ?block=<name>${bytes ? '; bytes maps each block to its stored size — pick an aperture before the read' : ''}${touched ? '; touched maps each block to when it last changed — fetch only what moved' : ''}${born ? '; born maps each block to when it first arrived — absent means before the stamp existed' : ''}; now is the moment this was served — ISO, its ten-digit sundial address (the year first), its voicing — the stamp every response also carries as X-Pscale-Now.${blocks.includes('lighthouse') ? ' First visit: start at ?block=lighthouse — the compass for this surface.' : ''} Substrate-wide conventions at bsp(agent_id='pscale', block='block-conventions').`,
+        _: `${gated ? `${origin} is its members' beach; listed here is what its keepers mark beyond, and a member proves their passport once for a pass (POST {block: 'passport:<handle>', secret}). ` : ''}URL surface at ${origin}. Named sibling blocks listed below; address each via ?block=<name>${bytes ? '; bytes maps each block to its stored size — pick an aperture before the read' : ''}${touched ? '; touched maps each block to when it last changed — fetch only what moved' : ''}${born ? '; born maps each block to when it first arrived — absent means before the stamp existed' : ''}; now is the moment this was served — ISO, its ten-digit sundial address (the year first), its voicing — the stamp every response also carries as X-Pscale-Now.${blocks.includes('lighthouse') ? ' First visit: start at ?block=lighthouse — the compass for this surface.' : ''} Substrate-wide conventions at bsp(agent_id='pscale', block='block-conventions').`,
         origin,
         blocks,
         ...(bytes ? { bytes } : {}),
@@ -2001,23 +2563,83 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'block name required (pass ?block=<name> or "block" in body)', code: 'invalid_shape' });
     }
     const body = req.body || {};
+    let spend = null;   // the invitation this write founds a passport with, recorded as taken just before it lands
+
+    if (gate.on) {
+      // THE PROOF: a passport's latch proved once, no content, mints a pass.
+      if (isPassport(blockName) && body.content === undefined && body.new_lock === undefined && body.append !== true && body.invite !== true && typeof body.secret === 'string' && body.secret !== '') {
+        const held = await loadHashes(origin, blockName);
+        if (Object.keys(held).length === 0) return res.status(404).json({ error: `no latched passport "${blockName}" stands at ${origin}`, code: 'not_found' });
+        const capped = await wrongKeysRefusal(origin, blockName);
+        if (capped) return res.status(capped.status).json(capped.body);
+        if (passportKeyAmong(origin, blockName, held, [body.secret]) === null) {
+          await noteWrongKey(origin, blockName);
+          return res.status(403).json({ error: 'secret does not match', code: 'lock_required' });
+        }
+        const handle = blockName.slice('passport:'.length);
+        const { token, expires } = gateMint('m', handle, PASS_TTL_MS);
+        return res.status(200).json({ _: `a pass for ${handle} at ${origin} until ${expires}: send it as Authorization: Bearer on every request`, pass: token, handle, expires });
+      }
+      // THE INVITE: a member mints one; the newcomer's first write founds their passport with it. Minted FOR a name
+      // (body.for, a handle), it founds that name's passport and no other: a link that travels then founds nothing else.
+      if (body.invite === true) {
+        if (!gate.member) return res.status(401).json(membersOnly(origin));
+        const to = body.for === undefined ? '' : String(body.for).trim();
+        if (body.for !== undefined && !INVITEE_RE.test(to)) return res.status(400).json({ error: 'for names who the invite is for: a handle, up to 32 letters, digits, spaces, - or _', code: 'invalid_shape' });
+        const { token, expires } = gateMint('i', gate.member, INVITE_TTL_MS, to);
+        const whom = to ? `passport:${to}` : 'passport:<their name>';
+        return res.status(200).json({ _: `an invitation from ${gate.member} to ${origin}${to ? ` for ${to}` : ''} until ${expires}: the newcomer's first write, founding ${whom} with new_lock, carries it as Authorization: Bearer`, invite: token, by: gate.member, ...(to ? { for: to } : {}), expires });
+      }
+      if (!gate.member) {
+        // A stranger writes nothing but a passport founded locked with an invitation (THE INVITATION, SPENT ONCE).
+        const founding = !!gate.invite && isPassport(blockName) && typeof body.new_lock === 'string' && body.new_lock !== '' && body.append !== true;
+        if (!founding) return res.status(401).json(membersOnly(origin));
+        if (gate.invited && blockName !== `passport:${gate.invited}`) return res.status(403).json(inviteForAnother(origin, gate.invite, gate.invited));
+        const used = await inviteUse(gate.inviteId);
+        if (used) return res.status(410).json(inviteSpent(origin, gate.invite, used));
+        if ((await loadBlock(origin, blockName)) != null) return res.status(409).json(nameStands(origin, blockName));
+        spend = { id: gate.inviteId, exp: gate.inviteExp, by: gate.invite, for: gate.invited, founded: blockName, origin };
+      }
+    }
+    // THE KEY GUARD: a write that carries, as a whole word, a key the same request presents is refused before
+    // anything lands, open beach or gated, whichever door it came through (lib/key-guard.js, the router's twin).
+    // Read is what would land: a write's content, a settle's declaration and shell reference, a grain reach's
+    // description, side and name. A gray write passes, sealed before it arrived.
+    const keyed = refuseKeyInPayload(
+      { content: body.content, declaration: body.declaration, shell_ref: body.shell_ref, description: body.description, my_side_content: body.my_side_content, agent_id: body.agent_id },
+      [body.secret, body.new_lock, body.passphrase, body.my_passphrase],
+    );
+    if (keyed) return res.status(keyed.status).json(keyed.body);
+    // THE GUARD: behind the gate, a plain write into a people-keeping place is screened (its rule is above, by the gate's).
+    if (gate.on && body.action === undefined) {
+      const guarded = await guardRefusal(origin, blockName, body.content);
+      if (guarded) return res.status(guarded.status).json(guarded.body);
+    }
+    // The invitation is taken the moment before its passport is founded: one hand of two holding one link wins.
+    if (spend && !(await takeInvite(spend))) return res.status(410).json(inviteSpent(origin, spend.by, await inviteUse(spend.id)));
 
     // Substrate-action dispatch (sed:/grain: state machines).
     let result;
-    if (blockName.startsWith('sed:') && body.action === 'register') {
-      result = await handleSedRegister(origin, blockName.slice(4), body);
-    } else if (blockName.startsWith('grain:') && body.action === 'reach') {
-      result = await handleGrainReach(origin, blockName.slice(6), body);
-    } else {
-      // Standard bsp-mcp shape: {spindle, content, secret?, new_lock?, gray?}
-      // Works for any block name including substrate-prefixed ones (per-
-      // position lock derivation handled by lockKeyForWrite/hashByBlockName).
-      result = await handleStandardWrite(origin, blockName, body);
+    try {
+      if (blockName.startsWith('sed:') && body.action === 'register') {
+        result = await handleSedRegister(origin, blockName.slice(4), body);
+      } else if (blockName.startsWith('grain:') && body.action === 'reach') {
+        result = await handleGrainReach(origin, blockName.slice(6), body);
+      } else {
+        // Standard bsp-mcp shape: {spindle, content, secret?, new_lock?, gray?}
+        // Works for any block name including substrate-prefixed ones (per-
+        // position lock derivation handled by lockKeyForWrite/hashByBlockName).
+        result = await handleStandardWrite(origin, blockName, body);
+      }
+    } finally {
+      // a founding refused (or crashed) spends no invitation
+      if (spend && !(result && result.status === 200)) await releaseInvite(spend);
     }
     return res.status(result.status).json(result.body);
   }
 
   if (req.method === 'DELETE') {
+    if (gate.on && !gate.member) return res.status(401).json(membersOnly(origin));
     if (!blockName) {
       return res.status(400).json({
         error: 'block name required (pass ?block=<name> or "block" in body)',
@@ -2061,11 +2683,26 @@ export default async function handler(req, res) {
           code: 'lock_required'
         });
       }
+      const capped = await wrongKeysRefusal(origin, blockName);
+      if (capped) return res.status(capped.status).json(capped.body);
       if (hashByBlockName(origin, blockName, '_', secret) !== stored) {
+        await noteWrongKey(origin, blockName);
         return res.status(403).json({
           error: 'secret does not match',
           code: 'lock_required'
         });
+      }
+    }
+    // A passport is one whole: with its root open and a part latched, a wipe needs the
+    // key that holds that part.
+    if (!stored && isPassport(blockName) && Object.keys(hashes).length > 0) {
+      const offered = typeof body.secret === 'string' && body.secret !== '';
+      const capped = offered ? await wrongKeysRefusal(origin, blockName) : null;
+      if (capped) return res.status(capped.status).json(capped.body);
+      if (passportKeyAmong(origin, blockName, hashes, [body.secret]) === null) {
+        if (offered) await noteWrongKey(origin, blockName);
+        const held = passportHeldRefusal(blockName);
+        return res.status(held.status).json(held.body);
       }
     }
     // No latch stood behind this wipe, so no author did either: keep the last copy.

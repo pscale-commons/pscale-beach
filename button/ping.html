@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Ping — two phones in one room</title>
+<!-- The ping page: the first piece of the relay (spine:tronic-glass 1.1.1.1.3), served beside the beach
+     button. Two people open it, see each other, see their ping both ways, direct and relayed, and race the
+     day's Ghost Wire live: each player's moves stream as the engine records them, and the other page re-runs
+     them as a ghost a few frames behind. Nobody collides with anybody, so ping changes nothing about who wins.
+     Nothing is kept: the room's record is Ghost Wire's own page's business. The room is ?room=ghost-wire
+     (pool:ghost-wire's wire); the engine is Matthew's ghost-wire.js from his page. -->
+<style>
+  :root { color-scheme: dark; --bg: #07080d; --ink: #e8ecf2; --dim: #8b93a5; --you: #5ff0ff; --them: #ff8ad8; --wire: rgba(95,240,255,.18); --line: rgba(95,240,255,.55); --red: #ff6b6b; --ok: #7dffb3; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 -apple-system, system-ui, 'Segoe UI', sans-serif; -webkit-text-size-adjust: 100%; }
+  main { max-width: 480px; margin: 0 auto; padding: 14px 16px 40px; }
+  h1 { font-size: 1.25rem; margin: 0 0 4px; font-weight: 600; }
+  h1 small { color: var(--dim); font-weight: 400; font-size: .85rem; margin-left: 6px; }
+  p { margin: 6px 0; color: var(--dim); font-size: .92rem; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
+  input, button { font: inherit; color: inherit; background: transparent; border: 1px solid #3a4152; border-radius: 10px; padding: 8px 12px; }
+  input { flex: 1; min-width: 120px; }
+  button { cursor: pointer; } button:disabled { opacity: .45; cursor: default; }
+  button.go { border-color: var(--you); color: var(--you); }
+  #wire { color: var(--dim); font-size: .85rem; }
+  #peers { list-style: none; margin: 8px 0; padding: 0; }
+  #peers li { border-top: 1px solid #1d2230; padding: 8px 0; display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; font-variant-numeric: tabular-nums; }
+  #peers .who { font-weight: 600; } #peers .how { color: var(--dim); font-size: .85rem; text-align: right; }
+  #peers .pings { grid-column: 1 / -1; color: var(--dim); font-size: .85rem; display: grid; grid-template-columns: auto 1fr 1fr; gap: 2px 10px; }
+  #peers .pings b { color: var(--ink); font-weight: 500; }
+  #peers .direct { color: var(--ok); } #peers .relayed { color: var(--them); } #peers .connecting { color: var(--dim); }
+  #none { color: var(--dim); font-size: .9rem; }
+  canvas { display: block; width: 100%; max-width: 420px; margin: 8px auto 0; border-radius: 14px; background: #0b0d15; touch-action: none; }
+  #say { text-align: center; min-height: 1.6em; margin-top: 6px; font-weight: 600; }
+  #say.buzz { color: var(--red); } #say.done { color: var(--ok); }
+  #ghosts { color: var(--dim); font-size: .85rem; text-align: center; min-height: 1.4em; }
+  .note { font-size: .8rem; color: var(--dim); margin-top: 18px; border-top: 1px solid #1d2230; padding-top: 10px; }
+  .note code { color: var(--ink); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Ping <small id="roomName"></small></h1>
+  <p id="intro">Two phones, one room. Enter, and see your ping to each other both ways — direct, player to player, and relayed through the beach's wire. Then race the day's wire live.</p>
+  <div class="row" id="enter">
+    <input id="name" placeholder="your name" maxlength="32" autocomplete="off">
+    <button id="join">Enter the room</button>
+  </div>
+  <div id="wire"></div>
+  <ul id="peers"></ul>
+  <div id="none" hidden>Nobody else here yet — open this page on another phone.</div>
+
+  <div class="row" id="raceRow" hidden>
+    <button id="race" class="go">Race: count us down</button>
+    <span id="count"></span>
+  </div>
+  <canvas id="c" width="420" height="672" hidden></canvas>
+  <div id="say"></div>
+  <div id="ghosts"></div>
+
+  <p class="note">The room plug, <code>button/room.js</code>, introduces the players of a room over its wire and opens a direct channel between each pair; where a pair cannot connect, the wire carries them. Moves stream over the ordered channel as Ghost Wire records them (sixty a second, sent ten times a second); the other page re-runs them as a ghost. The engine is Matthew's <code>ghost-wire.js</code>. Nothing here is kept.</p>
+</main>
+<script>
+(function () {
+  'use strict';
+  var q = new URLSearchParams(location.search);
+  var LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+  var ROOM = (/^[a-z0-9][a-z0-9-]{0,63}$/.test(q.get('room') || '') ? q.get('room') : 'ghost-wire');
+  var ENGINE = LOCAL && q.get('engine') ? q.get('engine') : 'https://phenomemental.github.io/happyseaurchin-beach/ghost-wire.js';
+  var $ = function (id) { return document.getElementById(id); };
+  $('roomName').textContent = 'pool:' + ROOM;
+
+  // the plug, with the beach a builder's test names
+  function script(src, attrs) {
+    return new Promise(function (ok, no) {
+      var s = document.createElement('script'); s.src = src;
+      Object.keys(attrs || {}).forEach(function (k) { if (attrs[k]) s.setAttribute(k, attrs[k]); });
+      s.onload = ok; s.onerror = function () { no(new Error('could not load ' + src)); };
+      document.head.appendChild(s);
+    });
+  }
+  var beachAttr = LOCAL && q.get('beach') ? q.get('beach') : '';
+  var ready = Promise.all([
+    script('room.js', { 'data-game': ROOM, 'data-beach': beachAttr, 'data-vapour': LOCAL ? q.get('vapour') : '' }),
+    script(ENGINE).catch(function () { $('say').textContent = 'The Ghost Wire engine did not load; the race is off, the pings stand.'; })
+  ]);
+
+  // ── the room ──
+  var peers = {}, joined = null, GW = null, wire = null, TRACK = '';
+  function dayAddress(d) { var y = d.getUTCFullYear(), m0 = d.getUTCMonth(), dd = d.getUTCDate(); return String(y) + (Math.floor(m0 / 3) + 1) + (m0 % 3 + 1) + (Math.floor((dd - 1) / 7) + 1) + ((dd - 1) % 7 + 1) + '00'; }
+  function ms(v) { return v == null ? '—' : v + ' ms'; }
+  function drawPeers() {
+    var ul = $('peers'); ul.textContent = '';
+    var ids = Object.keys(peers);
+    $('none').hidden = !joined || ids.length > 0;
+    ids.forEach(function (id) {
+      var p = peers[id], li = document.createElement('li');
+      var who = document.createElement('span'); who.className = 'who'; who.textContent = p.name || 'someone';
+      var how = document.createElement('span'); how.className = 'how ' + p.status; how.textContent = p.direct ? 'direct, player to player' : p.status === 'connecting' ? 'connecting…' : 'relayed over the wire';
+      var pings = document.createElement('span'); pings.className = 'pings';
+      [['', 'direct', 'relayed'], ['you → them → you', ms(p.ping.direct), ms(p.ping.relayed)], ['them → you → them', ms(p.ping.theirs.direct), ms(p.ping.theirs.relayed)]].forEach(function (r, i) {
+        r.forEach(function (t) { var s = document.createElement(i ? 'b' : 'span'); s.textContent = t; pings.appendChild(s); });
+      });
+      li.appendChild(who); li.appendChild(how); li.appendChild(pings); ul.appendChild(li);
+    });
+  }
+  function join() {
+    var name = $('name').value.trim();
+    $('join').disabled = true;
+    return ready.then(function () {
+      GW = window.GhostWire || null;
+      return beachRoom.join({ room: ROOM, name: name, direct: q.get('direct') !== 'off' });
+    }).then(function (r) {
+      if (!r.ok) { $('join').disabled = false; $('wire').textContent = 'Could not enter: ' + r.error; return r; }
+      joined = r; wire = r.wire;
+      $('enter').hidden = true;
+      $('intro').textContent = 'You are ' + r.name + '. ' + (r.wire === 'vapour' ? 'Introduced over the vapour the beach names: a hop is tens of milliseconds.' : 'Introduced over the room\'s own liquid on the beach (the beach names no vapour yet): a hop takes a second or two, so a relayed ping here is slow by design, and a direct one is the real thing.');
+      $('wire').textContent = 'wire: ' + r.wire + (r.turn ? ' · TURN named' : ' · STUN only') + (q.get('direct') === 'off' ? ' · direct path off on this page' : '');
+      drawPeers();
+      if (GW) { $('raceRow').hidden = false; $('c').hidden = false; setup(); }
+      return r;
+    });
+  }
+  $('join').addEventListener('click', join);
+  $('name').addEventListener('keydown', function (e) { if (e.key === 'Enter') join(); });
+
+  ready.then(function () {
+    var n = q.get('name') || (window.beachVoice && beachVoice.name && beachVoice.name()) || '';
+    if (n) $('name').value = n;
+    beachRoom.on('peer', function (p) { peers[p.id] = p; drawPeers(); });
+    beachRoom.on('direct', function (p) { peers[p.id] = p; drawPeers(); });
+    beachRoom.on('ping', function (p) { peers[p.id] = p; drawPeers(); });
+    beachRoom.on('gone', function (p) { delete peers[p.id]; delete ghosts[p.id]; drawPeers(); drawGhostLine(); });
+    beachRoom.on('message', onMessage);
+    if (q.get('auto') === '1') join();
+  }, function (e) { $('wire').textContent = e.message; });
+
+  // ── the race ──
+  var canvas = $('c'), ctx = canvas.getContext('2d'), wireT = null, view = { scale: 1, ox: 0, oy: 0 };
+  var phase = 'idle', run = null, moves = [], batch = [], trail = [], acc = 0, lastTs = 0, buzzAt = 0, countdownAt = 0;
+  var ghosts = {};
+  var finger = null, owed = { x: 0, y: 0 }, carry = { x: 0, y: 0 };
+  function setup() {
+    TRACK = dayAddress(new Date());
+    wireT = GW.wire(TRACK);
+    var W = canvas.width, H = canvas.height;
+    view.scale = Math.min(W / 1, H / GW.HEIGHT) * 0.94;
+    view.ox = (W - view.scale) / 2; view.oy = (H - GW.HEIGHT * view.scale) / 2;
+    phase = 'ready';
+    $('say').textContent = 'Touch the wire to run' + (GW.shape(TRACK) ? ' · today: ' + GW.shape(TRACK) : '');
+    $('say').className = '';
+    requestAnimationFrame(frame);
+  }
+  function px(x) { return view.ox + x * view.scale; }
+  function py(y) { return view.oy + y * view.scale; }
+  function begin() {
+    if (!GW || !wireT || phase === 'running') return;
+    run = GW.start(wireT); moves = []; batch = []; trail = [{ x: run.x, y: run.y }];
+    owed = { x: 0, y: 0 }; carry = { x: 0, y: 0 }; acc = 0;
+    phase = 'running'; $('say').textContent = ''; $('say').className = '';
+  }
+  function take(axis) {
+    var u = carry[axis] + owed[axis] / view.scale; owed[axis] = 0;
+    var qq = Math.round(u / GW.LAW.unit), b = GW.bound(qq);
+    carry[axis] = b === qq ? u - qq * GW.LAW.unit : 0;
+    return b;
+  }
+  var feed = null;   // a test's finger: moves fed one per step
+  function tick() {
+    var qx, qy;
+    if (feed) { var f = feed.shift() || [0, 0]; qx = f[0]; qy = f[1]; if (!feed.length) feed = null; } else { qx = take('x'); qy = take('y'); }
+    moves.push([qx, qy]); batch.push([qx, qy]);
+    GW.step(run, qx, qy, wireT);
+    trail.push({ x: run.x, y: run.y });
+    if (batch.length >= 6 || run.status !== 'running') { beachRoom.send('moves', { i: moves.length - batch.length, m: batch, s: run.status }, { reliable: true }); batch = []; }
+    if (run.status === 'finished') {
+      phase = 'done';
+      var replay = GW.encode(TRACK, moves, run.step), check = GW.rerun(replay, wireT);
+      $('say').textContent = 'Finished in ' + GW.seconds(run.step) + ' s' + (check && check.ok ? '' : ' (the run did not re-run)');
+      $('say').className = 'done';
+      beachRoom.send('done', { steps: run.step, replay: replay }, { reliable: true });
+      setTimeout(function () { if (phase === 'done') { phase = 'ready'; } }, 1500);
+    } else if (run.status !== 'running') {
+      phase = 'buzzed'; buzzAt = performance.now();
+      $('say').textContent = run.status === 'stalled' ? 'Out of time' : 'Buzz'; $('say').className = 'buzz';
+      beachRoom.send('buzz', { steps: run.step }, { reliable: true });
+    }
+  }
+  function frame(ts) {
+    var dt = lastTs ? Math.min(ts - lastTs, 250) : 0; lastTs = ts;
+    if (phase === 'running') { acc += dt; var per = 1000 / GW.RATE; while (acc >= per && phase === 'running') { acc -= per; tick(); } }
+    if (phase === 'buzzed' && performance.now() - buzzAt > 700) { phase = 'ready'; }
+    if (countdownAt) {
+      var left = countdownAt - Date.now();
+      if (left > 0) $('count').textContent = Math.ceil(left / 1000) + '…';
+      else { countdownAt = 0; $('count').textContent = 'GO'; begin(); setTimeout(function () { $('count').textContent = ''; }, 1200); }
+    }
+    Object.keys(ghosts).forEach(function (id) {
+      var g = ghosts[id]; if (!g.run || g.run.status !== 'running') return;
+      var target = Math.floor((Date.now() - g.at0 - 120) / 1000 * GW.RATE);
+      while (g.run.step < target && g.queue.length && g.run.status === 'running') { var mv = g.queue.shift(); GW.step(g.run, mv[0], mv[1], wireT); g.trail.push({ x: g.run.x, y: g.run.y }); }
+    });
+    draw();
+    requestAnimationFrame(frame);
+  }
+  function draw() {
+    var W = canvas.width, H = canvas.height; ctx.clearRect(0, 0, W, H);
+    if (!wireT) return;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath(); for (var i = 0; i < wireT.n; i += 2) { var x = px(wireT.x[i]), y = py(wireT.y[i]); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
+    ctx.strokeStyle = 'rgba(95,240,255,.16)'; ctx.lineWidth = 2 * GW.LAW.half * view.scale; ctx.stroke();
+    ctx.strokeStyle = 'rgba(95,240,255,.5)'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = '#8b93a5'; ctx.font = '12px system-ui, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('START', px(wireT.x[0]), py(wireT.y[0]) + (wireT.y[0] > wireT.y[wireT.n - 1] ? 26 : -18));
+    ctx.fillText('FINISH', px(wireT.x[wireT.n - 1]), py(wireT.y[wireT.n - 1]) + (wireT.y[0] > wireT.y[wireT.n - 1] ? -18 : 26));
+    Object.keys(ghosts).forEach(function (id) {
+      var g = ghosts[id]; if (!g.run) return;
+      ctx.beginPath(); g.trail.forEach(function (t, k) { if (k) ctx.lineTo(px(t.x), py(t.y)); else ctx.moveTo(px(t.x), py(t.y)); });
+      ctx.strokeStyle = 'rgba(255,138,216,.6)'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.beginPath(); ctx.arc(px(g.run.x), py(g.run.y), 6, 0, Math.PI * 2); ctx.fillStyle = '#ff8ad8'; ctx.fill();
+      ctx.fillStyle = '#ff8ad8'; ctx.textAlign = 'left'; ctx.fillText(g.name || 'ghost', px(g.run.x) + 10, py(g.run.y) - 8);
+    });
+    if (run) {
+      ctx.beginPath(); trail.forEach(function (t, k) { if (k) ctx.lineTo(px(t.x), py(t.y)); else ctx.moveTo(px(t.x), py(t.y)); });
+      ctx.strokeStyle = 'rgba(95,240,255,.8)'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.beginPath(); ctx.arc(px(run.x), py(run.y), 7, 0, Math.PI * 2); ctx.fillStyle = run.status === 'buzzed' ? '#ff6b6b' : '#5ff0ff'; ctx.fill();
+    } else { ctx.beginPath(); ctx.arc(px(wireT.x[0]), py(wireT.y[0]), 7, 0, Math.PI * 2); ctx.fillStyle = '#5ff0ff'; ctx.fill(); }
+  }
+  function drawGhostLine() {
+    $('ghosts').textContent = Object.keys(ghosts).map(function (id) {
+      var g = ghosts[id]; if (!g.run) return '';
+      return g.name + ': ' + (g.run.status === 'running' ? 'running, ' + g.run.step + ' steps' : g.run.status === 'finished' ? 'finished in ' + GW.seconds(g.run.step) + ' s' + (g.checked === true ? ' ✓ re-run here' : g.checked === false ? ' (did not re-run)' : '') : g.run.status) + (g.via ? ' · ' + g.via : '');
+    }).filter(Boolean).join(' · ');
+  }
+  function onMessage(m) {
+    if (!GW || !wireT) return;
+    var g = ghosts[m.from] = ghosts[m.from] || { name: m.name, run: null, queue: [], trail: [], at0: 0, checked: null, via: '' };
+    g.name = m.name || g.name; g.via = m.via;
+    if (m.kind === 'moves') {
+      if (m.body.i === 0 || !g.run) { g.run = GW.start(wireT); g.queue = []; g.trail = [{ x: g.run.x, y: g.run.y }]; g.at0 = Date.now(); g.checked = null; }
+      (m.body.m || []).forEach(function (mv) { g.queue.push(mv); });
+    } else if (m.kind === 'buzz') {
+      if (g.run) { while (g.queue.length && g.run.status === 'running') { var mv = g.queue.shift(); GW.step(g.run, mv[0], mv[1], wireT); } if (g.run.status === 'running') g.run.status = 'buzzed'; }
+    } else if (m.kind === 'done') {
+      if (g.run) { while (g.queue.length && g.run.status === 'running') { var mv2 = g.queue.shift(); GW.step(g.run, mv2[0], mv2[1], wireT); g.trail.push({ x: g.run.x, y: g.run.y }); } }
+      var r = GW.rerun(m.body.replay, wireT);
+      g.checked = !!(r && r.ok && r.steps === m.body.steps);
+      if (g.run && g.run.status !== 'finished') g.run.status = 'finished';
+      if (g.run) g.run.step = m.body.steps;
+    } else if (m.kind === 'go') {
+      countdownAt = Date.now() + Math.max(500, Math.min(5000, +m.body.in || 3000));
+    }
+    drawGhostLine();
+  }
+  $('race').addEventListener('click', function () { beachRoom.send('go', { in: 3000 }, { reliable: true }); countdownAt = Date.now() + 3000; });
+  canvas.addEventListener('pointerdown', function (e) {
+    e.preventDefault(); if (finger) return;
+    finger = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+    if (phase === 'ready') begin();
+  });
+  window.addEventListener('pointermove', function (e) { if (!finger || e.pointerId !== finger.id) return; owed.x += e.clientX - finger.x; owed.y += e.clientY - finger.y; finger.x = e.clientX; finger.y = e.clientY; });
+  function lift(e) { if (finger && e.pointerId === finger.id) finger = null; }
+  window.addEventListener('pointerup', lift); window.addEventListener('pointercancel', lift);
+  canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+  // a test's surface: the page's state, and a run fed a finger's moves one per step
+  window.pingPage = {
+    state: function () {
+      var gh = {}; Object.keys(ghosts).forEach(function (id) { var g = ghosts[id]; gh[g.name] = { steps: g.run ? g.run.step : 0, status: g.run ? g.run.status : '', checked: g.checked, via: g.via }; });
+      return { joined: joined, wire: wire, phase: phase, mine: run ? { steps: run.step, status: run.status } : null, peers: beachRoom && window.beachRoom ? beachRoom.peers() : [], ghosts: gh, countdown: !!countdownAt, engine: !!GW };
+    },
+    run: function (mv) { feed = mv.slice(); begin(); },
+    join: join
+  };
+})();
+</script>
+</body>
+</html>

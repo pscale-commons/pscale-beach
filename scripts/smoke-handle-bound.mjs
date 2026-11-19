@@ -62,7 +62,8 @@ console.log('what binds nothing');
 ok((await door('POST', 'thing:bob', { content: { _: 'bob has no passport' }, new_lock: 'anyone' })).status === 200, 'a handle with no passport here binds nothing');
 ok((await door('POST', 'passport:carol', { content: { _: 'carol — open' } })).status === 200, 'passport:carol is founded open');
 ok((await door('POST', 'thing:carol', { content: { _: 'x' }, new_lock: 'anyone' })).status === 200, 'an open passport binds nothing');
-ok((await door('POST', 'archive:mirror:alice', { content: { _: 'a steward copy' }, new_lock: 'steward' })).status === 200, 'archive: is exempt — the steward keeps copies under its own key');
+// (the steward's key is not a word of the copy's text: a key that is one is refused by the key guard, lib/key-guard.js)
+ok((await door('POST', 'archive:mirror:alice', { content: { _: 'a steward copy' }, new_lock: 'steward-key-1' })).status === 200, 'archive: is exempt — the steward keeps copies under its own key');
 ok((await door('POST', 'probe:x:alice', { content: { _: 'fixture' }, new_lock: 'rig' })).status === 200, 'probe: is exempt');
 ok((await door('POST', 'plain', { content: { _: 'no handle in the name' }, new_lock: 'anyone' })).status === 200, 'a name without a handle binds nothing');
 ok((await door('POST', 'pool:alice', { append: true, content: { _: 'a visitor says hello' } })).status === 200, 'a visitor still speaks in her room');

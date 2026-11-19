@@ -12,11 +12,19 @@ A beach is a URL surface that hosts named pscale blocks (marks, pools, `sed:` co
 pscale-beach/
 ├── api/
 │   ├── pscale-beach.js          — the /.well-known/pscale-beach endpoint
-│   └── floor.js                 — pure floor-invariant helpers, shared by the
-│                                   handler and the one-shot scripts
+│   ├── floor.js                 — pure floor-invariant helpers, shared by the
+│   │                               handler and the one-shot scripts
+│   ├── turn.js                  — /api/turn, a TURN pass for live games from the
+│   │                               owner's own Cloudflare key (no part of the wire)
+│   └── night-readers.js         — /api/night-readers, the owner's daily look at who
+│                                   read the beach all night, from the host's own
+│                                   counts (no part of the wire)
+├── lib/                         — ports from the router, re-ported never forked:
+│                                   temporal.js (the sundial's now), key-guard.js
+│                                   (a write carrying its own key refused)
 ├── seeds/
 │   ├── library/                 — reference blocks (10): reflexive, spore,
-│   │                               vision, grit, rpg, state, systemic-kernel,
+│   │                               vision, grit, rpg, state, systems-lens,
 │   │                               federation-protocol, state-block-reflexive-spark,
 │   │                               pscale-geometry
 │   ├── ecology/                 — the living ecology (21): the genus-one genome
@@ -40,9 +48,11 @@ pscale-beach/
 ├── init/seed-beach.js           — one-time wizard: substitutes placeholders,
 │                                   POSTs blocks to your deployed beach
 ├── scripts/                     — smoke tests, pack seed/reset/dump, key
-│                                   migration, backup/restore, set-aside (the
-│                                   owner's tidy), a file-backed local beach
-│                                   for offline work
+│                                   migration, backup/restore (images sealed at
+│                                   rest), set-aside (the owner's tidy), the
+│                                   tombstone (the keeper's logged redaction),
+│                                   copy-world (a place moved behind a gate),
+│                                   a file-backed local beach for offline work
 ├── vercel.json                  — rewrites for /.well-known/... and /w/:world/...
 ├── package.json                 — Node ESM, single dep (@upstash/redis)
 └── .env.example                 — env-var template
@@ -104,6 +114,42 @@ curl https://your-vercel-url.vercel.app/.well-known/pscale-beach
 | `KV_REST_API_URL` | yes | Upstash dashboard | The REST URL. Upstash labels it `UPSTASH_REDIS_REST_URL`; same value, different name. |
 | `KV_REST_API_TOKEN` | yes | Upstash dashboard | The REST token (full, not read-only). Treat as secret. |
 | `BEACH_ORIGIN` | optional | you choose | Bare hostname (no scheme), e.g. `beach.idiothuman.com`. Defaults to Vercel's project URL on Vercel deploys. Set this when you have a custom domain — **recommended form is `beach.<your-domain>`** so federation clients can route `agent_id="https://<your-domain>"` to it by convention. Part of the lock salt namespace AND scopes Redis keys (so one Upstash can host multiple beaches with distinct origins). **Changing it after blocks are locked or written breaks lock verification and orphans the existing keys**. Pick once, keep stable. |
+| `BEACH_GATE` | optional | you choose | `members` puts the beach behind the members' gate (below). Unset, the beach is open: byte-for-byte the commons. |
+| `BEACH_GATE_SECRET` | with the gate | you choose | A long random string. Signs every pass and invite; rotate it and every pass expires at once. Treat as secret. |
+| `BEACH_KEEPERS` | with the gate | you choose | Comma-separated handles whose `index:<handle>` says what a stranger may see (card field 5 = `beyond`). |
+| `TURN_KEY_ID`, `TURN_KEY_API_TOKEN` | optional | Cloudflare dashboard → Realtime → TURN Server | A TURN key on your own Cloudflare account, its Turn Token ID and API token. With both set, `/api/turn` hands each player of a live game a pass that runs out, so a pair whose networks block a direct link still plays through Cloudflare's relay; name it in your `settings` at 1.5 as `turn_url=https://<your beach>/api/turn`. Unset, live games keep to STUN alone. The token is a secret: it stays in these settings and never reaches a page. Cloudflare's first 1,000 GB a month are free. `npm run smoke:turn` proves the route offline. |
+| `TURN_TTL` | optional | you choose | How long a TURN pass lasts, in seconds. 14400 (four hours) unless set; held between 300 and 86400. |
+| `NIGHT_READERS_TOKEN` | optional | Vercel → Account Settings → Tokens | A Vercel access token made under the team that owns this project. With it set, Vercel's cron calls `/api/night-readers` once a day (07:00 UTC, in `vercel.json`): it reads the host's own hourly counts for the night just gone (00:00 to 06:00 where you are) and, when a browser or a robot read in every hour of it, leaves one line in your room naming each by browser and site, never by address. A beach cannot see whether anyone is looking at a page; a caller reading through every hour of the night is the honest sign of a tab left open, a crawler or a runaway script. Nothing is refused and no read pays for it. Anyone can `GET /api/night-readers` to see the finding (`?night=YYYY-MM-DD` for an earlier night); only the cron writes. Vercel cannot limit a token to reading, so this one can do anything on the team: it stays in these settings and never reaches a page. Unset, nothing is looked at. `npm run smoke:night-readers` proves the route offline. |
+| `NIGHT_READERS_POOL` | with the token | your handle | Whose room hears: the line is appended to `pool:<this>`, as any hand appends. Unset, the first of `BEACH_KEEPERS`; with neither, the finding is only shown. |
+| `NIGHT_READERS_ZONE`, `NIGHT_READERS_FLOOR` | optional | you choose | Where your night falls (an IANA zone such as `Europe/London`; UTC unless set), and the reads an hour below which nothing is said (30 unless set: one every two minutes). |
+| `CRON_SECRET` | with the token | any long random string | Vercel sends it with each cron call, and only a call carrying it writes. Unset, the cron looks and never tells. |
+
+### The key guard
+
+A key is a pointer, never a value (whetstone 9.1). On every beach, open or gated, the handler refuses a write that carries, as a whole word of six characters or more, a key the same request presents (its `secret`, `new_lock`, `passphrase` or `my_passphrase`) anywhere in what the write would land: a write's content, a settle's declaration and shell reference, a grain reach's description, side and name. The answer is `422 key_in_payload`; nothing is written, the key is never repeated, and the words point at [happyseaurchin.com/beach-security](https://happyseaurchin.com/beach-security#practice). It is the router's own guard (bsp-mcp `src/db.ts` `refuseKeyInPayload`), ported at `lib/key-guard.js` to the one door every write reaches, so the mirror, the pages, the button, the voice, the pocket and a direct post are held to it as the router's tools are. It never guesses (it checks only the keys the request presents), and a gray envelope passes, since it was sealed before it arrived. `npm run smoke:key-guard` proves it: the router's 21 cases against the port, then every write path against two local beaches.
+
+### The members' gate
+
+A beach an organisation runs for its members can stand behind a **read gate** — the protocol is bsp-mcp's `docs/protocol-pscale-beach-v2.md` §2.8, the design its `proposals/2026-11-02-leros-on-the-commons-the-build-to-completion.md` §4.2. Set `BEACH_GATE=members`, `BEACH_GATE_SECRET` and `BEACH_KEEPERS`, redeploy, then **latch `settings` at its root** from your own session (a write with `new_lock` and no spindle): until that latch stands the gate stays off, as the webhook and the caps do. Behind it a **member** — anyone whose `passport:<handle>` stands latched here — proves that latch once (`POST {block: "passport:<handle>", secret}`, no content) for a twelve-hour pass, sent as `Authorization: Bearer` on every request, and reads and writes as on any beach. A **stranger** sees the index as the subset a keeper's index marks `beyond`, is served only those blocks, and gets one plain `401 members_only` for everything else, the same whether a block exists or not. Writes need a pass, save the proof and a passport founded with an **invite** a member minted (`POST {block: "passport:<their handle>", invite: true}` under their pass; the newcomer's first write, founding `passport:<name>` with `new_lock`, carries it as the bearer; minted with `for: "<name>"` it founds that name's passport alone, so a link that travels founds nothing else). An invite founds **one** passport: the beach records its use the moment the passport is founded (one key in the store, named by a hash of the token so no working token is kept, living exactly as long as the token), so a link taken once founds nothing more, named or not, in any world of the deploy, and a founding refused for any reason spends nothing. A member bringing in several newcomers mints one invite for each, named where they know who. Behind the wall an invite's holder is a newcomer a member vouched for, so where it will not found, the door says why in words of their own: `403 invite_for_another` (minted for another name, which it names), `410 invite_spent` (taken already, and when, never by whom), `409 name_taken` (that passport stands); everyone else still hears `members_only`. `npm run smoke:gate` proves all of it against two local beaches. The gate hides that a thing exists; sealing (gray) hides its words from you, the operator — use both.
+
+**A page at a members' beach** speaks through the beach's own voice as at any beach (`button/voice.js`, served by the beach itself): `beachVoice.prove({ name })` earns the pass with the passport's key, kept on the device for its twelve hours (the key is not, save as a write keeps it), every read and write the voice makes then carries it, and a write refused at the door is proved once more with its own key and made once again; `beachVoice.pass()` hands the pass to the page for its own reads, and `beachVoice.leave()` gives it up. A newcomer comes in by invitation: `beachVoice.invite({ for })` mints one under a member's pass (for a name, where the member says who it is for; one per newcomer, since an invitation founds once), the page makes a link of it, and `beachVoice.join({ invite, name, passport })` on the newcomer's device founds their passport with it, a key made and kept there (`made({ field: 'passport', name })` says it once), and proves it at once for their pass; `beachVoice.invited(invite)` says who it is from, for and until, the beach not asked. The first page on it is the String for SALT, happyseaurchin.com/salt and www.bringingtheflavour.com/string. `NODE_PATH=$(npm root -g) npm run smoke:voice-gate` proves it in headless Chromium against a local gated beach.
+
+**The guard.** Behind the same switch the handler reads one formulaic line from the deploy's own `notice` block — heard, like every `settings` line, only from behind the notice's root latch — and enforces it at every door, whatever wrote (the router, an app, curl): `people_keeping=passport:,history:,now:,pool:` names the places where a person's own words are kept (name prefixes, comma-joined; a prefix without its colon names a bare block; `*` is every block), and a plain write into one of them that carries an email address, a UK phone number, a National Insurance number or an NHS number is refused `422 people_keeping`, the kind named and the value never echoed, with the way through in the line: seal it, or leave it out. A gray envelope passes, since ciphertext carries no words; the request's own `gray` flag is a claim and is not asked. Names are a judgement and stay with the model that writes — the notice's words are for it (who-answers 1.11, 1.1112). The backup's mirror hears the same line (below), so what the notice says, the beach does in every copy. `npm run smoke:guard` proves it against four local beaches.
+
+**Copying a place behind the gate.** `scripts/copy-world.mjs` moves a world's blocks from one beach to another with the gate already up at the destination, so nothing copied is open to a stranger's homestead: the law and the pages and every holder's open mirror come, locks never do, and passports, archives, probes and indexes stay behind — a member re-enters by invite and founds their own passport, and a copied mirror re-latches on its holder's first visit, as the app's door already does. `--beyond` founds the keeper's `index:<handle>` in the destination world with those names marked beyond, which is what a stranger then sees there. The world's `lighthouse`, the sign every player reads on arrival, is copied **re-pointed**: wherever it named the original by its address (`pscale_play(world='<from>', …)`, with its scheme or bare) it names the copy, so a walled copy never sends a player back to the open original; a longer name or a deeper world is another place and stays as it stands. Every other block copies as it stands, and any that still names the original is listed by name, in the dry run as after it, for the keeper to read before a player does. A dry run until `--confirm`; `npm run smoke:copy-world` proves it.
+
+```bash
+BEACH_KEY=<the keeper's passphrase> node scripts/copy-world.mjs \
+  --from https://beach.happyseaurchin.com/w/community-recovery \
+  --to https://beach.bringingtheflavour.com/w/community-recovery \
+  --as davidmpinto --beyond lighthouse,policies,constitution --confirm
+```
+
+**Every holder's index.** `scripts/index-check.mjs` measures each holder's `index:<handle>` against what the beach holds (bsp-mcp's `proposals/2026-11-03-shell-indexes-one-index-per-holder.md`: one index per holder, the thing's card beneath its entry, card field 5 the one place a holder says who may see the thing). Keyless on any beach, it reads the surface once and each index once and reports, per holder, UNLISTED (blocks named for the handle by the last-word rule that the index does not name, in born order), GONE (entries whose block does not stand and whose 6 says nothing of its leaving), OWED (the summaries the index owes) and ODD (an `index:` block that is not one, an entry whose line is not a block's name, a card holding copied state); at a members' beach `--as <handle>` with `BEACH_KEY` proves the passport once and reads as that member; `--latches`, with the store, hashes the key against every root latch and names what it opens under other names, writing nothing and noting no wrong key. A holder founds theirs with `--confirm` and their own key in the environment: one write latched under it, the four organs and the index itself at 1 to 5, then every unlisted name appended in born order (`--take` the latched-elsewhere names they choose) and every owed summary paid from the names; it writes no 5 and no 9, which are the holder's, save the index's own 5 at a members' beach, founded self, and never lists a `colour:` name in the clear. A report until `--confirm`, and a report never gates anything; `npm run smoke:index-check` proves it against two local beaches.
+
+```bash
+BEACH_KEY=<your passphrase> node scripts/index-check.mjs --beach https://beach.happyseaurchin.com --handle <you> --confirm
+```
 
 ### Manual deploy (alternative)
 
@@ -200,7 +246,7 @@ Re-running is idempotent for unlocked surfaces and rejects without the secret on
 
 | Block | Purpose | Lock |
 |---|---|---|
-| `reflexive`, `spore`, `vision`, `grit`, `rpg`, `state`, `systemic-kernel`, `federation-protocol`, `state-block-reflexive-spark`, `pscale-geometry` | Reference library — substrate-usage patterns at L3+ | locked at `_` |
+| `reflexive`, `spore`, `vision`, `grit`, `rpg`, `state`, `systems-lens`, `federation-protocol`, `state-block-reflexive-spark`, `pscale-geometry` | Reference library — substrate-usage patterns at L3+ | locked at `_` |
 | `genome:*` (18), `method:worktable`, `ways:genus`, `ways:tickets` | The ecology — a fresh beach ships able to hatch genus-one instances (`genome:hatch` is the convention: fourteen `bsp()` writes from any door, no app, no maintainer), run a worktable, and issue tickets. Skip with `ECOLOGY_SUBSET=none` | locked at `_` |
 | `tide` | Mark-wipe schedule — host-side; client only reads. Three categories (anonymous, handle, signed) with independent ages at positions 1.1 / 2.1 / 3.1. Empty = never wipe. | locked at `_` |
 | `settings` | Per-beach xstream client config — overrides built-in kernel defaults for vapour/liquid/presence/inbox cadences and per-(tier, face) recipe choices. Empty positions fall through to client defaults. | locked at `_` |
@@ -333,6 +379,24 @@ node scripts/set-aside.mjs --last marks --day 2026-09-21 --confirm
 
 If the name was re-minted meanwhile — even under a stranger's latch — what stands there is set aside first, and the kept copy returns open, with the per-position latches it had. `npm run smoke:born` proves it. What this does **not** cover: a position write on an unlatched block can still replace a branch; the daily image is the way back for that.
 
+### Tombstone — the logged redaction
+
+Set-aside keeps a copy; a redaction keeps none. When words must stand nowhere the operator holds them — a person asked, someone else was named, health or contact detail stood in the open, something unlawful was reported — the keeper's hand is [scripts/tombstone.mjs](scripts/tombstone.mjs) (who-answers 1.1113, on the shape of Wikimedia's oversight: a few named people, a reason code, a private log). One act reaches the live store (the block, the day-copies the door kept, the archive copies set-aside made), every nightly image on the operator's drives, and the git mirror — the file now and its every version, the repository's history rewritten with git's own `filter-branch` and force-pushed. A **node** is replaced in place by one visible line (`REMOVED <day> — … (<code>: <why>)`) and the block keeps its latches, since its name was public already; a **whole block** goes with its name, since a name alone can be the detail that had to go, and the public line at `beach-log` gives the day, the code and the keeper and no name. The private line — the name, whom it concerned, the keeper, the code, which copies were reached — is a storage hash (`<ns>:<origin>:tombstones`) the keeper reads with the store's token, never a block. A dry run until `--confirm`; `npm run smoke:tombstone` proves it against a store, two images (one sealed) and a mirror with a remote.
+
+```bash
+set -a; . .env.local; set +a
+node scripts/tombstone.mjs --block pool:somewhere --at 7 --why named --for <handle> --confirm
+node scripts/tombstone.mjs --block passport:somename --why asked --for somename --confirm
+```
+
+`--at` names the node as the stored JSON shows it (digits and underscores joined by dots: `7`, `1.2`, `_.11.3` — read it raw at `?block=<name>` with no pscale). The codes: `asked` · `named` · `health` · `contact` · `unlawful` · `safeguarding`. A hosted remote keeps unreachable objects for a while after a force-push, which is why a notice says "within a month" and the keeper may ask the host to purge them.
+
+## Backups — the nightly image and the mirror
+
+[scripts/beach-backup.sh](scripts/beach-backup.sh) (bash, curl and jq — nothing else, so it runs under launchd) writes a complete image of the store — every block, every lock hash, the stamps — gzipped and timestamped into `OUT`, copies it to an external drive when one is mounted (`CORSAIR_DIR`), and keeps the newest `KEEP_IMAGES` (400 unless set). Set **`BEACH_IMAGE_KEY`** and every image is **sealed at rest** in OpenSSL's own envelope (`beach-<ts>.json.gz.enc`; `openssl enc -d -aes-256-cbc -pbkdf2 -pass env:BEACH_IMAGE_KEY` opens one anywhere, as [scripts/image-seal.mjs](scripts/image-seal.mjs) does for the restore and the tombstone); the plain working copy `beach-latest.json` then stays in `OUT` alone and never reaches the external drive. Unset, the images are plain and each run says so: an image carries every block and every lock hash of the beach. [scripts/beach-restore.mjs](scripts/beach-restore.mjs) puts an image back, sealed or not, whole or `--only` what it names; `npm run smoke:backup-restore` proves the round trip.
+
+With `SPLIT` set the same run writes one content file per block (no locks) into a folder kept as a git repository — the mirror, whose history keeps every version. **People-keeping blocks leave the mirror**: the run hears the apex notice's `people_keeping=` line (the guard's line, above, and only from behind the notice's root latch) and writes none of the blocks it names, removing any already there; `SPLIT_EXCLUDE` (a regex of block names) overrides it. Their past versions stay in the repository's history until the tombstone rewrites them. The split is one pass over the image and its files are compact JSON, so the first run after this change rewrites every file once. Retention, then, as a notice states it: the door's day-copy of a replaced open block thirty days; the nightly images `KEEP_IMAGES` days, sealed; the mirror's history until it is rewritten.
+
 ## Settings that steer the door — only from behind a root latch
 
 A `key=value` line in the `settings` block can send a secret somewhere (`pool_append_webhook=<url>` rides the shared secret in its header) or refuse a stranger's write (the caps below). So the handler hears those lines **only when the root of `settings` is latched**. A latch on the line's own position is not enough: a whole-block replace answers to the root latch alone, so while the root stands open any hand may rewrite a latched position's content and leave the latch entry standing over words its holder never wrote. With no root latch every line is ignored — the door falls back to its defaults and the webhook goes quiet rather than ringing for someone else.
@@ -349,19 +413,20 @@ curl -X POST "https://beach.example.com/.well-known/pscale-beach?block=settings"
 
 ### The caps — built, and left off
 
-A flood is a nuisance here, not a wound, and clearing is the lever, never a wall: no accounts, no captchas, no address limits. A cap only bounds what one anonymous act can cost everyone else. `BEACH_CAPS=on` (env) is the master switch — unset, nothing is read and nothing is counted, so off costs nothing. Once on, the numbers are lines in the apex's latched `settings`, so you change one with a single write in the middle of a flood, no redeploy:
+A flood is a nuisance here, not a wound, and clearing is the lever, never a wall: no accounts, no captchas, no address limits. A cap only bounds what one anonymous act can cost everyone else. `BEACH_CAPS=on` (env) is the master switch — unset, nothing is read and nothing is counted, so off costs nothing. Once on, the numbers are lines in the apex's latched `settings` — at a top-level digit or one rung beneath it, so the four can nest under one branch — and you change one with a single write in the middle of a flood, no redeploy:
 
 | line | what it bounds |
 |---|---|
-| `cap_births_per_hour=<n>` | new blocks the whole deploy accepts in a clock hour — every block is a row in the index every sweep downloads |
-| `cap_appends_per_minute=<n>` | appends one **unlatched** accumulator accepts in a clock minute |
+| `cap_births_per_hour=<n>` | new blocks the whole deploy accepts in a clock hour — every block is a row in the index every sweep downloads; a latch set on a name that holds no block counts too |
+| `cap_appends_per_minute=<n>` | appends one **unlatched** accumulator accepts in a clock minute, at its root or beneath any node |
 | `cap_write_bytes=<n>` | the size of one write no latch stands behind |
+| `cap_wrong_keys_per_hour=<n>` | wrong keys one block hears in a clock hour — past it, no key is tried there until the hour turns, the right one included |
 
-A latch-holder is an author and is never throttled. The accepted cost: a vandal can hold a beach at its birth cap and keep newcomers out for that hour, and cannot touch anyone already here. **The lever that needs no switch at all**, and the first to reach for when one board is flooding: latch that board's root. Appends then need the key, the flood stops at once, and relinquishing the latch reopens it. `npm run smoke:caps` proves all of this, including the webhook attack itself.
+A latch-holder is an author and is never throttled by the first three. The accepted cost: a vandal can hold a beach at its birth cap and keep newcomers out for that hour, and cannot touch anyone already here. The fourth is the one that can reach a keyholder: a latch is a single fast hash, so without it a script could try a dictionary against any latch at the speed of the door; with it, a stranger who spends the cap on one block holds its keyholder out of it until the hour turns, and nothing written there changes. Every door that tries a key counts — a write, a rotation, a wipe, an append, a grain side, a passport held whole, and a block named for a handle (counted against that handle's passport). A keyless act is never counted. **The lever that needs no switch at all**, and the first to reach for when one board is flooding: latch that board's root. Appends then need the key, the flood stops at once, and relinquishing the latch reopens it. `npm run smoke:caps` proves all of this, including the webhook attack itself.
 
 ## Architecture notes
 
-- **The handler is one file.** [api/pscale-beach.js](api/pscale-beach.js) is ~1,600 lines covering ordinary blocks, `sed:` registration, `grain:` reach/accept, lock semantics and inheritance, the shape gate, atomic append with supernesting, path-based world routing, and presence sweeping. Its one extracted companion is [api/floor.js](api/floor.js) — pure floor-invariant helpers with no side effects, so the scripts can import them too.
+- **The handler is one file.** [api/pscale-beach.js](api/pscale-beach.js) is ~1,600 lines covering ordinary blocks, `sed:` registration, `grain:` reach/accept, lock semantics and inheritance, the shape gate, atomic append with supernesting, path-based world routing, and presence sweeping. Its one extracted companion is [api/floor.js](api/floor.js) — pure floor-invariant helpers with no side effects, so the scripts can import them too. Beside them, [api/turn.js](api/turn.js) is no part of the wire and touches no block: an operator's service that turns the owner's Cloudflare TURN key into a short-lived pass for the room plug (`button/room.js`).
 
 - **Lock salt namespaces match bsp-mcp.** Locks set under one client verify under any other — the salt formulas are in [`docs/protocol-pscale-beach-v2.md`](https://github.com/pscale-commons/bsp-mcp-server/blob/main/docs/protocol-pscale-beach-v2.md). Don't change `BEACH_ORIGIN` after locking blocks.
 

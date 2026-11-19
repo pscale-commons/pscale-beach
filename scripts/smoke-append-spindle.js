@@ -159,8 +159,10 @@ async function main() {
     '(c) with dated entries the refusal names the longest-standing slot', JSON.stringify(r.body.oldest));
 
   // (d) missing node / string leaf / missing block refuse cleanly
-  r = await post({ block: 'grain:cafe', append: true, spindle: '5', content: 'x', secret: 'key-two' });
+  r = await post({ block: 'grain:cafe', append: true, spindle: '1.5', content: 'x', secret: 'key-one' });
   ok(r.status === 404 && r.body.code === 'not_found', '(d) append under a missing node → 404', JSON.stringify(r.body));
+  r = await post({ block: 'grain:cafe', append: true, spindle: '5', content: 'x', secret: 'key-two' });
+  ok(r.status === 405 && r.body.code === 'grain_reach_only', "(d) append beneath a grain's 5, inside no side → refused before the walk", JSON.stringify(r.body));
   r = await post({ block: 'grain:cafe', append: true, spindle: '2.4', content: 'x', secret: 'key-two' });
   ok(r.status === 409 && r.body.code === 'append_at_leaf', '(d) append under a string leaf → 409, prose never auto-wrapped', JSON.stringify(r.body));
   r = await post({ block: 'no-such-block', append: true, spindle: '1', content: 'x' });
