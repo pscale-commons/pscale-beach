@@ -33,6 +33,7 @@
     }
   ],
   "crons": [
-    { "path": "/api/night-readers", "schedule": "0 7 * * *" }
+    { "path": "/api/night-readers", "schedule": "0 7 * * *" },
+    { "path": "/api/letterboxes", "schedule": "30 6 * * *" }
   ]
 }

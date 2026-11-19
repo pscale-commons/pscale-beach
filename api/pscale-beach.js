@@ -1383,7 +1383,8 @@ const _settingsCache = new Map(); // `${origin}|${block}` -> { lines: Map<string
 // no new block. A STRANGER is served only what a holder's index marks beyond
 // (shell-indexes 1.111113: index:<holder>, the entry naming the block, its card's 5), the
 // index as that subset, and one plain refusal for everything else — the same whether the
-// block exists or not, since what the gate hides is that a thing exists. The holder of
+// block exists or not, since what the gate hides is that a thing exists — save the door of a
+// letterbox the keepers open, and the one letter it takes (THE LETTERBOX, below). The holder of
 // <x>:<handle> is that handle when it keeps an index, else the keepers (BEACH_KEEPERS).
 // Writes need a pass under the latch rules as ever, save the proof itself and a passport
 // founded with an INVITE a member minted (seven days; one minted FOR a name founds that
@@ -1529,12 +1530,13 @@ function indexEntries(index) {
 function indexSays(index, blockName) {
   for (const e of indexEntries(index)) {
     const line = typeof e['_'] === 'string' ? e['_'] : '';
-    if (line === blockName || line.startsWith(blockName + ' ') || line.startsWith(blockName + '\u00a0')) {
-      const v = e['5'];
-      return typeof v === 'string' ? v.trim().toLowerCase() : (v && typeof v === 'object' && typeof v['_'] === 'string' ? v['_'].trim().toLowerCase() : '');
-    }
+    if (line === blockName || line.startsWith(blockName + ' ') || line.startsWith(blockName + '\u00a0')) return cardSays(e);
   }
   return null;
+}
+function cardSays(card) {
+  const v = card['5'];
+  return typeof v === 'string' ? v.trim().toLowerCase() : (v && typeof v === 'object' && typeof v['_'] === 'string' ? v['_'].trim().toLowerCase() : '');
 }
 const GATE_HOLDER_EXEMPT = ['sed:', 'grain:', 'archive:', 'probe:', 'index:'];
 // Whether a block is marked beyond by its holder's index — the handle it is named for when that
@@ -1563,6 +1565,189 @@ async function beyondNames(origin, names) {
   const out = [];
   for (const n of names) if (await beyondOf(origin, n)) out.push(n);
   return out;
+}
+
+// ── THE LETTERBOX ──
+// (letterbox:happyseaurchin, all five decisions GO, 19 November 2026; the proposal is spine:letterbox and
+// function:letterbox at beach.happyseaurchin.com.) Behind the members' gate a stranger writes nothing, so someone
+// outside who would say "I'd like to come along" has nowhere to say it. A LETTERBOX is the one exception: a block the
+// KEEPERS open with one card in their index (its 5 says `letterbox`, where `beyond` would let anyone read it), into
+// which anyone, with no key and no pass, may drop ONE LETTER SEALED FOR THE COLOUR THE BOX NAMES and do nothing else:
+// not read the box, not see who else wrote, not change or take back a letter, and not write anywhere else here.
+//   THE BOX'S OWN LINE, the string its underscore chain ends in, names its colour (`colour:<name>`) and its ceiling
+//   (`<n> letters a day`, thirty unless it says): "LETTERBOX — I'm coming along: for colour:leadership, 30 letters a
+//   day …". The box stands behind a latch of its own like any block, and a drop needs none of it.
+//   THE DOOR: a stranger who reads the box is shown what it takes and nothing of what is in it: its colour, the
+//   colour's current turn and that turn's PUBLIC HALF, read from the colour block as the seal reads it (so a turned
+//   colour is followed at once and nobody keeps a copy), the size a letter may be, and the ceiling.
+//   THE DROP: POST {block, append: true, content: <the letter>} with no secret, the letter as the seal makes one
+//   (button/seal.js colour.letter: its note, its words boxed to the half with a one-off pair, the nonce, and the seal
+//   naming the colour, the turn and that pair's public half) for the box's colour and its CURRENT turn, nothing more in
+//   it, LETTER_BYTES at most. The beach stamps when it came at its 3 and lands it at the box's next slot as any append.
+//   A member's keyless drop is the same drop; an append carrying the box's key is an ordinary append.
+//   THE CEILING: the box's letters a day, counted from the letters that came today (UTC) and still stand, under the
+//   append lock, so two drops at the last place cannot both land; and LETTERBOX_BYTES for the whole box, since the
+//   store takes a block in one write. Past either the box says it is full: try tomorrow, or email instead.
+//   THE BACKSTOP: every letter is gone LETTER_DAYS after it came. The leaders' phones clear sooner, with the box's
+//   latch; the beach clears at every drop and once a day besides (clearLetterboxes, api/letterboxes.js, the cron in
+//   vercel.json), so a letter goes even when nothing touches its box. The beach keeps no copy.
+// What the beach sees is a sealed envelope, how big it is, the colour and turn it names, and when it came; never the
+// words, and never who wrote them. Off the gate there is no letterbox: on an open beach anyone may write anyway.
+const LETTER_BYTES = 6000;         // one letter as sent, sealed: about four thousand characters of words
+const LETTERBOX_BYTES = 500_000;   // the whole box, letters and all
+const LETTERS_A_DAY = 30;          // unless the box's line says '<n> letters a day'
+const LETTER_DAYS = 40;            // no letter stands longer
+// A letterbox is opened by the keepers alone (a holder's own index cannot open one), and never on a passport or a
+// substrate block, which have doors of their own.
+async function letterboxOf(origin, blockName) {
+  if (isPassport(blockName) || GATE_HOLDER_EXEMPT.some((p) => blockName.startsWith(p))) return false;
+  for (const keeper of GATE_KEEPERS) {
+    const says = indexSays(await holderIndex(origin, keeper), blockName);
+    if (says !== null) return says === 'letterbox';
+  }
+  return false;
+}
+// The box's colour and ceiling, from its own line.
+function letterboxRules(box) {
+  let line = box;
+  while (line && typeof line === 'object') line = line['_'];
+  line = typeof line === 'string' ? line : '';
+  const colour = line.match(/\bcolour:([A-Za-z0-9][A-Za-z0-9-]*)/);
+  const perDay = line.match(/\b(\d{1,5})\s+letters?\s+a\s+day\b/i);
+  return { colour: colour ? `colour:${colour[1]}` : null, perDay: perDay ? parseInt(perDay[1], 10) : LETTERS_A_DAY };
+}
+// The colour's current turn and its public half, read as the seal reads them (button/seal.js colour.turns and
+// colour.current, its twin): a turn is a slot holding a ring at 1 and a half at 2, named by the address the beach gave
+// it, padded to the floor, and the last of them is the current one.
+function currentTurn(colourBlock) {
+  let floor = 0, n = colourBlock;
+  while (n && typeof n === 'object' && n._ && typeof n._ === 'object') { floor++; n = n._; }
+  floor = Math.max(1, floor + 1);
+  let last = null;
+  (function walk(node, path) {
+    if (!node || typeof node !== 'object') return;
+    if (path && node['1'] && typeof node['1'] === 'object' && typeof node['2'] === 'string') {
+      const address = String(parseInt(path.padEnd(floor, '0'), 10));
+      if (!last || parseInt(address, 10) > parseInt(last.address, 10)) last = { address, half: node['2'] };
+      return;
+    }
+    if (node._ && typeof node._ === 'object') walk(node._, path + '0');
+    for (let d = 1; d <= 9; d++) if (node[String(d)]) walk(node[String(d)], path + d);
+  })(colourBlock, '');
+  return last;
+}
+const B64 = /^[A-Za-z0-9+/]+={0,2}$/;
+// What a box takes: a letter for its colour's current turn as the seal makes one, and nothing more in it.
+function letterRefusal(letter, colour, turn) {
+  const no = (why) => ({ status: 422, body: { error: `this box takes one letter sealed for ${colour}, turn ${turn}, as the beach's seal makes one (button/seal.js, colour.letter), and nothing else: ${why}`, code: 'letterbox_letter' } });
+  if (!letter || typeof letter !== 'object' || Array.isArray(letter)) return no('this is not a sealed letter');
+  const seal = letter['9'];
+  if (Object.keys(letter).some((k) => !['_', '1', '2', '9'].includes(k)) || !seal || typeof seal !== 'object' || Array.isArray(seal) || Object.keys(seal).some((k) => !['_', '1', '2', '3', '4'].includes(k))) {
+    return no('a letter carries its note, its sealed words, its nonce and its seal, and nothing more');
+  }
+  if (seal['_'] !== 'gray' || seal['1'] !== 'colour' || typeof seal['4'] !== 'string') return no('this is not a letter to a colour');
+  if (seal['2'] !== colour || String(seal['3']) !== turn) return no(`this one is sealed for ${seal['2']}, turn ${seal['3']}`);
+  if (letter['_'] !== `Sealed for ${colour}, turn ${turn}.`) return no("its note is not the seal's own");
+  if (![letter['1'], letter['2'], seal['4']].every((s) => typeof s === 'string' && B64.test(s)) || letter['1'].length < 24 || letter['2'].length !== 32 || seal['4'].length !== 44) {
+    return no('its words, its nonce or its one-off half are not what the seal makes');
+  }
+  return null;
+}
+// The box tended as it is touched: every letter standing past LETTER_DAYS taken out (the backstop, which needs no
+// key), a container left empty taken up so its slots come round again, and the letters that came today counted for the
+// ceiling. A sealed node with no arrival stamp (the box's own latch kept sealed for its colour, say) is never touched.
+// The caller saves.
+function tendLetters(box, now) {
+  const before = now.getTime() - LETTER_DAYS * 864e5, today = now.toISOString().slice(0, 10);
+  let cleared = 0, todays = 0;
+  (function walk(node) {
+    for (const k of ['1', '2', '3', '4', '5', '6', '7', '8', '9']) {
+      const v = node[k];
+      if (!v || typeof v !== 'object') continue;
+      if (isGrayNode(v)) {
+        if (!isIso8601DateTime(v['3'])) continue;
+        if (Date.parse(v['3']) < before) { delete node[k]; cleared++; } else if (v['3'].startsWith(today)) todays++;
+        continue;
+      }
+      walk(v);
+      if (Object.keys(v).length === 0) delete node[k];
+    }
+    if (node['_'] && typeof node['_'] === 'object') walk(node['_']);
+  })(box);
+  return { cleared, todays };
+}
+// What a stranger who reads a letterbox is shown: what it takes, and nothing of what is in it.
+async function letterboxDoor(origin, name) {
+  const box = await loadBlock(origin, name);
+  if (box == null) return { status: 404, body: { error: `no letterbox stands at "${name}" yet`, code: 'not_found' } };
+  const { colour, perDay } = letterboxRules(box);
+  const turn = colour ? currentTurn(await loadBlock(origin, colour)) : null;
+  return { status: 200, body: {
+    _: turn
+      ? `${name} is a letterbox at ${origin}: drop one letter in it, sealed on your own device for ${colour}, turn ${turn.address}, to the public half here (the beach's seal: beachSeal.colour.letter(words, colour, turn, half)), with POST {block: '${name}', append: true, content: <the letter>} and no key. It takes a letter of ${LETTER_BYTES} bytes at most, sealed, and ${perDay} a day; nothing in it is shown to anyone outside, only ${colour}'s holders can open a letter, and every letter is gone ${LETTER_DAYS} days after it came.`
+      : `${name} is a letterbox at ${origin}, taking nothing yet: its line names no colour, or the colour it names holds no key.`,
+    colour, turn: turn ? turn.address : null, half: turn ? turn.half : null, bytes: LETTER_BYTES, per_day: perDay,
+  } };
+}
+// A letter dropped: checked, then landed under the append lock with the box tended and its ceiling asked.
+async function handleDrop(origin, name, body, now) {
+  if ((body.spindle ?? '') !== '' || body.new_lock !== undefined || body.confirm !== undefined || (body.resolve_window ?? '') !== '' || body.action !== undefined) {
+    return { status: 400, body: { error: `"${name}" is a letterbox: it takes one sealed letter dropped at its root, POST {block: '${name}', append: true, content: <the letter>}, and nothing else`, code: 'letterbox_only' } };
+  }
+  const box = await loadBlock(origin, name);
+  if (box == null) return { status: 404, body: { error: `no letterbox stands at "${name}" yet`, code: 'not_found' } };
+  const { colour, perDay } = letterboxRules(box);
+  const turn = colour ? currentTurn(await loadBlock(origin, colour)) : null;
+  if (!turn) return { status: 409, body: { error: `the letterbox "${name}" takes nothing yet: its line names no colour, or the colour it names holds no key`, code: 'letterbox_closed' } };
+  const refused = letterRefusal(body.content, colour, turn.address);
+  if (refused) return refused;
+  const bytes = Buffer.byteLength(JSON.stringify(body.content));
+  if (bytes > LETTER_BYTES) return { status: 413, body: { error: `this letter is ${bytes} bytes sealed, and a letter here may be ${LETTER_BYTES} (about four thousand characters): shorten it`, code: 'letterbox_size' } };
+  const letter = { ...body.content, '3': now.toISOString() };
+  const locked = await withAppendLock(origin, name, async () => {
+    const held = await loadBlock(origin, name);
+    if (held == null) return { missing: true };
+    const { cleared, todays } = tendLetters(held, now);
+    const full = todays >= perDay ? 'today' : Buffer.byteLength(JSON.stringify(held)) + bytes > LETTERBOX_BYTES ? 'now' : null;
+    if (full) { if (cleared) await saveBlock(origin, name, held); return { full }; }
+    await saveBlock(origin, name, appendWithSupernest(name, origin, held, letter).block);
+    return { landed: true };
+  });
+  if (!locked) return { status: 503, body: { error: 'append contention — retry', code: 'append_contention' } };
+  if (locked.done.missing) return { status: 404, body: { error: `no letterbox stands at "${name}" yet`, code: 'not_found' } };
+  if (locked.done.full) {
+    return { status: 429, body: { error: locked.done.full === 'today'
+      ? `the letterbox "${name}" is full for today: try again tomorrow, or email instead`
+      : `the letterbox "${name}" is full until its letters are cleared: try again another day, or email instead`, code: 'letterbox_full' } };
+  }
+  return { status: 200, body: { ok: true, _: `the letter is in the box: only ${colour}'s holders can open it, and it is gone ${LETTER_DAYS} days after it came` } };
+}
+// THE BACKSTOP, once a day: every letterbox the keepers open at the deploy's own origin is tended, so a letter is gone
+// LETTER_DAYS after it came even when nothing else touches its box. One tending a day, whoever asks (a key in the store
+// for the day, set if absent), so the route needs no secret; off the gate it reads nothing at all.
+export async function clearLetterboxes(now = new Date()) {
+  const day = now.toISOString().slice(0, 10);
+  if (!GATE_ON || !GATE_KEEPERS.length) return { day, tended: false };
+  if ((await redis.set(`${keyNs(BASE_ORIGIN)}:letterboxes:${day}`, now.toISOString(), { nx: true, ex: 172800 })) !== 'OK') return { day, tended: false };
+  const names = new Set();
+  for (const keeper of GATE_KEEPERS) {
+    for (const card of indexEntries(await holderIndex(BASE_ORIGIN, keeper))) {
+      if (typeof card['_'] === 'string' && cardSays(card) === 'letterbox') names.add(card['_'].split(/\s/)[0]);
+    }
+  }
+  let boxes = 0, cleared = 0;
+  for (const name of names) {
+    if (!(await letterboxOf(BASE_ORIGIN, name))) continue;   // the first card naming it decides, as at the door
+    boxes++;
+    const done = await withAppendLock(BASE_ORIGIN, name, async () => {
+      const box = await loadBlock(BASE_ORIGIN, name);
+      const n = box == null ? 0 : tendLetters(box, now).cleared;
+      if (n) await saveBlock(BASE_ORIGIN, name, box);
+      return n;
+    });
+    cleared += done ? done.done : 0;
+  }
+  return { day, tended: true, boxes, cleared };
 }
 
 // ── THE GUARD ──
@@ -2458,7 +2643,11 @@ export default async function handler(req, res) {
       // A stranger at a members' beach: the tables are members-only, and a block is served only
       // where its holder marks it beyond — one refusal, the same whether it exists or not.
       if (!blockName && req.query && 'tables' in req.query) return res.status(401).json(membersOnly(origin));
-      if (blockName && !(await beyondOf(origin, blockName))) return res.status(401).json(membersOnly(origin));
+      if (blockName && !(await beyondOf(origin, blockName))) {
+        // a letterbox shows a stranger its door, what it takes and nothing of what is in it (THE LETTERBOX)
+        if (await letterboxOf(origin, blockName)) { const door = await letterboxDoor(origin, blockName); return res.status(door.status).json(door.body); }
+        return res.status(401).json(membersOnly(origin));
+      }
     }
     // ?tables — the /w/ addresses with a room written (listPlayedTables).
     // Answered at the beach's own origin, where its /w/ addresses hang; a /w/
@@ -2566,6 +2755,11 @@ export default async function handler(req, res) {
     let spend = null;   // the invitation this write founds a passport with, recorded as taken just before it lands
 
     if (gate.on) {
+      // THE LETTERBOX: a keyless append to a block the keepers open as a letterbox is a letter dropped, whoever drops it.
+      if (body.append === true && (body.secret == null || body.secret === '') && (!gate.member || isGrayNode(body.content)) && (await letterboxOf(origin, blockName))) {
+        const dropped = await handleDrop(origin, blockName, body, servedAt);
+        return res.status(dropped.status).json(dropped.body);
+      }
       // THE PROOF: a passport's latch proved once, no content, mints a pass.
       if (isPassport(blockName) && body.content === undefined && body.new_lock === undefined && body.append !== true && body.invite !== true && typeof body.secret === 'string' && body.secret !== '') {
         const held = await loadHashes(origin, blockName);
