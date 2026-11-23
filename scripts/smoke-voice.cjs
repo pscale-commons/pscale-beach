@@ -7,7 +7,11 @@
 // refuses a wrong key, and a name with a passport takes only the passport's key (handle_bound). A mirror is
 // founded at its family's floor (a family on the clock: ten deep, so a day's line lands under the day's
 // digits; the arcade's step 1), and a newcomer is given a name and a key in one tap (propose, enter, made,
-// known; the arcade's step 2, moved here from the premiere page).
+// known; the arcade's step 2, moved here from the premiere page). A family whose law names its colour (a line of
+// function:<field> opening SEALED IN colour:<name>, as the connector reads it; bsp-mcp #640) is sealed in it with no
+// gray passed: a holder's say with their own copy, anyone else's as a letter, a keep's every line, through the page's
+// own text entry and through the button alike; gray: false writes open, and a law naming a colour that stands nowhere
+// writes nothing, asks for no key, and says why.
 //
 // Runs offline in headless Chromium (Playwright). CommonJS (.cjs), as this package is ESM:
 //   NODE_PATH=$(npm root -g) npm run smoke:voice
@@ -62,6 +66,16 @@ function seed() {
   BLOCKS['spine:reflexive-reading'] = { _: 'Reading this reflexively.', 1: { _: 'Most charts ask you to take in information…' } };
   BLOCKS['spine:clock'] = nested('A family on the clock.', 10);          // floor 10: the sundial's day is 2026414500
   BLOCKS['spine:table'] = nested('A floor-3 tabletop world.', 3);         // floor 3: a stop is 311
+  // A LAW NAMES ITS COLOUR (bsp-mcp #640): where a line of function:<field> opens SEALED IN colour:<name> — at a digit
+  // (function:admin 7), a digit's own underscore, or the root, a supernested one too — and nowhere else
+  BLOCKS['spine:sealed'] = nested('A family its law seals.', 1);
+  BLOCKS['function:sealed'] = { _: 'THE SEALED FAMILY — its law, as function:admin is one.', 7: 'SEALED IN colour:test — every line said in this family is sealed in its colour by default.' };
+  BLOCKS['spine:under'] = nested('A family whose law names its colour at a digit’s own underscore.', 1);
+  BLOCKS['function:under'] = { _: 'the law', 3: { _: 'Sealed in colour:test, in any case', 1: 'beneath' } };
+  BLOCKS['spine:passing'] = nested('A family whose law only mentions a colour.', 1);
+  BLOCKS['function:passing'] = { _: 'a law whose lines are sealed in colour:test, said in passing', 1: { _: 'a branch', 1: 'SEALED IN colour:test — two digits down names nothing' } };
+  BLOCKS['spine:nowhere'] = nested('A family whose law names a colour never founded.', 1);
+  BLOCKS['function:nowhere'] = { _: { _: 'SEALED IN colour:nowhere — the wrapped root names a colour that stands nowhere' } };
   log.length = 0;
 }
 // a point-write as the handler makes it: trailing zeros are floor padding, an interior 0 steps into the underscore
@@ -169,6 +183,53 @@ const writes = (block) => log.filter((x) => x.method !== 'GET' && (!block || x.b
   r = await p.evaluate(() => beachVoice.ask('who came early?'));
   check('a question has nowhere to go without the button, and says so', !r.ok && r.unsupported, r);
 
+  console.log('\na family whose law names its colour (bsp-mcp #640): sealed with no gray passed');
+  // THE KEEPER'S DOOR, in the browser: colour:test founded with the beach's own seal — turn 1, one copy sealed to the half
+  // tester's word derives (their passport's 9), the public half beside it for letters — as a keeper founds one
+  BLOCKS['colour:test'] = await p.evaluate(async (word) => {
+    const S = window.beachSeal; await S.ready();
+    const K = await S.group.key(), half = S.published(await S.pair(word, 'tester'))['2'];
+    return { _: 'colour:test — a readership for this smoke: a line sealed in this colour opens for each holder of a copy below', 1: await S.colour.turn(K, [await S.group.wrap(K, 'tester', half)]) };
+  }, SECRET);
+  LOCKS['colour:test'] = 'the keeper’s own key';
+  asked.length = 0;
+  const SEALED = 'A line only the colour’s holders read.';
+  r = await p.evaluate((t) => beachVoice.say({ field: 'sealed', at: '1', text: t }), SEALED);
+  m = BLOCKS['sealed:tester'];
+  const env = m && m['1'];
+  check('with no gray, a say into a family whose law names its colour is sealed in it with the holder’s own copy, asking nothing', r.ok && r.sealed === 'colour' && r.turn === '1' && asked.length === 0, r);
+  check('…the envelope stands at the address naming its colour and turn, and the mirror carries none of the words', !!env && !!env['9'] && env['9']['1'] === 'colour' && env['9']['2'] === 'colour:test' && env['9']['3'] === '1' && !JSON.stringify(m).includes(SEALED), m);
+  check('…its opening line open, as a say founds it', /^MIRROR — tester’s readings on the sealed family/.test(m && m._), m && m._);
+  check('…and the holder reads it back', (await p.evaluate((e) => beachVoice.open(e, { name: 'tester' }), env)) === SEALED);
+  r = await p.evaluate(() => beachVoice.say({ field: 'sealed', at: '2', text: 'Said open, on purpose.', gray: false }));
+  check('gray: false writes the line open', r.ok && !r.sealed && BLOCKS['sealed:tester']['2'] === 'Said open, on purpose.', r);
+  r = await p.evaluate(() => beachVoice.say({ field: 'under', at: '1', text: 'Under a digit’s own underscore.' }));
+  check('a law naming its colour at a digit’s own underscore seals as well', r.ok && r.sealed === 'colour' && BLOCKS['under:tester']['1']['9']['2'] === 'colour:test', r);
+  r = await p.evaluate(() => beachVoice.say({ field: 'passing', at: '1', text: 'Only mentioned in passing.' }));
+  check('a law that mentions a colour mid-sentence, or two digits down, names nothing: the line is open', r.ok && !r.sealed && BLOCKS['passing:tester']['1'] === 'Only mentioned in passing.', r);
+  r = await p.evaluate(() => beachVoice.say({ field: 'nowhere', at: '1', text: 'This must never land open.', name: 'someone-new' }));
+  check('a law naming a colour that stands nowhere writes nothing, asks for no key, and says why', !r.ok && /function:nowhere/.test(r.error) && /colour:nowhere/.test(r.error) && /nothing was written/.test(r.error) &&
+    asked.length === 0 && !BLOCKS['nowhere:someone-new'] && writes('nowhere:someone-new').length === 0, r);
+  r = await p.evaluate(() => beachVoice.keep({ field: 'nowhere', content: { 1: 'nor this' } }));
+  check('…and a keep there writes nothing either', !r.ok && /colour:nowhere/.test(r.error) && !BLOCKS['nowhere:tester'], r);
+  r = await p.evaluate(() => beachVoice.keep({ field: 'sealed', content: { _: 'MIRROR — a sealed keep.', 1: 'the first kept line', 3: { _: 'a position’s own line', 1: 'a line beneath it' } } }));
+  m = BLOCKS['sealed:tester'];
+  check('a keep into the family seals every line where it stands, its opening line open', r.ok && r.sealed === 'colour' && r.turn === '1' && m._ === 'MIRROR — tester’s sealed keep.' &&
+    m['1']['9']['2'] === 'colour:test' && m['3']._['9']['2'] === 'colour:test' && m['3']['1']['9']['2'] === 'colour:test' && !/first kept line|own line|beneath it/.test(JSON.stringify(m)), { r, m });
+  const opened = await p.evaluate((n) => Promise.all([beachVoice.open(n['1'], { name: 'tester' }), beachVoice.open(n['3'], { name: 'tester' }), beachVoice.open(n['3']['1'], { name: 'tester' })]), m);
+  check('…and the holder opens each, the position’s own line one zero deeper', opened.join(' | ') === 'the first kept line | a position’s own line | a line beneath it', opened);
+  r = await p.evaluate(() => beachVoice.keep({ field: 'sealed', content: { 1: 'kept open, on purpose' }, gray: false }));
+  check('gray: false keeps the mirror open', r.ok && !r.sealed && BLOCKS['sealed:tester']['1'] === 'kept open, on purpose', r);
+  const visitor = await device();
+  visitor.p.__answers = ['a visitor’s own key'];
+  r = await visitor.p.evaluate(() => beachVoice.say({ field: 'sealed', at: '1', text: 'A letter from a visitor.', name: 'visitor' }));
+  const letter = BLOCKS['sealed:visitor'] && BLOCKS['sealed:visitor']['1'];
+  check('anyone holding no copy writes a letter to the colour', r.ok && r.sealed === 'letter' && r.turn === '1' && !!letter && typeof letter['9']['4'] === 'string' && !JSON.stringify(BLOCKS['sealed:visitor']).includes('A letter from a visitor.'), { r, letter });
+  check('…which every holder reads, and its writer cannot', (await p.evaluate((e) => beachVoice.open(e, { name: 'tester' }), letter)) === 'A letter from a visitor.' &&
+    (await visitor.p.evaluate((e) => beachVoice.open(e, { name: 'visitor' }), letter)) === null);
+  await visitor.context.close();
+  asked.length = 0;   // the visitor's key was theirs to give; what follows asks tester nothing
+
   console.log('\nturned on: the button stands, and the choice is the person\'s');
   r = await p.evaluate(() => beachVoice.button.set(true));
   check('turned on, the button comes onto the page and the page hears it come', await until(p, true) && (await p.evaluate(() => __turns)).join() === 'true');
@@ -197,6 +258,28 @@ const writes = (block) => log.filter((x) => x.method !== 'GET' && (!block || x.b
   await commit.click();
   r = await said;
   check('…they unlock and commit it there, and it lands in their mirror under their words', r.ok && r.name === 'tester' && BLOCKS['reflexive-reading:tester']['1']['3'] === 'Through the button.', r);
+  // the colour the family's law names rides the request, and the frame seals as it seals any coloured line
+  const sealedSay = other.p.evaluate(() => beachVoice.say({ field: 'sealed', at: '5', text: 'Through the button, sealed by the law.' }));
+  const commitSealed = frame.locator('.card.staged button', { hasText: 'commit' });
+  await commitSealed.waitFor(); await sleep(900);
+  const sayCard = await frame.locator('.card.staged p').last().textContent();
+  await commitSealed.click();
+  r = await sealedSay;
+  const viaButton = BLOCKS['sealed:tester']['5'];
+  check('through the button the law’s colour rides the request: the card says so, and the line lands sealed with the holder’s copy', /sealed in colour:test/.test(sayCard) && r.ok && r.sealed === 'colour' && r.turn === '1' &&
+    !!viaButton && viaButton['9']['2'] === 'colour:test' && !JSON.stringify(BLOCKS['sealed:tester']).includes('sealed by the law'), { sayCard, r, viaButton });
+  const sealedKeep = other.p.evaluate(() => beachVoice.keep({ field: 'sealed', content: { _: 'MIRROR — a sealed keep, through the button.', 1: 'kept through the button' } }));
+  const commitKeep = frame.locator('.card.staged button', { hasText: 'commit' });
+  await commitKeep.waitFor(); await sleep(900);
+  const keepCard = await frame.locator('.card.staged p').last().textContent();
+  await commitKeep.click();
+  r = await sealedKeep;
+  m = BLOCKS['sealed:tester'];
+  check('…a keep through it seals every line, its opening line open, the card saying so and reading a sealed line as one line', /every line sealed in colour:test/.test(keepCard) && /takes away what you said at 5, and changes 1/.test(keepCard) &&
+    r.ok && r.sealed === 'colour' && m._ === 'MIRROR — tester’s sealed keep, through the button.' && m['1']['9']['2'] === 'colour:test' && !JSON.stringify(m).includes('kept through the button'), { keepCard, r, m });
+  const cards = await frame.locator('.card.staged').count();
+  r = await other.p.evaluate(() => beachVoice.say({ field: 'nowhere', at: '1', text: 'Not through the button either.' }));
+  check('…and a law naming a colour that stands nowhere is refused before the button is asked anything', !r.ok && /colour:nowhere/.test(r.error) && (await frame.locator('.card.staged').count()) === cards && !BLOCKS['nowhere:tester'], r);
   const off = other.p.evaluate(() => beachVoice.button.set(false));
   const commitOff = frame.locator('.card.staged button', { hasText: 'commit' });
   await commitOff.waitFor(); await sleep(900);

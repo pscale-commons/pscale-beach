@@ -459,6 +459,30 @@
     return S.self.seal(text, me.secret, me.handle).then(function (e) { return { envelope: e, how: 'self' }; });
   }
   function sealWord(gray) { return gray && typeof gray === 'object' && gray.grain ? 'to ' + gray.grain + ', sealed between the two of you' : typeof gray === 'string' ? 'sealed in ' + S.colour.block(gray) : 'sealed to you alone'; }
+  /* A MIRROR KEPT WHOLE IN A COLOUR (A LAW NAMES ITS COLOUR, voice.js): the colour's block read once, and every line sealed
+   * in its current turn — with the person's own copy, else as a letter — where it stands: a leaf in its place, a position's
+   * own line at its underscore, one zero deeper, with what stands beneath it kept. Its opening line, the root's chain of
+   * underscores, stays open as a say founds it, and a line sealed already is kept as it is. { tree, how, turn } */
+  function linesSealed(tree, gray) {
+    var block = S.colour.block(gray);
+    return colourTurn(block, null).then(function (t) {
+      if (!t) throw new Error('no ' + block + ' stands on the beach');
+      var jobs = [];
+      function one(text) { return t.K ? S.colour.seal(text, block, t.turn, t.K) : S.colour.letter(text, block, t.turn, t.node['2']); }
+      function walk(node, chain) {
+        var out = {};
+        Object.keys(node).forEach(function (k) {
+          var v = node[k];
+          if (v && typeof v === 'object' && !Array.isArray(v)) out[k] = S.isEnvelope(v) ? v : walk(v, chain && k === '_');
+          else if (typeof v === 'string' && v.trim() && !(chain && k === '_')) jobs.push(one(v).then(function (e) { out[k] = e; }));
+          else out[k] = v;
+        });
+        return out;
+      }
+      var sealed = walk(tree, true);
+      return Promise.all(jobs).then(function () { return { tree: sealed, how: t.K ? 'colour' : 'letter', turn: t.turn }; });
+    });
+  }
   /* why a seal failed, in the person's terms: a key that could not be derived in this browser (its WebAssembly refused,
    * or the seal's libraries not loaded) said as that, anything else (no such colour, a partner with no keys) as itself */
   function sealFailure(e) {
@@ -578,6 +602,8 @@
     out = out || {};
     if (typeof node === 'string') { if (path && node.trim()) out[path] = node.trim(); return out; }
     if (!node || typeof node !== 'object') return out;
+    // a sealed line is one line, drawn as the router draws it, never its envelope's own fields
+    if (S && S.isEnvelope(node)) { if (path) out[path] = S.grey(node); return out; }
     // an underscore voices its position, never a position of its own: the floor's chain of them is the opening line
     Object.keys(node).forEach(function (k) { linesOf(node[k], k === '_' ? path : path + k, out); });
     return out;
@@ -636,6 +662,10 @@
     if (!field) return reply(id, { ok: false, error: 'not a family name: ' + String(op.field || '') });
     var content = op.content, shown;
     if (!content || typeof content !== 'object' || Array.isArray(content)) return reply(id, { ok: false, error: 'nothing to keep' });
+    // A MIRROR IS NEVER SEALED WHOLE: in a family whose law names its colour the voice hands that colour here, and every line
+    // is sealed in it where it stands (A LAW NAMES ITS COLOUR, voice.js); a seal to the person alone, or a grain's, is no keep's
+    if (op.gray && typeof op.gray !== 'string') return reply(id, { ok: false, error: 'a mirror is never sealed whole: its lines are sealed in the colour its family’s law names, or said one at a time' });
+    if (op.gray && !S) return reply(id, { ok: false, error: 'the beach serves no seal' });
     try { shown = JSON.stringify(content, null, 1); } catch (e) { return reply(id, { ok: false, error: 'nothing to keep' }); }
     if (shown.length > 20000) return reply(id, { ok: false, error: 'too much to keep at once' });
     if (!me || !me.secret) return hold(id, op, HOST + ' asks to keep this as your own mirror of ' + field + ':', shown);
@@ -654,12 +684,18 @@
       var where = base.replace(/^https?:\/\//, '') + ' — ' + block + (!m ? ', founding your mirror, locked with your passphrase'
         : ', replacing what stands there' + (gone.length ? '. It takes away what you said at ' + some(gone) : '') +
           (moved.length ? (gone.length ? ', and changes ' : '. It changes what you said at ') + some(moved) : ''));
-      decide(HOST + ' asks to keep this as yours, in ' + where + ':', JSON.stringify(content, null, 1), 'commit', function (yes, why) {
+      decide(HOST + ' asks to keep this as yours, in ' + where + (op.gray ? ', every line ' + sealWord(op.gray) : '') + ':', JSON.stringify(content, null, 1), 'commit', function (yes, why) {
         if (!yes) return reply(id, { ok: false, error: why || 'declined' });
-        function replace() { return post({ block: block, content: content, secret: me.secret, confirm: true }, base); }
-        (m ? replace() : found(block, content, base).then(function (w) { return w.code === 'confirm_required' ? replace() : w; })).then(function (r) {
-          reply(id, { ok: r.ok, status: r.status, error: r.error, code: r.code, handle: me.handle, block: block, founded: !m });
-          note(r.ok ? 'Kept: ' + block + '.' : 'The beach refused it: ' + (r.error || r.status) + (r.status === 403 ? ' — unlock again if your words were wrong.' : ''));
+        // the writer's door seals before the mirror leaves, and before it is founded: a seal that fails founds nothing and
+        // writes nothing, and is said as what it is, never as the beach's refusal
+        (op.gray ? linesSealed(content, op.gray) : Promise.resolve({ tree: content })).then(function (s) {
+          function replace() { return post({ block: block, content: s.tree, secret: me.secret, confirm: true }, base); }
+          return (m ? replace() : found(block, s.tree, base).then(function (w) { return w.code === 'confirm_required' ? replace() : w; })).then(function (r) { r.sealed = s.how; r.turn = s.turn; return r; });
+        }, function (e) { return { ok: false, status: 0, code: 'unsealed', unsealed: true, error: sealFailure(e) }; }).then(function (r) {
+          reply(id, { ok: r.ok, status: r.status, error: r.error, code: r.code, handle: me.handle, block: block, founded: !m && !r.unsealed, sealed: r.ok && r.sealed ? r.sealed : undefined, turn: r.ok && r.sealed ? r.turn : undefined });
+          note(r.ok ? 'Kept: ' + block + '.'
+            : r.unsealed ? 'Your mirror was not sealed, so nothing was written: ' + r.error + '.'
+              : 'The beach refused it: ' + (r.error || r.status) + (r.status === 403 ? ' — unlock again if your words were wrong.' : ''));
         });
       }, true);
     }, unread(id));

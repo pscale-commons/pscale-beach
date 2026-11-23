@@ -83,6 +83,15 @@
  *                                               passport:<name> 9 — or published there now where none stand. At a members'
  *                                               beach prove does this as the member keys in.
  *
+ * A LAW NAMES ITS COLOUR (23 Nov 2026; bsp-mcp #640, proposals/2026-11-23-a-law-names-its-colour.md, the connector's own
+ * rule, read here the same way): where a line of the family's law, function:<field> at this beach, OPENS 'SEALED IN
+ * colour:<name>' — at the law's root or at any of its digits, the line itself or that digit's own underscore (function:admin
+ * 7) — every say and keep in the family is sealed in that colour with no gray passed: a holder's line with their own copy,
+ * anyone else's as a letter to the colour, and a keep's every line where it stands, its opening line open as a say founds
+ * it. gray: false writes open. A law naming a colour that stands nowhere on the beach writes nothing, before anyone is asked
+ * for a key, and says why. Through the button the colour rides the request, and the frame seals as it seals any coloured
+ * line, on the card the person commits. A family whose law names none writes open, exactly as before.
+ *
  * A KEY IS NEVER KEPT IN PLAIN TEXT (Matthew's condition, coloured-stigmergy 1.18): what this script keeps on the device —
  * the key a write kept, beach-key:<block>, and a key made here until it is said, beach-made:<block> — is wrapped under a
  * key the browser will not hand out (seal.js keep: a non-extractable key in this origin's IndexedDB), and held plain in
@@ -417,14 +426,15 @@
     });
   }
   /* the family's spine (it must stand, and says the family's floor) and the person's mirror; at a members' beach
-   * refusing the read at its door, the passport proved once more with a key at hand, and the read made once again */
-  function family(field, block, name, again) {
-    return Promise.all([read('spine:' + field, 0), read(block)]).then(function (r) {
+   * refusing the read at its door, the passport proved once more with a key at hand, and the read made once again.
+   * With law, the family's law is read beside them, for the colour it names (A LAW NAMES ITS COLOUR, below) */
+  function family(field, block, name, law, again) {
+    return Promise.all([read('spine:' + field, 0), read(block), law ? read('function:' + field) : null]).then(function (r) {
       if (!r[0]) throw refusal('no family called ' + field + ' stands on the beach (there is no spine:' + field + ')');
-      return { floor: +r[0].floor || 1, mirror: r[1] };
+      return { floor: +r[0].floor || 1, mirror: r[1], colour: law ? colourOfLaw(r[2]) : null };
     }, function (e) {
       if (!(e && e.code === 'members_only' && name && !again)) throw e;
-      return admitted(block, name).then(function (ok) { if (!ok) throw e; return family(field, block, name, true); });
+      return admitted(block, name).then(function (ok) { if (!ok) throw e; return family(field, block, name, law, true); });
     });
   }
   /* the pass earned without a question, from the key this page holds or this device keeps for the name; false where
@@ -508,18 +518,21 @@
     if (!/^[1-9][0-9]*(\.[0-9]+)?$/.test(addr)) return Promise.resolve({ ok: false, error: 'not an address: ' + addr });
     if (!text) return Promise.resolve({ ok: false, error: 'nothing to say' });
     if (op.gray && typeof op.gray === 'object') return Promise.resolve({ ok: false, error: 'a say is sealed to the person (gray: true) or in a colour (gray: "colour:<name>"); a grain line is sealed with beachVoice.seal' });
-    if (shown()) return through({ kind: 'say', field: field, at: addr, text: text, gray: op.gray });
+    // the colour the family's law names rides the request, and the frame seals as it seals any coloured line
+    if (shown()) return lawful(field, op.gray).then(function (gray) { return through({ kind: 'say', field: field, at: addr, text: text, gray: gray }); }, failed);
     var name = nameFor(op); if (!name) return Promise.resolve(NEED);
     var block = field + ':' + name;
-    return family(field, block, name).then(function (f) {
-      return signed(block, name, !f.mirror, function (key) {
-        return (f.mirror ? Promise.resolve({ ok: true }) : found(block, key, { _: floored(op.intro || intro(field, name), f.floor) })).then(function (w) {
-          // confirm_required: the mirror was founded a moment ago, from another tab, and stands
-          if (!(w.ok || w.code === 'confirm_required')) return w;
-          if (!op.gray) return post({ block: block, spindle: addr, content: text, secret: key });
-          // THE WRITER'S DOOR SEALS BEFORE THE LINE LEAVES: the envelope stands at the address, as the connector lands it
-          return sealFor(op.gray, text, name, key).then(function (s) {
-            return post({ block: block, spindle: addr, content: s.envelope, secret: key }).then(function (r) { if (r.ok) { r.sealed = s.how; if (s.turn) r.turn = s.turn; } return r; });
+    return family(field, block, name, op.gray == null).then(function (f) {
+      return sealedIn(field, op.gray, f.colour).then(function (gray) {
+        return signed(block, name, !f.mirror, function (key) {
+          // THE WRITER'S DOOR SEALS BEFORE THE LINE LEAVES, and before the mirror is founded, as the frame does: a seal that
+          // fails founds nothing and writes nothing. The envelope stands at the address, as the connector lands it
+          return (gray ? sealFor(gray, text, name, key) : Promise.resolve(null)).then(function (s) {
+            return (f.mirror ? Promise.resolve({ ok: true }) : found(block, key, { _: floored(op.intro || intro(field, name), f.floor) })).then(function (w) {
+              // confirm_required: the mirror was founded a moment ago, from another tab, and stands
+              if (!(w.ok || w.code === 'confirm_required')) return w;
+              return post({ block: block, spindle: addr, content: s ? s.envelope : text, secret: key }).then(function (r) { if (r.ok && s) { r.sealed = s.how; if (s.turn) r.turn = s.turn; } return r; });
+            });
           }, failed);
         });
       });
@@ -531,18 +544,27 @@
     if (!field) return Promise.resolve({ ok: false, error: 'not a family name: ' + String(op.field || '') });
     if (!content || typeof content !== 'object' || Array.isArray(content)) return Promise.resolve({ ok: false, error: 'nothing to keep' });
     if (op.gray) return Promise.resolve({ ok: false, error: 'a mirror is never sealed whole: seal a line with say, at its address' });
-    if (shown()) return through({ kind: 'keep', field: field, content: content });
+    // a family whose law names its colour keeps every line sealed in it (A LAW NAMES ITS COLOUR); gray: false keeps them open
+    if (shown()) return lawful(field, op.gray).then(function (gray) { return through({ kind: 'keep', field: field, content: content, gray: gray }); }, failed);
     var name = nameFor(op); if (!name) return Promise.resolve(NEED);
     var block = field + ':' + name, tree = JSON.parse(JSON.stringify(content));
     // a mirror's opening line names whose it is; a page that does not know the name writes 'a'
     if (typeof tree._ === 'string' && tree._.trim()) tree._ = tree._.replace(/^MIRROR — a /, 'MIRROR — ' + name + '’s ');
     else if (!tree._ || typeof tree._ !== 'object') tree._ = intro(field, name);
-    return family(field, block, name).then(function (f) {
+    return family(field, block, name, op.gray == null).then(function (f) {
       if (f.floor >= 10) return { ok: false, error: 'the ' + field + ' family keeps time, so its mirror is said a beat at a time, never kept whole' };
       if (typeof tree._ === 'string') tree._ = floored(tree._, f.floor);
-      return signed(block, name, !f.mirror, function (key) {
-        function replace() { return post({ block: block, content: tree, secret: key, confirm: true }); }
-        return f.mirror ? replace() : found(block, key, tree).then(function (w) { return w.code === 'confirm_required' ? replace() : w; });
+      return sealedIn(field, op.gray, f.colour).then(function (gray) {
+        return signed(block, name, !f.mirror, function (key) {
+          // every line sealed before the mirror leaves, and before it is founded, the colour's block read once
+          return (gray ? sealerFor(gray, name, key).then(function (one) { return linesSealed(tree, one); }) : Promise.resolve({ tree: tree })).then(function (s) {
+            function replace() { return post({ block: block, content: s.tree, secret: key, confirm: true }); }
+            return (f.mirror ? replace() : found(block, key, s.tree).then(function (w) { return w.code === 'confirm_required' ? replace() : w; })).then(function (r) {
+              if (r.ok && s.how) { r.sealed = s.how; r.turn = s.turn; }
+              return r;
+            });
+          }, failed);
+        });
       });
     }).catch(failed);
   }
@@ -689,11 +711,12 @@
   var WORN = {};
   var turnNo = function (t) { return String(parseInt(t, 10) || t); };
   /* a colour block at this beach — its current turn, or the one named — and this name's key for it: their own copy opened
-   * with their word, worn from then on. { K, turn, node }, K null where no copy opens; null where no such block or turn */
-  function colourTurn(block, turn, name) {
+   * with their word (the one in hand where a write has it, else the one held or kept for the name), worn from then on.
+   * { K, turn, node }, K null where no copy opens; null where no such block or turn */
+  function colourTurn(block, turn, name, word) {
     var at = turn != null ? block + '|' + turnNo(turn) : '';
     if (at && WORN[at]) return Promise.resolve({ K: WORN[at], turn: turnNo(turn) });
-    var word = name ? wordOf(name) : '';
+    word = word || (name ? wordOf(name) : '');
     return Promise.all([seal(), read(block)]).then(function (r) {
       var S = r[0], b = r[1];
       if (!b) return null;
@@ -705,11 +728,12 @@
       return S.colour.keyOf(t, word, name).then(function (K) { if (K) WORN[k] = K; return { K: K, turn: t.address, node: t.node }; });
     });
   }
-  /* the envelope a line leaves as: gray true to the person alone (self, salted with their name — the key their published
-   * halves derive); 'colour:<name>' in that colour, with the current turn's key from their own copy, else as a letter;
-   * { grain: <partner> } to the two of them, refused where the word does not derive the halves published at their
-   * passport. Resolves { envelope, how: 'self' | 'colour' | 'letter' | 'grain', turn? } */
-  function sealFor(gray, text, name, word) {
+  /* THE WRITER'S DOOR (§4.1), as the connector's sealer: what a line leaves as, made ready once — a colour's block read
+   * once — and then handed each line to seal: gray true to the person alone (self, salted with their name — the key their
+   * published halves derive); 'colour:<name>' in that colour, with the current turn's key from their own copy, else as a
+   * letter; { grain: <partner> } to the two of them, refused where the word does not derive the halves published at their
+   * passport. Resolves a sealer, each line it seals resolving { envelope, how: 'self' | 'colour' | 'letter' | 'grain', turn? } */
+  function sealerFor(gray, name, word) {
     return seal().then(function (S) {
       word = word || wordOf(name);
       if (gray && typeof gray === 'object' && gray.grain) {
@@ -719,20 +743,74 @@
         return Promise.all([read('passport:' + partner), read('passport:' + name)]).then(function (r) {
           var theirs = S.publishedOf(r[0] && r[0]['9']), mine = S.publishedOf(r[1] && r[1]['9']);
           if (!theirs) throw refusal(partner + ' has no keys published at passport:' + partner + ' 9, so nothing can be sealed to them yet');
-          return S.grain.seal(text, word, name, partner, theirs.x25519, mine ? mine.x25519 : undefined).then(function (e) { return { envelope: e, how: 'grain' }; });
+          return function (text) { return S.grain.seal(text, word, name, partner, theirs.x25519, mine ? mine.x25519 : undefined).then(function (e) { return { envelope: e, how: 'grain' }; }); };
         });
       }
       if (typeof gray === 'string') {
         var block = S.colour.block(gray);
-        return colourTurn(block, null, name).then(function (t) {
+        return colourTurn(block, null, name, word).then(function (t) {
           if (!t) throw refusal('no ' + block + ' stands on this beach: a colour is founded by its keeper first');
-          if (t.K) return S.colour.seal(text, block, t.turn, t.K).then(function (e) { return { envelope: e, how: 'colour', turn: t.turn }; });
-          return S.colour.letter(text, block, t.turn, t.node['2']).then(function (e) { return { envelope: e, how: 'letter', turn: t.turn }; });
+          return function (text) {
+            if (t.K) return S.colour.seal(text, block, t.turn, t.K).then(function (e) { return { envelope: e, how: 'colour', turn: t.turn }; });
+            return S.colour.letter(text, block, t.turn, t.node['2']).then(function (e) { return { envelope: e, how: 'letter', turn: t.turn }; });
+          };
         });
       }
       if (!word) throw refusal('no key is held here for ' + name + ': wear it first');
-      return S.self.seal(text, word, name).then(function (e) { return { envelope: e, how: 'self' }; });
+      return function (text) { return S.self.seal(text, word, name).then(function (e) { return { envelope: e, how: 'self' }; }); };
     });
+  }
+  /* the envelope one line leaves as */
+  function sealFor(gray, text, name, word) { return sealerFor(gray, name, word).then(function (one) { return one(text); }); }
+  /* A MIRROR KEPT WHOLE IN A COLOURED FAMILY: every line sealed by one(text) where it stands — a leaf in its place, a
+   * position's own line at its underscore, one zero deeper, with what stands beneath it kept — and its opening line, the
+   * root's chain of underscores, left open as a say founds it. A line sealed already is kept as it is, and the tree handed
+   * in is never changed, so a write asked again with another key seals afresh. Resolves { tree, how, turn } */
+  function linesSealed(tree, one) {
+    var S = window.beachSeal, how = null, turn = null, jobs = [];
+    function walk(node, chain) {
+      var out = {};
+      Object.keys(node).forEach(function (k) {
+        var v = node[k];
+        if (v && typeof v === 'object' && !Array.isArray(v)) out[k] = S.isEnvelope(v) ? v : walk(v, chain && k === '_');
+        else if (typeof v === 'string' && v.trim() && !(chain && k === '_')) jobs.push(one(v).then(function (s) { out[k] = s.envelope; how = s.how; turn = s.turn; }));
+        else out[k] = v;
+      });
+      return out;
+    }
+    var sealed = walk(tree, true);
+    return Promise.all(jobs).then(function () { return { tree: sealed, how: how, turn: turn }; });
+  }
+
+  // ── a law names its colour (bsp-mcp #640; proposals/2026-11-23-a-law-names-its-colour.md) ──
+  /* A family's law, function:<field> at this beach, seals every line said in its family where one of its lines OPENS
+   * 'SEALED IN colour:<name>' — at the law's root or at any of its digits, the line itself or that digit's own underscore
+   * (function:admin 7) — read exactly as the connector reads it (colourOfLaw, bsp-mcp src/colour.ts), so a page's say and a
+   * connector's say land alike. The law names its own parts and the reference runs law → colour, never back: a sentence that
+   * merely mentions a colour names nothing, and a family whose law names none writes open, as before. The colour's block
+   * name, or null */
+  var SEALED_IN = /^\s*SEALED IN (colour:[A-Za-z0-9][\w-]*(?:\.[\w-]+)*)/i;
+  function colourOfLaw(law) {
+    function said(n) { while (n && typeof n === 'object' && !Array.isArray(n)) n = n._; return typeof n === 'string' ? n : ''; }
+    var lines = law && typeof law === 'object' ? [law].concat('123456789'.split('').map(function (k) { return law[k]; })) : [law];
+    for (var i = 0; i < lines.length; i++) { var m = SEALED_IN.exec(said(lines[i])); if (m) return m[1]; }
+    return null;
+  }
+  /* the colour a say or keep leaves in: the page's own gray where it passed one (false writes open), else the colour the
+   * family's law names, which must stand on the beach — a law naming one that stands nowhere writes nothing, before anyone
+   * is asked for a key, and says why */
+  function sealedIn(field, gray, named) {
+    if (gray != null) return Promise.resolve(gray);
+    if (!named) return Promise.resolve(undefined);
+    return read(named, 0).then(function (b) {
+      if (!b) throw refusal('function:' + field + ' seals every line of the ' + field + ' family in ' + named + ', and no ' + named + ' stands on this beach, so nothing was written: a colour is founded by its keeper first');
+      return named;
+    });
+  }
+  /* the same where no family is read first (through the button, which reads its own): the law read on its own */
+  function lawful(field, gray) {
+    if (gray != null) return Promise.resolve(gray);
+    return read('function:' + field).then(function (law) { return sealedIn(field, gray, colourOfLaw(law)); });
   }
   /* the envelope alone, for a page that writes its own block: { ok, envelope, how, turn? } */
   function sealAct(text, op) {
