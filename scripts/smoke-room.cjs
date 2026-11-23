@@ -66,6 +66,7 @@ function append(block, entry) {
   throw new Error('the mock liquid is full');
 }
 let delay = 0;   // the beach's own slowness, when a test wants it
+const muted = new Set();   // players whose writes the beach refuses, when a test wants the wire quiet
 function beach(req, res) {
   res.setHeader('access-control-allow-origin', '*');
   res.setHeader('access-control-allow-methods', 'GET, POST, DELETE, OPTIONS');
@@ -83,6 +84,7 @@ function beach(req, res) {
     if (req.method === 'GET' && !name) return say(200, { blocks: Object.keys(BLOCKS), now: NOW });
     if (req.method === 'GET') { const b = BLOCKS[name]; return b ? say(200, b) : say(404, { error: `block "${name}" not found`, code: 'not_found' }); }
     if (!shapeOk(body.content)) return say(400, { error: 'shape', code: 'shape' });
+    if (body.content && typeof body.content === 'object' && muted.has(body.content['1'])) return say(503, { error: 'refused for the test', code: 'unavailable' });
     if (body.append) {
       if (!BLOCKS[name]) BLOCKS[name] = { _: `Liquid pre-commit buffer for ${name}` };
       const entry = body.content && typeof body.content === 'object' ? { ...body.content } : body.content;
@@ -248,6 +250,75 @@ const slotNamed = (name) => slotsOf(BLOCKS['liquid:pool:wire']).filter((e) => e[
   st = await until(async () => { const s = await state(dan); return !s.peers.some((p) => p.name === 'eve') ? s : null; }, 5000);
   check('eve leaves with a bye over the vapour, and dan\'s page lets her go at once', !!st);
   await dan.close(); await eve.close();
+
+  console.log('\nthe anteroom: one name twice, slots reused, the host, a start together, a room by link, <beach-here>');
+  vapourNamed = false; seed();
+  const slotsAt = (room) => slotsOf(BLOCKS['liquid:' + room]);
+  const fay1 = await phone('fay'), fay2 = await phone('fay');
+  pair = await until(async () => { const a = (await state(fay1)).peers[0], b = (await state(fay2)).peers[0]; return a && b && a.name === 'fay' && b.name === 'fay' && a.direct && b.direct ? [a, b] : null; }, 15000);
+  check('two players of one name meet and hold a direct channel: a slot is a player\'s by id, never by name', !!pair, { fay1: (await state(fay1)).peers, fay2: (await state(fay2)).peers });
+  check('…each in a slot of their own', slotsAt('pool:wire').filter((e) => e['1'] === 'fay' && typeof e['7'] === 'string').length === 2, slotsAt('pool:wire'));
+  const hosts = await Promise.all([fay1, fay2].map((p) => p.evaluate(() => ({ host: beachRoom.host(), me: beachRoom.me().id }))));
+  const lowest = [hosts[0].me, hosts[1].me].sort()[0];
+  check('both pages name the same host, the lower id, and each knows whether it is theirs', hosts[0].host.id === lowest && hosts[1].host.id === lowest && hosts.filter((h) => h.host.me).length === 1, hosts);
+  const caller = hosts[0].host.me ? fay2 : fay1, other = caller === fay1 ? fay2 : fay1;
+  await other.evaluate(() => { window.__starts = []; beachRoom.on('start', (x) => window.__starts.push(x)); });
+  await caller.evaluate(() => { window.__starts = []; beachRoom.on('start', (x) => window.__starts.push(x)); });
+  const called = await caller.evaluate(() => beachRoom.start({ in: 2000, body: { level: 7 } }));
+  const heard = await until(() => other.evaluate(() => window.__starts[0]), 3000);
+  const own = await caller.evaluate(() => window.__starts[0]);
+  check('a start called on one page fires on both: the caller\'s own at once, the other\'s with the milliseconds left and what was said', called.ok && own && own.me === true && own.in === 2000 && heard && heard.me === false && heard.in > 1000 && heard.in <= 2000 && heard.body.level === 7 && heard.via === 'direct', { called, own, heard });
+  const others = (await phone('gus'));
+  await until(async () => ((await state(others)).peers.length === 2 ? 1 : 0), 15000);
+  const three = [fay1, fay2, others];
+  await until(async () => { const hs = await Promise.all(three.map((p) => p.evaluate(() => beachRoom.host().id))); return hs.every((h) => h === hs[0]) ? hs : null; }, 6000);
+  const roles = await Promise.all(three.map((p) => p.evaluate(() => beachRoom.host())));
+  const hostIx = roles.findIndex((h) => h.me), hostPage = three[hostIx], hostId = roles[hostIx].id, rest = three.filter((p, i) => i !== hostIx);
+  await Promise.all(rest.map((p) => p.evaluate(() => { window.__hosts = []; beachRoom.on('host', (h) => window.__hosts.push(h)); })));
+  await hostPage.evaluate(() => beachRoom.leave());
+  const leftAt = Date.now();
+  const both = await until(async () => { const hs = await Promise.all(rest.map((p) => p.evaluate(() => beachRoom.host()))); return hs[0] && hs[1] && hs[0].id !== hostId && hs[0].id === hs[1].id ? hs : null; }, 6000);
+  const fired = await Promise.all(rest.map((p) => p.evaluate(() => window.__hosts.length)));
+  check('the host leaves, and the host is handed on at once: both pages left name the same new one, and \'host\' fired on each', !!both && fired.every((n) => n >= 1), { roles, both, fired, ms: Date.now() - leftAt });
+  const beforeSlots = slotsAt('pool:wire').length;
+  const hal = await phone('hal');
+  await until(async () => ((await state(hal)).joined ? 1 : 0), 8000);
+  check('a newcomer takes the blank slot the leaver left, so the liquid does not grow', slotsAt('pool:wire').length === beforeSlots && slotsAt('pool:wire').some((e) => e['1'] === 'hal'), { before: beforeSlots, after: slotsAt('pool:wire').length });
+
+  const ivy = await phone('ivy', '&with=friday'), jon = await phone('jon', '&with=friday');
+  pair = await until(async () => { const a = (await state(ivy)).peers, b = (await state(jon)).peers; return a.length === 1 && b.length === 1 && a[0].name === 'jon' && a[0].direct ? [a, b] : null; }, 15000);
+  const ivyRoom = await ivy.evaluate(() => ({ room: beachRoom.room(), link: beachRoom.link() }));
+  check('a room by link: ?with=friday puts ivy and jon in pool:wire:friday, together and apart from the open room', !!pair && ivyRoom.room === 'pool:wire:friday' && !!BLOCKS['liquid:pool:wire:friday'] && slotsAt('pool:wire:friday').length === 2, { ivyRoom, peers: pair, slots: slotsAt('pool:wire:friday').length });
+  check('…and link() hands on the same room\'s address', /[?&]with=friday(&|$)/.test(ivyRoom.link) && /\/button\/ping\.html\?/.test(ivyRoom.link), ivyRoom.link);
+  await Promise.all([ivy, jon].map((p) => p.evaluate(() => { const h = document.createElement('beach-here'); h.id = 'here'; document.body.appendChild(h); })));
+  const drawn = await until(() => ivy.evaluate(() => { const t = document.getElementById('here').textContent; return /Here: ivy \(you/.test(t) && /jon/.test(t) && /Start together/.test(t) && /Share this room/.test(t) ? t : null; }), 4000);
+  check('<beach-here> draws the anteroom: who is here and how, the host, Start together, and the room\'s link to share', !!drawn, await ivy.evaluate(() => document.getElementById('here').textContent));
+  await ivy.click('#here .bh-go');
+  const counted = await until(() => jon.evaluate(() => { const c = document.querySelector('#here .bh-count').textContent; return /ivy started it: [1-3]/.test(c) ? c : null; }), 3000);
+  const went = await until(() => jon.evaluate(() => (document.querySelector('#here .bh-count').textContent === 'Go' ? 'Go' : null)), 5000);
+  check('…its Start together counts both pages down to Go', !!counted && went === 'Go', { counted, went });
+
+  const kit = await phone('kit'), lee = await phone('lee');
+  await until(async () => { const a = await peerNamed(kit, 'lee'); return a && a.direct ? a : null; }, 15000);
+  muted.add('kit');
+  console.log('    (the beach refusing kit\'s writes for half a minute, past the time a quiet slot counts as gone)');
+  await sleep(31000);
+  const still = await peerNamed(lee, 'kit');
+  await lee.evaluate(() => { window.__got = []; });
+  const sent = await kit.evaluate(() => { const l = beachRoom.peers().filter((p) => p.name === 'lee')[0]; return beachRoom.send('still', { n: 3 }, { to: l.id, reliable: true }); });
+  const arrivedDirect = await until(() => lee.evaluate(() => window.__got.filter((m) => m.kind === 'still')[0]), 3000);
+  muted.delete('kit');
+  check('a pair joined directly lives on its own channel: half a minute of kit\'s slot going quiet on the wire does not part them', still && still.direct && sent === 'direct' && arrivedDirect && arrivedDirect.via === 'direct', { still, sent, arrivedDirect });
+
+  const guest = await context.newPage();
+  guest.on('pageerror', (e) => errors.push('guest: ' + e.message));
+  const guestUrl = `http://localhost:${SITE}/button/ping.html?room=wire&auto=1&beach=${encodeURIComponent('http://127.0.0.1:' + BEACH)}&engine=${encodeURIComponent('http://localhost:' + SITE + '/__test/gw.js')}`;
+  await guest.goto(guestUrl);
+  const g1 = await until(async () => { const s = await guest.evaluate(() => pingPage.state()); return s.joined && s.joined.ok ? s.joined.name : null; }, 8000);
+  await guest.reload();
+  const g2 = await until(async () => { const s = await guest.evaluate(() => pingPage.state()); return s.joined && s.joined.ok ? s.joined.name : null; }, 8000);
+  check('a guest with no name keeps one from visit to visit: a reload is the same guest', /^guest-\d{4}$/.test(g1 || '') && g1 === g2, { g1, g2 });
+  await Promise.all([fay1, fay2, others, hal, ivy, jon, kit, lee, guest].map((p) => p.close().catch(() => {})));
 
   check('no page threw', errors.length === 0, errors);
   await browser.close();

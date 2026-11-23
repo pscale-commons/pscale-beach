@@ -19,9 +19,30 @@
  *   beachRoom.send(kind, body, { to, reliable })  a message to one peer or all, direct where a channel is open,
  *                                            else over the wire; returns where it went, 'direct' or 'relayed'
  *   beachRoom.on(event, fn)                  'peer' (arrived), 'direct' (channel open), 'gone', 'message'
- *                                            ({ from, name, kind, body, via }), 'ping' (a pair's numbers moved)
+ *                                            ({ from, name, kind, body, via }), 'ping' (a pair's numbers moved),
+ *                                            'host' (the room's host changed), 'start' (a start was called)
  *   beachRoom.ping()                         one ping round now (one runs every two seconds while joined)
  *   beachRoom.leave()                        out of the room, the slot blanked, every connection closed
+ *   beachRoom.host()                         the room's host, { id, name, me }: of everyone here, the lowest id,
+ *                                            handed on to the next lowest when it leaves ('host' fires on each move)
+ *   beachRoom.start({ in, body })            a start called for everyone here, 'in' milliseconds away (three seconds
+ *                                            unless said): every page's 'start' fires with { from, name, me, in, at,
+ *                                            body }, 'in' the milliseconds left there and 'at' that page's own clock
+ *                                            time of the start, a direct pair timed by its ping and a relayed one by
+ *                                            the beach's clock, so one countdown lands together
+ *   beachRoom.link(word)                     this page's address with ?with=<word> (a word made where none is given):
+ *                                            whoever opens it joins the same room, the game's room with :<word> after
+ *   <beach-here>                             the anteroom drawn, for a game that wants no code of its own: who is here
+ *                                            and how they are joined, the host, 'Start together', and a room for
+ *                                            friends by link; with the attribute 'join' it enters the room itself
+ *
+ * THE ANTEROOM IS THE PLUG'S, NOT EACH GAME'S (23 Nov 2026, David: 'Build the quick path first', lane
+ * anteroom.1): who is here, who hosts, and a start called together, the same on every game, so a game only
+ * says what a start begins. A ROOM BY LINK: ?with=<word> on the page's address (or join({ with })) puts its
+ * players in <the room>:<word>, a room of their own beside the game's open one. A SLOT IS A PLAYER'S BY ID,
+ * never by name, so two players of one name meet; a newcomer takes a blank slot, or one silent twice over,
+ * before it appends, so a room's liquid holds about as many slots as it has ever had players at once; and a
+ * pair joined directly lives on its own channel's pings, a quiet slot on the wire no longer parting them.
  *
  * THE WIRE IS THE RELAY THE BEACH NAMES. A beach says at its own address where its introductions go (the
  * fourth decision at tronic-glass 1.1.1.1.5, GO), in its settings block under 1, the vapour subsystem:
@@ -53,6 +74,8 @@
 
   function fieldOf(f) { f = String(f || '').trim().toLowerCase(); return /^[a-z0-9][a-z0-9-]{0,63}$/.test(f) ? f : ''; }
   function roomOf(r) { r = String(r || '').trim().toLowerCase(); return /^pool:[a-z0-9][a-z0-9-]{0,63}$/.test(r) ? r : ''; }
+  function withOf(w) { w = String(w || '').trim().toLowerCase(); return /^[a-z0-9][a-z0-9-]{0,31}$/.test(w) ? w : ''; }
+  var WITH = (function () { try { return withOf(new URL(location.href).searchParams.get('with')); } catch (e) { return ''; } })();
   function voiceOf(v) { while (v && typeof v === 'object') v = v._; return typeof v === 'string' ? v : ''; }
   function clean(v) { return String(v || '').replace(/[^a-z0-9_\s-]/gi, '').replace(/\s+/g, ' ').trim().slice(0, 40); }
   function fail(msg) { return Promise.resolve({ ok: false, error: msg }); }
@@ -164,15 +187,15 @@
     function poll() {
       if (stopped) return Promise.resolve();
       return read(liquidName).then(function (block) {
-        var t = now().getTime(), live = {};
+        var t = now().getTime(), live = {}, mine = '', lost = false;
         slots(block || {}).forEach(function (x) {
-          var e = x.entry;
-          if (e['1'] === self.name) { if (typeof e['7'] === 'string') { try { if (JSON.parse(unb64(e['7'])).id === self.id) slot = x.slot; } catch (err) {} } return; }
-          if (typeof e['7'] !== 'string') return;
+          var e = x.entry, m = null;
+          if (typeof e['7'] === 'string') { try { m = JSON.parse(unb64(e['7'])); } catch (err) { m = null; } }
+          if (m && m.id === self.id) { mine = x.slot; return; }   // my own slot, known by my id and never by my name
+          if (slot && x.slot === slot) lost = true;              // another player now writes the slot I held
+          if (!m || typeof m.id !== 'string') return;
           var age = t - Date.parse(e['3']);
           if (!(age < FRESH && age > -FRESH)) return;
-          var m; try { m = JSON.parse(unb64(e['7'])); } catch (err) { return; }
-          if (!m || m.id === self.id || typeof m.id !== 'string') return;
           live[m.id] = 1;
           if (!known[m.id]) { known[m.id] = { name: clean(e['1']) || m.name, at: t }; deliver({ from: m.id, name: known[m.id].name, to: self.id, kind: 'hello', body: null, t: t }); }
           known[m.id].at = t;
@@ -185,8 +208,10 @@
           if (moved) { seen[m.id] = last; dirty = true; }
         });
         Object.keys(known).forEach(function (id) {
-          if (!live[id] && t - known[id].at > POLL_FAST * 2) { var k = known[id]; delete known[id]; delete out[id]; delete seen[id]; deliver({ from: id, name: k.name, to: self.id, kind: 'bye', body: null, t: t }); }
+          if (!live[id] && t - known[id].at > POLL_FAST * 2) { var k = known[id]; delete known[id]; delete out[id]; delete seen[id]; deliver({ from: id, name: k.name, to: self.id, kind: 'bye', body: null, t: t, wire: true }); }
         });
+        if (mine) slot = mine;
+        else if (lost && !writing) { slot = ''; dirty = true; }   // taken: an append finds me a slot of my own again
         if (dirty) flush();
       }).catch(function () {});
     }
@@ -202,7 +227,14 @@
     w.fast = true; w.pingEvery = 6000;
     w.start = function () {
       return read(liquidName).then(function (block) {
-        slots(block || {}).forEach(function (x) { if (x.entry['1'] === self.name && !slot) slot = x.slot; });
+        /* a slot is free when it is blank (its player left) or silent twice over (its player is gone): take one,
+         * my own name's first, else the longest silent, and append only where none is free */
+        var t = now().getTime(), free = slots(block || {}).filter(function (x) {
+          var age = t - Date.parse(x.entry['3']);
+          return typeof x.entry['7'] !== 'string' || !(age < FRESH * 2 && age > -FRESH);
+        });
+        free.sort(function (a, b) { return (b.entry['1'] === self.name) - (a.entry['1'] === self.name) || (Date.parse(a.entry['3']) || 0) - (Date.parse(b.entry['3']) || 0); });
+        if (free.length) slot = free[0].slot;
         return write(false);
       }).then(function (r) {
         if (!r.ok) throw new Error('the room\'s liquid would not take a slot: ' + (r.error || r.status));
@@ -272,7 +304,7 @@
         hello = setInterval(greet, HEART);
         sweep = setInterval(function () {
           var t = Date.now();
-          Object.keys(known).forEach(function (id) { if (t - known[id].at > FRESH) { var k = known[id]; delete known[id]; deliver({ from: id, name: k.name, to: self.id, kind: 'bye', body: null, t: t }); } });
+          Object.keys(known).forEach(function (id) { if (t - known[id].at > FRESH) { var k = known[id]; delete known[id]; deliver({ from: id, name: k.name, to: self.id, kind: 'bye', body: null, t: t, wire: true }); } });
         }, 5000);
       });
     };
@@ -299,7 +331,60 @@
     var p = peers[id] = { id: id, name: name || '', pc: null, state: null, events: null, direct: false, status: 'introduced', tries: 0, seen: Date.now(),
       ping: { direct: null, relayed: null, theirs: { direct: null, relayed: null } }, open: {} };
     emit('peer', view(p));
+    reHost();
     return p;
+  }
+  /* a player gone: their connection closed, the room told, and the host handed on if it was theirs */
+  function drop(g) {
+    if (!peers[g.id]) return;
+    delete peers[g.id];
+    if (g.pc) { try { g.pc.close(); } catch (e) {} }
+    g.status = 'gone'; emit('gone', view(g));
+    reHost();
+  }
+
+  /* THE HOST — of everyone here, the lowest id: every page works it out alike from who it holds, so the host
+   * needs no election, and the next lowest takes it up the moment the host is gone */
+  var lastHost = '';
+  function hostNow() {
+    if (!self) return null;
+    var id = [self.id].concat(Object.keys(peers)).sort()[0];
+    return { id: id, name: id === self.id ? self.name : (peers[id] && peers[id].name) || '', me: id === self.id };
+  }
+  function reHost() { var h = hostNow(), id = h ? h.id : ''; if (id !== lastHost) { lastHost = id; if (h) emit('host', h); } }
+
+  /* A START CALLED TOGETHER — the caller's own 'start' fires at once, and each other page's when the call
+   * reaches it, with the milliseconds left there: a direct call less half its ping, a relayed one (which may
+   * wait in a mailbox) against the beach's clock, which every page keeps from the beach's own stamps */
+  function start(op) {
+    op = op || {};
+    if (!self) return fail('not in a room: join first');
+    var ms = Math.max(0, Math.min(60000, op['in'] == null ? 3000 : (+op['in'] || 0))), body = op.body === undefined ? null : op.body;
+    var t = Date.now(), b = now().getTime();
+    Object.keys(peers).forEach(function (id) {
+      var p = peers[id], m = envelope(id, 'start', { ms: ms, b: body, beach: b });
+      if (p.events && p.events.readyState === 'open') { try { p.events.send(JSON.stringify(m)); return; } catch (e) {} }
+      wire.send(id, m);
+    });
+    emit('start', { from: self.id, name: self.name, me: true, 'in': ms, at: t + ms, body: body });
+    return Promise.resolve({ ok: true, 'in': ms, at: t + ms, peers: Object.keys(peers).length });
+  }
+  function started(p, m, via) {
+    var ms = +m.body.ms || 0, left;
+    if (via === 'direct') left = ms - Math.round((p.ping.direct || 0) / 2);
+    else left = (+m.body.beach || 0) + ms - now().getTime();
+    left = Math.max(0, Math.min(ms, isNaN(left) ? ms : left));
+    emit('start', { from: p.id, name: p.name, me: false, 'in': left, at: Date.now() + left, body: m.body.b === undefined ? null : m.body.b, via: via });
+  }
+
+  /* A ROOM BY LINK — this page's address with ?with=<word>; a game the site hosts in its frame (/games/<game>/game)
+   * is linked at its frame's address, so the link opens the game where its players keep their names */
+  function link(word) {
+    var w = withOf(word) || withOf(String(ROOM).split(':')[2]) || rand(6).toLowerCase();
+    var u; try { u = new URL(location.href); } catch (e) { return ''; }
+    if (/\/games\/[a-z0-9][a-z0-9-]*\/game$/.test(u.pathname)) u.pathname = u.pathname.replace(/\/game$/, '');
+    u.searchParams.set('with', w); u.hash = '';
+    return u.toString();
   }
   function view(p) { return { id: p.id, name: p.name, direct: p.direct, status: p.status, ping: { direct: p.ping.direct, relayed: p.ping.relayed, theirs: { direct: p.ping.theirs.direct, relayed: p.ping.theirs.relayed } } }; }
   function offers(p) { return self.id < p.id; }
@@ -314,8 +399,9 @@
   function attach(p, ch) {
     var name = ch.label === 'state' ? 'state' : 'events';
     p[name] = ch;
-    ch.onopen = function () { p.open[name] = true; if (p.open.events && !p.direct) { p.direct = true; p.status = 'direct'; emit('direct', view(p)); ping(p, true); } };
-    ch.onclose = function () { p.open[name] = false; if (name === 'events' && p.direct) { p.direct = false; p.status = 'relayed'; emit('direct', view(p)); } };
+    // a player already gone says nothing more: their channels closing after the goodbye is no news
+    ch.onopen = function () { if (peers[p.id] !== p) return; p.open[name] = true; if (p.open.events && !p.direct) { p.direct = true; p.status = 'direct'; emit('direct', view(p)); ping(p, true); } };
+    ch.onclose = function () { p.open[name] = false; if (peers[p.id] !== p) return; if (name === 'events' && p.direct) { p.direct = false; p.status = 'relayed'; emit('direct', view(p)); } };
     ch.onmessage = function (ev) {
       var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
       take(p, m, 'direct');
@@ -327,7 +413,7 @@
     p.open = {}; p.direct = false;
     pc.ondatachannel = function (ev) { attach(p, ev.channel); };
     pc.onconnectionstatechange = function () {
-      if (pc !== p.pc) return;
+      if (pc !== p.pc || peers[p.id] !== p) return;
       if (pc.connectionState === 'failed' || pc.connectionState === 'closed' || pc.connectionState === 'disconnected') {
         if (p.direct) { p.direct = false; p.status = 'relayed'; emit('direct', view(p)); }
         if (pc.connectionState === 'failed' && offers(p) && p.tries < 3 && peers[p.id]) setTimeout(function () { if (peers[p.id] && p.pc === pc) offer(p); }, 3000);
@@ -336,7 +422,8 @@
     return pc;
   }
   function offer(p) {
-    if (!DIRECT) return;
+    // a player who will not go direct says so when it is theirs to offer, so the other side stands relayed at once
+    if (!DIRECT) { if (p.status !== 'relayed') { p.status = 'relayed'; wire.send(p.id, envelope(p.id, 'answer', { refused: true, try: 0 })); emit('direct', view(p)); } return; }
     p.tries++; p.status = 'connecting';
     var pc = connection(p);
     attach(p, pc.createDataChannel('state', { ordered: false, maxRetransmits: 0 }));
@@ -372,12 +459,19 @@
       emit('ping', view(p));
       return;
     }
+    if (m.kind === 'start') { started(p, m, via); return; }
+    if (m.kind === 'bye') { drop(p); return; }   // said by the player themselves over our own channel: gone, at once
     if (m.kind === 'relay') { emit('message', { from: p.id, name: p.name, kind: m.body.k, body: m.body.b, via: 'relayed', t: m.t }); return; }
     if (m.kind === 'data') { emit('message', { from: p.id, name: p.name, kind: m.body.k, body: m.body.b, via: via, t: m.t }); return; }
   }
   function arrived(msg) {
     if (!self || !msg || msg.from === self.id) return;
-    if (msg.kind === 'bye') { var g = peers[msg.from]; if (!g) return; delete peers[msg.from]; if (g.pc) { try { g.pc.close(); } catch (e) {} } g.status = 'gone'; emit('gone', view(g)); return; }
+    if (msg.kind === 'bye') {
+      var g = peers[msg.from]; if (!g) return;
+      // a bye the wire made because a slot went quiet does not part a pair whose own channel still hears them
+      if (msg.wire && g.direct && g.events && g.events.readyState === 'open' && Date.now() - g.seen < FRESH) return;
+      drop(g); return;
+    }
     var p = peerOf(msg.from, clean(msg.name));
     p.seen = Date.now();
     if (msg.kind === 'hello') { if (!p.pc && offers(p)) offer(p); else if (!p.pc && !offers(p) && !DIRECT) p.status = 'relayed'; return; }
@@ -396,7 +490,12 @@
     if (p.events && p.events.readyState === 'open') { try { p.events.send(JSON.stringify(envelope(p.id, 'ping', { t: Date.now(), via: 'direct' }))); } catch (e) {} }
     if (both || !lastRelayed[p.id] || Date.now() - lastRelayed[p.id] >= wire.pingEvery) { lastRelayed[p.id] = Date.now(); wire.send(p.id, envelope(p.id, 'ping', { t: Date.now(), via: 'relayed' })); }
   }
-  function pingAll(both) { Object.keys(peers).forEach(function (id) { ping(peers[id], both === true); }); if (wire) wire.fast = Object.keys(peers).some(function (id) { return !peers[id].direct; }); return Promise.resolve({ ok: true, peers: list() }); }
+  function pingAll(both) {
+    var t = Date.now();
+    Object.keys(peers).forEach(function (id) { var p = peers[id]; if (t - p.seen > FRESH * 1.5) drop(p); else ping(p, both === true); });   // silent everywhere: gone
+    if (wire) wire.fast = Object.keys(peers).some(function (id) { return !peers[id].direct; });
+    return Promise.resolve({ ok: true, peers: list() });
+  }
   function list() { return Object.keys(peers).map(function (id) { return view(peers[id]); }); }
 
   /* a message to one peer or all: direct where the channel is open, else relayed over the wire */
@@ -419,10 +518,18 @@
     if (joined) return joined;
     ROOM = roomOf(op.room) || (fieldOf(op.room) ? 'pool:' + fieldOf(op.room) : '') || ROOM_TAG || (GAME ? 'pool:' + GAME : '');
     if (!ROOM) return fail('no room named: data-game="<game>" or data-room="pool:<name>" on the tag, or join({ room })');
+    var word = withOf(op['with']) || WITH;   // a room by link: the game's room, and the word after it
+    if (word) ROOM += ':' + word;
     DIRECT = op.direct !== false;
+    /* a guest keeps one name from visit to visit where the page keeps anything (a game in the site's frame keeps
+     * its storage through the frame), so a reload is the same guest in the same slot, not a newcomer */
     var name = clean(op.name) || (window.beachVoice && window.beachVoice.name()) || '';
+    if (!name) { try { name = localStorage.getItem('beach-room:guest') || ''; } catch (e) {} }
     if (!name) { try { name = sessionStorage.getItem('beach-room:guest') || ''; } catch (e) {} }
-    if (!name) { name = 'guest-' + Math.floor(1000 + Math.random() * 9000); try { sessionStorage.setItem('beach-room:guest', name); } catch (e) {} }
+    if (!name) {
+      name = 'guest-' + Math.floor(1000 + Math.random() * 9000);
+      try { localStorage.setItem('beach-room:guest', name); } catch (e) { try { sessionStorage.setItem('beach-room:guest', name); } catch (e2) {} }
+    }
     self = { id: rand(10), name: name };
     return joined = naming().then(function (n) {
       return iceServers(n).then(function (servers) {
@@ -433,6 +540,7 @@
       }).then(function () {
         pinger = setInterval(pingAll, PING_EVERY);
         lastOp = op;
+        reHost();
         return { ok: true, id: self.id, name: self.name, room: ROOM, wire: wire.kind, named: n.vapour, turn: ice.length > STUN.length };
       });
     }).catch(function (e) { joined = null; self = null; return failed(e); });
@@ -440,17 +548,83 @@
   function leave() {
     if (!self) return Promise.resolve({ ok: true });
     clearInterval(pinger);
-    Object.keys(peers).forEach(function (id) { var p = peers[id]; if (p.pc) { try { p.pc.close(); } catch (e) {} } });
-    peers = {};
+    /* goodbye said over each open channel first, so a pair joined directly hears it at once (the wire's own word
+     * that a slot went quiet does not part such a pair), then every connection closed a moment later */
+    var held = peers, bye = envelope('*', 'bye', null);
+    Object.keys(held).forEach(function (id) { var p = held[id]; if (p.events && p.events.readyState === 'open') { try { p.events.send(JSON.stringify(bye)); } catch (e) {} } });
+    setTimeout(function () { Object.keys(held).forEach(function (id) { var p = held[id]; if (p.pc) { try { p.pc.close(); } catch (e) {} } }); }, 150);
+    peers = {}; lastHost = '';
     var w = wire; wire = null; self = null; joined = null;
     return (w ? w.stop() : Promise.resolve()).then(function () { return { ok: true }; });
   }
 
   window.beachRoom = {
     join: join, leave: leave, peers: list, send: send, on: on, off: off, ping: pingAll,
+    host: hostNow, start: start, link: link,
     wire: function () { return wire ? { kind: wire.kind } : null; },
     me: function () { return self ? { id: self.id, name: self.name } : null; },
     room: function () { return ROOM; },
+    joined: function () { return !!self; },
     game: GAME, beach: ROOT
   };
+
+  /* <beach-here> — the anteroom drawn, in the page's own font and colour: who is here (● joined directly, ○ through
+   * the wire, with the ping), who hosts, 'Start together' (a start in three seconds, or the 'in' attribute's
+   * milliseconds, counted down on every page that carries one), and a room for friends: in the game's open room it
+   * opens one of the player's own by link, and in a room by link it hands that link on. The attribute 'join'
+   * enters the room itself; 'label' names the start. A game listens for beachRoom.on('start') to begin. */
+  if (window.customElements && !customElements.get('beach-here')) {
+    var STYLE = 'beach-here{display:block;font:inherit;color:inherit}beach-here .bh-who{margin:0 0 .4em;line-height:1.5}'
+      + 'beach-here .bh-row{display:flex;flex-wrap:wrap;gap:.5em;align-items:center}beach-here button{font:inherit;color:inherit;background:transparent;'
+      + 'border:1px solid currentColor;border-radius:999px;padding:.35em .9em;cursor:pointer}beach-here button[disabled]{opacity:.5;cursor:default}'
+      + 'beach-here .bh-count{font-size:1.4em;font-weight:700;min-height:1.3em;margin:.3em 0 0}beach-here .bh-link{font-size:.85em;opacity:.8;word-break:break-all;margin:.4em 0 0}';
+    customElements.define('beach-here', (function () {
+      function Here() { return Reflect.construct(HTMLElement, [], Here); }
+      Here.prototype = Object.create(HTMLElement.prototype);
+      Here.prototype.constructor = Here;
+      Here.prototype.connectedCallback = function () {
+        var el = this, offs = [], tick = 0, linkShown = '';
+        if (!document.getElementById('beach-here-style')) { var st = document.createElement('style'); st.id = 'beach-here-style'; st.textContent = STYLE; (document.head || document.documentElement).appendChild(st); }
+        el.innerHTML = '<p class="bh-who"></p><div class="bh-row"><button type="button" class="bh-go"></button><button type="button" class="bh-friends"></button></div><p class="bh-count" aria-live="polite"></p><p class="bh-link" hidden></p>';
+        var who = el.querySelector('.bh-who'), go = el.querySelector('.bh-go'), friends = el.querySelector('.bh-friends'), count = el.querySelector('.bh-count'), lk = el.querySelector('.bh-link');
+        function ms() { var v = +el.getAttribute('in'); return v > 0 ? v : 3000; }
+        function draw() {
+          var me = beachRoom.me(), h = hostNow();
+          if (!me) { who.textContent = 'Not in the room yet.'; go.disabled = true; friends.hidden = true; return; }
+          var bits = [me.name + ' (you' + (h && h.me ? ', hosting' : '') + ')'];
+          list().forEach(function (p) { bits.push((p.direct ? '● ' : '○ ') + (p.name || 'someone') + (h && h.id === p.id ? ' (hosting)' : '') + (p.ping.direct != null ? ' ' + p.ping.direct + ' ms' : p.direct ? '' : ' through the wire')); });
+          who.textContent = 'Here: ' + bits.join(' · ');
+          go.disabled = false; go.textContent = el.getAttribute('label') || 'Start together';
+          var sub = String(ROOM).split(':').length > 2;
+          friends.hidden = false; friends.textContent = sub ? 'Share this room' : 'A room for friends';
+          if (sub && !linkShown) { linkShown = link(); lk.textContent = 'Friends join by this link: ' + linkShown; lk.hidden = false; }
+        }
+        function countdown(x) {
+          clearInterval(tick);
+          function paint() {
+            var left = x.at - Date.now();
+            count.textContent = left > 0 ? (x.me ? 'You' : (x.name || 'Someone')) + ' started it: ' + Math.ceil(left / 1000) : 'Go';
+            if (left <= 0) { clearInterval(tick); setTimeout(function () { if (count.textContent === 'Go') count.textContent = ''; }, 1500); }
+          }
+          paint(); tick = setInterval(paint, 200);
+        }
+        go.addEventListener('click', function () { start({ 'in': ms() }); });
+        friends.addEventListener('click', function () {
+          var sub = String(ROOM).split(':').length > 2, url = link();
+          if (!sub) { try { (window.top || window).location.href = url; } catch (e) { location.href = url; } return; }   // into a room of one's own; its page shows the link
+          var said = function (t) { lk.textContent = t; lk.hidden = false; };
+          if (navigator.share) navigator.share({ url: url, title: document.title }).catch(function () {});
+          else if (navigator.clipboard) navigator.clipboard.writeText(url).then(function () { said('Link copied: ' + url); }, function () { said('Friends join by this link: ' + url); });
+          else said('Friends join by this link: ' + url);
+        });
+        ['peer', 'gone', 'direct', 'ping', 'host'].forEach(function (e) { offs.push(on(e, draw)); });
+        offs.push(on('start', countdown));
+        el.__stop = function () { offs.forEach(function (f) { f(); }); clearInterval(tick); };
+        draw();
+        if (el.hasAttribute('join') && !self) join({}).then(draw); else if (joined) joined.then(draw);
+      };
+      Here.prototype.disconnectedCallback = function () { if (this.__stop) this.__stop(); };
+      return Here;
+    })());
+  }
 })();
