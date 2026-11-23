@@ -159,6 +159,9 @@
       return e;
     }
     function write(blank) {
+      /* once stopped, nothing but the goodbye is written: a write that was waiting on one still on its way would
+       * otherwise go out beside the blank, land after it, and stand the leaver back in the room */
+      if (stopped && !blank) return Promise.resolve({ ok: true });
       if (writing) return writing.then(function () { return write(blank); });
       dirty = false;
       var e = entry(blank);
