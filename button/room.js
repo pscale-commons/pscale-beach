@@ -572,7 +572,8 @@
    * the wire, with the ping), who hosts, 'Start together' (a start in three seconds, or the 'in' attribute's
    * milliseconds, counted down on every page that carries one), and a room for friends: in the game's open room it
    * opens one of the player's own by link, and in a room by link it hands that link on. The attribute 'join'
-   * enters the room itself; 'label' names the start. A game listens for beachRoom.on('start') to begin. */
+   * enters the room itself; 'label' names the start; a game that sets el.body = function () { … } has what it
+   * returns carried with the start (a match's seating, say). A game listens for beachRoom.on('start') to begin. */
   if (window.customElements && !customElements.get('beach-here')) {
     var STYLE = 'beach-here{display:block;font:inherit;color:inherit}beach-here .bh-who{margin:0 0 .4em;line-height:1.5}'
       + 'beach-here .bh-row{display:flex;flex-wrap:wrap;gap:.5em;align-items:center}beach-here button{font:inherit;color:inherit;background:transparent;'
@@ -608,7 +609,7 @@
           }
           paint(); tick = setInterval(paint, 200);
         }
-        go.addEventListener('click', function () { start({ 'in': ms() }); });
+        go.addEventListener('click', function () { start({ 'in': ms(), body: typeof el.body === 'function' ? el.body() : undefined }); });
         friends.addEventListener('click', function () {
           var sub = String(ROOM).split(':').length > 2, url = link();
           if (!sub) { try { (window.top || window).location.href = url; } catch (e) { location.href = url; } return; }   // into a room of one's own; its page shows the link
