@@ -67,6 +67,7 @@ function append(block, entry) {
 }
 let delay = 0;   // the beach's own slowness, when a test wants it
 const muted = new Set();   // players whose writes the beach refuses, when a test wants the wire quiet
+const slow = new Set();    // players whose writes, all but a goodbye, the beach answers late, when a test wants one on its way
 function beach(req, res) {
   res.setHeader('access-control-allow-origin', '*');
   res.setHeader('access-control-allow-methods', 'GET, POST, DELETE, OPTIONS');
@@ -76,7 +77,10 @@ function beach(req, res) {
   if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
   let raw = '';
   req.on('data', (c) => { raw += c; });
-  req.on('end', () => setTimeout(() => {
+  req.on('end', () => {
+    let lag = delay;
+    try { const b = raw ? JSON.parse(raw) : {}; if (b.content && typeof b.content === 'object' && slow.has(b.content['1']) && b.content._ !== '') lag += 600; } catch (e) {}
+    setTimeout(() => {
     const url = new URL(req.url, 'http://x'), body = raw ? JSON.parse(raw) : {};
     const name = url.searchParams.get('block') || body.block;
     const say = (status, d) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(d)); };
@@ -96,7 +100,8 @@ function beach(req, res) {
     if (body.spindle) { setAt(BLOCKS[name], body.spindle, body.content); return say(200, { ok: true }); }
     if (body.confirm !== true) return say(400, { error: 'confirm', code: 'confirm_required' });
     BLOCKS[name] = body.content; return say(200, { ok: true });
-  }, delay));
+    }, lag);
+  });
 }
 
 // ── the mock vapour: Supabase Realtime's Phoenix shape over a bare WebSocket ──
@@ -310,6 +315,23 @@ const slotNamed = (name) => slotsOf(BLOCKS['liquid:pool:wire']).filter((e) => e[
   muted.delete('kit');
   check('a pair joined directly lives on its own channel: half a minute of kit\'s slot going quiet on the wire does not part them', still && still.direct && sent === 'direct' && arrivedDirect && arrivedDirect.via === 'direct', { still, sent, arrivedDirect });
 
+  const mo = await phone('mo', '&direct=off&with=late'), ned = await phone('ned', '&with=late');
+  await until(async () => { const a = await peerNamed(mo, 'ned'); return a && a.status === 'relayed' ? a : null; }, 15000);
+  slow.add('mo');
+  console.log('    (the beach answering mo\'s writes late, so his leave comes while one is on its way and the next waits on it)');
+  await mo.evaluate(async () => {
+    const ned = beachRoom.peers().filter((p) => p.name === 'ned')[0], wait = (ms) => new Promise((ok) => setTimeout(ok, ms));
+    beachRoom.send('busy', { n: 1 }, { to: ned.id, reliable: true });
+    await wait(300);
+    beachRoom.send('busy', { n: 2 }, { to: ned.id, reliable: true });
+    await wait(200);
+    return beachRoom.leave();
+  });
+  await sleep(2000);
+  slow.delete('mo');
+  const moSlot = slotsAt('pool:wire:late').filter((e) => e['1'] === 'mo').pop();
+  check('a leave while a write is still on its way: the goodbye is the last word, and the slot stands blank', !!moSlot && moSlot._ === '' && !('7' in moSlot), moSlot);
+
   const guest = await context.newPage();
   guest.on('pageerror', (e) => errors.push('guest: ' + e.message));
   const guestUrl = `http://localhost:${SITE}/button/ping.html?room=wire&auto=1&beach=${encodeURIComponent('http://127.0.0.1:' + BEACH)}&engine=${encodeURIComponent('http://localhost:' + SITE + '/__test/gw.js')}`;
@@ -318,7 +340,7 @@ const slotNamed = (name) => slotsOf(BLOCKS['liquid:pool:wire']).filter((e) => e[
   await guest.reload();
   const g2 = await until(async () => { const s = await guest.evaluate(() => pingPage.state()); return s.joined && s.joined.ok ? s.joined.name : null; }, 8000);
   check('a guest with no name keeps one from visit to visit: a reload is the same guest', /^guest-\d{4}$/.test(g1 || '') && g1 === g2, { g1, g2 });
-  await Promise.all([fay1, fay2, others, hal, ivy, jon, kit, lee, guest].map((p) => p.close().catch(() => {})));
+  await Promise.all([fay1, fay2, others, hal, ivy, jon, kit, lee, mo, ned, guest].map((p) => p.close().catch(() => {})));
 
   check('no page threw', errors.length === 0, errors);
   await browser.close();
