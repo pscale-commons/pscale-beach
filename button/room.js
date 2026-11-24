@@ -12,7 +12,8 @@
  * ordered (a move, a finish, a word). A pair the direct path cannot join is carried by the wire instead,
  * so the room always plays, only slower. Each pair's ping is measured both ways, direct and relayed.
  *
- *   beachRoom.join({ room, name, direct })   enter the room (the game's, pool:<game>, or one named); resolves
+ *   beachRoom.join({ room, name, direct, max })   enter the room (the game's, pool:<game>, or one named); with max, a
+ *                                            full open room seats you in the next (:2, :3 and on); resolves
  *                                            { ok, id, name, room, wire } — wire is 'vapour' or 'beach'
  *   beachRoom.peers()                        who is in the room: [{ id, name, direct, status, ping }], ping being
  *                                            { direct, relayed, theirs: { direct, relayed } } in milliseconds
@@ -91,6 +92,20 @@
     var h = r && r.headers && r.headers.get('X-Pscale-Now');
     var p = (h || '').split('|').map(function (x) { return x.trim(); });
     if (p.length === 3 && /^\d{10}$/.test(p[1]) && !isNaN(Date.parse(p[0]))) clock = { iso: p[0], address: p[1], at: Date.now() };
+  }
+  /* every slot of a room's liquid, however deep the beach has nested it */
+  function slots(block) {
+    var found = [];
+    (function walk(node, path) {
+      if (!node || typeof node !== 'object') return;
+      Object.keys(node).forEach(function (k) {
+        if (!/^[1-9]$/.test(k) && k !== '_') return;
+        var s = node[k], at = path + (k === '_' ? '0' : k);
+        if (s && typeof s === 'object' && typeof s['1'] === 'string' && typeof s['3'] === 'string') found.push({ slot: at.replace(/^0+/, ''), entry: s });
+        else if (s && typeof s === 'object') walk(s, at);
+      });
+    })(block, '');
+    return found;
   }
   function now() { return clock ? new Date(Date.parse(clock.iso) + (Date.now() - clock.at)) : new Date(); }
   function read(block) {
@@ -174,19 +189,6 @@
         if (!r.ok && slot && r.status === 404) { slot = ''; return write(blank); }
         return r;
       }, function (e) { writing = null; throw e; });
-    }
-    function slots(block) {
-      var found = [];
-      (function walk(node, path) {
-        if (!node || typeof node !== 'object') return;
-        Object.keys(node).forEach(function (k) {
-          if (!/^[1-9]$/.test(k) && k !== '_') return;
-          var s = node[k], at = path + (k === '_' ? '0' : k);
-          if (s && typeof s === 'object' && typeof s['1'] === 'string' && typeof s['3'] === 'string') found.push({ slot: at.replace(/^0+/, ''), entry: s });
-          else if (s && typeof s === 'object') walk(s, at);
-        });
-      })(block, '');
-      return found;
     }
     function poll() {
       if (stopped) return Promise.resolve();
@@ -517,6 +519,24 @@
     return via;
   }
 
+  /* A ROOM THAT HOLDS SO MANY (spine:flock-world 1.113, the first cut of rooms as cells): told max, a newcomer is
+   * seated in the game's open room if it holds fewer than max players present (a slot with a mailbox, heard from
+   * within FRESH), else in the room with :2 after it, then :3, and on: each a room by link anyone can be sent. Read
+   * from the room's liquid, so over a vapour (which writes none) a room is not yet split: the count waits for the
+   * census (spine:flock-world 1.1111). */
+  function roomWithSpace(base, max) {
+    var n = 1;
+    function look() {
+      var name = n === 1 ? base : base + ':' + n;
+      return read('liquid:' + name).then(function (block) {
+        var t = now().getTime(), here = 0;
+        slots(block || {}).forEach(function (x) { var age = t - Date.parse(x.entry['3']); if (typeof x.entry['7'] === 'string' && age < FRESH && age > -FRESH) here++; });
+        if (here < max || n >= 99) return name;
+        n++; return look();
+      }, function () { return name; });
+    }
+    return look();
+  }
   function join(op) {
     op = op || {};
     if (joined) return joined;
@@ -524,6 +544,7 @@
     if (!ROOM) return fail('no room named: data-game="<game>" or data-room="pool:<name>" on the tag, or join({ room })');
     var word = withOf(op['with']) || WITH;   // a room by link: the game's room, and the word after it
     if (word) ROOM += ':' + word;
+    var max = op.max > 1 ? Math.floor(op.max) : 0;   // a friends' room by a word is never split: it takes whoever has the link
     DIRECT = op.direct !== false;
     /* a guest keeps one name from visit to visit where the page keeps anything (a game in the site's frame keeps
      * its storage through the frame), so a reload is the same guest in the same slot, not a newcomer */
@@ -536,7 +557,7 @@
     }
     self = { id: rand(10), name: name };
     return joined = naming().then(function (n) {
-      return iceServers(n).then(function (servers) {
+      return (max && !word && !n.vapour ? roomWithSpace(ROOM, max) : Promise.resolve(ROOM)).then(function (r) { ROOM = r; return iceServers(n); }).then(function (servers) {
         ice = servers;
         var host = new URL(ROOT).hostname;
         wire = n.vapour ? new VapourWire(self, n, 'beach-room:' + host + ':' + ROOM, arrived) : new BeachWire(self, 'liquid:' + ROOM, arrived);

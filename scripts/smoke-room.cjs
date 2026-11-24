@@ -343,6 +343,24 @@ const slotNamed = (name) => slotsOf(BLOCKS['liquid:pool:wire']).filter((e) => e[
   const moSlot = slotsAt('pool:wire:late').filter((e) => e['1'] === 'mo').pop();
   check('a leave while a write is still on its way: the goodbye is the last word, and the slot stands blank', !!moSlot && moSlot._ === '' && !('7' in moSlot), moSlot);
 
+  // a room that holds so many: two fill the open room pool:cap, and a third told max 2 is seated in pool:cap:2
+  const open = async (name, room, auto) => {
+    const p = await context.newPage();
+    p.on('pageerror', (e) => errors.push(name + ': ' + e.message));
+    await p.goto(`http://localhost:${SITE}/button/ping.html?room=${room}&name=${name}${auto ? '&auto=1' : ''}&beach=${encodeURIComponent('http://127.0.0.1:' + BEACH)}&engine=${encodeURIComponent('http://localhost:' + SITE + '/__test/gw.js')}`);
+    await p.waitForFunction(() => window.beachRoom, null, { timeout: 8000 });
+    return p;
+  };
+  const cy = await open('cy', 'cap', true), di = await open('di', 'cap', true);
+  await until(() => (slotsAt('pool:cap').filter((e) => e._ && typeof e['7'] === 'string').length >= 2 ? 1 : 0), 10000);
+  const ed = await open('ed', 'cap', false), flo = await open('flo', 'cap', false);
+  const seated = await ed.evaluate(() => beachRoom.join({ room: 'pool:cap', name: 'ed', max: 2 }).then((r) => ({ room: r.room, ok: r.ok, link: beachRoom.link() })));
+  check('a room that holds two: cy and di fill the open room pool:cap, and ed, told max 2, is seated in pool:cap:2, a room by link', seated.ok && seated.room === 'pool:cap:2' && /[?&]with=2(&|$)/.test(seated.link), seated);
+  await until(() => (slotsAt('pool:cap:2').filter((e) => e._ && typeof e['7'] === 'string').length >= 1 ? 1 : 0), 8000);
+  const beside = await flo.evaluate(() => beachRoom.join({ room: 'pool:cap', name: 'flo', max: 2 }).then((r) => r.room));
+  const met = await until(async () => { const a = await peerNamed(ed, 'flo'); return a && a.direct ? a : null; }, 15000);
+  check('…the next, told the same, is seated beside ed while that room has space, and they meet', beside === 'pool:cap:2' && !!met, { beside, met });
+
   const guest = await context.newPage();
   guest.on('pageerror', (e) => errors.push('guest: ' + e.message));
   const guestUrl = `http://localhost:${SITE}/button/ping.html?room=wire&auto=1&beach=${encodeURIComponent('http://127.0.0.1:' + BEACH)}&engine=${encodeURIComponent('http://localhost:' + SITE + '/__test/gw.js')}`;
@@ -351,7 +369,7 @@ const slotNamed = (name) => slotsOf(BLOCKS['liquid:pool:wire']).filter((e) => e[
   await guest.reload();
   const g2 = await until(async () => { const s = await guest.evaluate(() => pingPage.state()); return s.joined && s.joined.ok ? s.joined.name : null; }, 8000);
   check('a guest with no name keeps one from visit to visit: a reload is the same guest', /^guest-\d{4}$/.test(g1 || '') && g1 === g2, { g1, g2 });
-  await Promise.all([fay1, fay2, others, hal, ivy, jon, kit, lee, mo, ned, guest].map((p) => p.close().catch(() => {})));
+  await Promise.all([fay1, fay2, others, hal, ivy, jon, kit, lee, mo, ned, cy, di, ed, flo, guest].map((p) => p.close().catch(() => {})));
 
   check('no page threw', errors.length === 0, errors);
   await browser.close();
