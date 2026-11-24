@@ -34,7 +34,8 @@
  *                                            whoever opens it joins the same room, the game's room with :<word> after
  *   <beach-here>                             the anteroom drawn, for a game that wants no code of its own: who is here
  *                                            and how they are joined, the host, 'Start together', and a room for
- *                                            friends by link; with the attribute 'join' it enters the room itself
+ *                                            friends by a word of the player's own (an easy one offered), its link
+ *                                            to share; with the attribute 'join' it enters the room itself
  *
  * THE ANTEROOM IS THE PLUG'S, NOT EACH GAME'S (23 Nov 2026, David: 'Build the quick path first', lane
  * anteroom.1): who is here, who hosts, and a start called together, the same on every game, so a game only
@@ -574,14 +575,24 @@
   /* <beach-here> — the anteroom drawn, in the page's own font and colour: who is here (● joined directly, ○ through
    * the wire, with the ping), who hosts, 'Start together' (a start in three seconds, or the 'in' attribute's
    * milliseconds, counted down on every page that carries one), and a room for friends: in the game's open room it
-   * opens one of the player's own by link, and in a room by link it hands that link on. The attribute 'join'
+   * asks for a word (an easy one offered, the link it makes shown as it is typed) and opens that room by its link,
+   * and in a room by link it hands that link on. The attribute 'join'
    * enters the room itself; 'label' names the start; a game that sets el.body = function () { … } has what it
    * returns carried with the start (a match's seating, say). A game listens for beachRoom.on('start') to begin. */
   if (window.customElements && !customElements.get('beach-here')) {
     var STYLE = 'beach-here{display:block;font:inherit;color:inherit}beach-here .bh-who{margin:0 0 .4em;line-height:1.5}'
       + 'beach-here .bh-row{display:flex;flex-wrap:wrap;gap:.5em;align-items:center}beach-here button{font:inherit;color:inherit;background:transparent;'
       + 'border:1px solid currentColor;border-radius:999px;padding:.35em .9em;cursor:pointer}beach-here button[disabled]{opacity:.5;cursor:default}'
-      + 'beach-here .bh-count{font-size:1.4em;font-weight:700;min-height:1.3em;margin:.3em 0 0}beach-here .bh-link{font-size:.85em;opacity:.8;word-break:break-all;margin:.4em 0 0}';
+      + 'beach-here .bh-count{font-size:1.4em;font-weight:700;min-height:1.3em;margin:.3em 0 0}beach-here .bh-link{font-size:.85em;opacity:.8;word-break:break-all;margin:.4em 0 0}'
+      + 'beach-here .bh-ask{margin:.5em 0 0}beach-here .bh-ask label{display:flex;flex-wrap:wrap;gap:.4em;align-items:center}'
+      + 'beach-here .bh-word{font:inherit;color:inherit;background:transparent;border:1px solid currentColor;border-radius:.4em;padding:.3em .5em;width:13em;max-width:100%}'
+      + 'beach-here .bh-see{font-size:.85em;opacity:.8;word-break:break-all;margin:.3em 0}';
+    /* a word for a room of friends: offered easy (two words and a number), taken as typed and made a link's word */
+    var FIRST = ['amber', 'brisk', 'calm', 'dusk', 'early', 'fern', 'gold', 'high', 'iron', 'jade', 'kind', 'late', 'misty', 'north', 'oak', 'quiet'];
+    var SECOND = ['heron', 'wren', 'finch', 'kite', 'rook', 'swift', 'tern', 'owl', 'crane', 'lark', 'plover', 'curlew', 'dunlin', 'merlin', 'raven', 'swallow'];
+    var pick = function (a) { return a[Math.floor(Math.random() * a.length)]; };
+    var offerWord = function () { return pick(FIRST) + '-' + pick(SECOND) + '-' + (10 + Math.floor(Math.random() * 90)); };
+    var wordOf = function (v) { return String(v || '').toLowerCase().replace(/[\s_]+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-').replace(/^-+/, '').slice(0, 32).replace(/-+$/, ''); };
     customElements.define('beach-here', (function () {
       function Here() { return Reflect.construct(HTMLElement, [], Here); }
       Here.prototype = Object.create(HTMLElement.prototype);
@@ -589,8 +600,15 @@
       Here.prototype.connectedCallback = function () {
         var el = this, offs = [], tick = 0, linkShown = '';
         if (!document.getElementById('beach-here-style')) { var st = document.createElement('style'); st.id = 'beach-here-style'; st.textContent = STYLE; (document.head || document.documentElement).appendChild(st); }
-        el.innerHTML = '<p class="bh-who"></p><div class="bh-row"><button type="button" class="bh-go"></button><button type="button" class="bh-friends"></button></div><p class="bh-count" aria-live="polite"></p><p class="bh-link" hidden></p>';
+        el.innerHTML = '<p class="bh-who"></p><div class="bh-row"><button type="button" class="bh-go"></button><button type="button" class="bh-friends"></button></div><div class="bh-ask" hidden><label>A word for your room <input class="bh-word" maxlength="40" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go"></label><p class="bh-see"></p><button type="button" class="bh-make">Go to that room</button></div>'
+          + '<p class="bh-count" aria-live="polite"></p><p class="bh-link" hidden></p>';
         var who = el.querySelector('.bh-who'), go = el.querySelector('.bh-go'), friends = el.querySelector('.bh-friends'), count = el.querySelector('.bh-count'), lk = el.querySelector('.bh-link');
+        var ask = el.querySelector('.bh-ask'), word = el.querySelector('.bh-word'), see = el.querySelector('.bh-see'), make = el.querySelector('.bh-make');
+        function preview() { var w = wordOf(word.value); make.disabled = !w; see.textContent = w ? 'Friends join by this link: ' + link(w) : 'A word of letters, numbers and hyphens.'; return w; }
+        function goTo() { var w = preview(); if (!w) return; var url = link(w); try { (window.top || window).location.href = url; } catch (e) { location.href = url; } }
+        word.addEventListener('input', preview);
+        word.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); goTo(); } });
+        make.addEventListener('click', goTo);
         function ms() { var v = +el.getAttribute('in'); return v > 0 ? v : 3000; }
         function draw() {
           var me = beachRoom.me(), h = hostNow();
@@ -601,6 +619,7 @@
           go.disabled = false; go.textContent = el.getAttribute('label') || 'Start together';
           var sub = String(ROOM).split(':').length > 2;
           friends.hidden = false; friends.textContent = sub ? 'Share this room' : 'A room for friends';
+          if (sub) ask.hidden = true;
           if (sub && !linkShown) { linkShown = link(); lk.textContent = 'Friends join by this link: ' + linkShown; lk.hidden = false; }
         }
         function countdown(x) {
@@ -614,8 +633,13 @@
         }
         go.addEventListener('click', function () { start({ 'in': ms(), body: typeof el.body === 'function' ? el.body() : undefined }); });
         friends.addEventListener('click', function () {
-          var sub = String(ROOM).split(':').length > 2, url = link();
-          if (!sub) { try { (window.top || window).location.href = url; } catch (e) { location.href = url; } return; }   // into a room of one's own; its page shows the link
+          var sub = String(ROOM).split(':').length > 2;
+          if (!sub) {   // in the game's open room: a word asked for (one offered), then into that room by its link, whose page shows it
+            ask.hidden = !ask.hidden;
+            if (!ask.hidden) { if (!word.value) word.value = offerWord(); preview(); try { word.focus(); word.select(); } catch (e) {} }
+            return;
+          }
+          var url = link();
           var said = function (t) { lk.textContent = t; lk.hidden = false; };
           if (navigator.share) navigator.share({ url: url, title: document.title }).catch(function () {});
           else if (navigator.clipboard) navigator.clipboard.writeText(url).then(function () { said('Link copied: ' + url); }, function () { said('Friends join by this link: ' + url); });
