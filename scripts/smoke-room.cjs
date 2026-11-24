@@ -303,6 +303,17 @@ const slotNamed = (name) => slotsOf(BLOCKS['liquid:pool:wire']).filter((e) => e[
   const went = await until(() => jon.evaluate(() => (document.querySelector('#here .bh-count').textContent === 'Go' ? 'Go' : null)), 5000);
   check('…its Start together counts both pages down to Go', !!counted && went === 'Go', { counted, went });
 
+  await hal.evaluate(() => { const h = document.createElement('beach-here'); h.id = 'here'; document.body.appendChild(h); });
+  await until(() => hal.evaluate(() => (/A room for friends/.test(document.getElementById('here').textContent) ? 1 : 0)), 4000);
+  await hal.click('#here .bh-friends');
+  const offered = await hal.evaluate(() => ({ shown: !document.querySelector('#here .bh-ask').hidden, word: document.querySelector('#here .bh-word').value, see: document.querySelector('#here .bh-see').textContent }));
+  check('in the open room, A room for friends asks for a word, offering an easy one and showing the link it makes', offered.shown && /^[a-z]+-[a-z]+-\d\d$/.test(offered.word) && offered.see.includes('with=' + offered.word), offered);
+  await hal.fill('#here .bh-word', 'Friday Night!');
+  const typed = await hal.evaluate(() => document.querySelector('#here .bh-see').textContent);
+  await Promise.all([hal.waitForURL(/[?&]with=friday-night(&|$)/, { timeout: 8000 }), hal.click('#here .bh-make')]);
+  const there = await until(() => hal.evaluate(() => (window.beachRoom && beachRoom.joined() && beachRoom.room() === 'pool:wire:friday-night' ? beachRoom.room() : null)), 10000);
+  check('…a word typed as said (\'Friday Night!\') becomes the link\'s word, and going there takes the page into that room', /with=friday-night(&|$)/.test(typed) && there === 'pool:wire:friday-night', { typed, there, url: hal.url() });
+
   const kit = await phone('kit'), lee = await phone('lee');
   await until(async () => { const a = await peerNamed(kit, 'lee'); return a && a.direct ? a : null; }, 15000);
   muted.add('kit');
